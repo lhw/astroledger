@@ -1,4 +1,4 @@
-# ScollyMarket — Plan
+# ScolyMarket — Plan
 
 > A satirical prediction market for Star Citizen bug fixing and general events.
 > No real money. Just vibes, credits, and the collective delusion that 3.x will be stable.
@@ -7,7 +7,7 @@
 
 ## 1. Concept
 
-ScollyMarket is a tongue-in-cheek prediction market (à la Polymarket/Manifold) where players bet fake credits on whether Star Citizen bugs will be fixed, features will ship, and other community events will happen. The tone is irreverent and self-aware — this is a joke about the state of the game, not a serious forecasting tool.
+ScolyMarket is a tongue-in-cheek prediction market (à la Polymarket/Manifold) where players bet fake credits on whether Star Citizen bugs will be fixed, features will ship, and other community events will happen. The tone is irreverent and self-aware — this is a joke about the state of the game, not a serious forecasting tool.
 
 ### How Prediction Markets Work (simplified)
 
@@ -197,12 +197,12 @@ Markets that pass auto-filter land in a moderator dashboard:
 ## 5. Project Structure
 
 ```
-scollymarket/
+scolymarket/
 ├── backend/
 │   ├── pyproject.toml          # uv project config
 │   ├── alembic/                # db migrations
 │   ├── src/
-│   │   └── scollymarket/
+│   │   └── scolymarket/
 │   │       ├── __init__.py
 │   │       ├── main.py         # FastAPI app entry
 │   │       ├── config.py       # settings & env vars

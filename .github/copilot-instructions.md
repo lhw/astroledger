@@ -1,8 +1,8 @@
-# ScollyMarket — Copilot Instructions
+# ScolyMarket — Copilot Instructions
 
 ## Project Overview
 
-ScollyMarket is a satirical prediction market web app for betting fake credits on Star Citizen bug fixes and general events. No real money is involved. The tone is humorous and self-aware.
+ScolyMarket is a satirical prediction market web app for betting fake credits on Star Citizen bug fixes and general events. No real money is involved. The tone is humorous and self-aware.
 
 See `plan.md` for the full design document.
 
