@@ -8,7 +8,7 @@ See `plan.md` for the full design document.
 
 ## Architecture
 
-- **Backend:** Go 1.22+ with chi router. SQLite database via sqlc (type-safe SQL codegen). OIDC auth via scid.my.
+- **Backend:** Go 1.26 with chi router. SQLite database via sqlc (type-safe SQL codegen). OIDC auth via scid.my.
 - **Frontend:** SvelteKit with Skeleton UI, TypeScript, Vite. Custom luxury gold theme.
 - **Monorepo:** `backend/` and `frontend/` directories at the repo root.
 

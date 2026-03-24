@@ -1,0 +1,228 @@
+package handler
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+
+	oidc "github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
+
+	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/scolymarket/internal/middleware"
+)
+
+// AuthHandler handles OIDC login, callback, and logout.
+type AuthHandler struct {
+	queries      *db.Queries
+	oauth2Config oauth2.Config
+	verifier     *oidc.IDTokenVerifier
+	sessionSecret string
+	cookieSecure  bool
+	frontendURL   string
+}
+
+// NewAuthHandler creates a new AuthHandler by discovering OIDC endpoints.
+func NewAuthHandler(
+	ctx context.Context,
+	queries *db.Queries,
+	issuer, clientID, clientSecret, redirectURL, sessionSecret, frontendURL string,
+	cookieSecure bool,
+) (*AuthHandler, error) {
+	provider, err := oidc.NewProvider(ctx, issuer)
+	if err != nil {
+		return nil, fmt.Errorf("oidc provider discovery: %w", err)
+	}
+
+	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
+
+	oauth2Cfg := oauth2.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		RedirectURL:  redirectURL,
+		Endpoint:     provider.Endpoint(),
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+	}
+
+	return &AuthHandler{
+		queries:       queries,
+		oauth2Config:  oauth2Cfg,
+		verifier:      verifier,
+		sessionSecret: sessionSecret,
+		cookieSecure:  cookieSecure,
+		frontendURL:   frontendURL,
+	}, nil
+}
+
+// Login redirects the user to the OIDC provider with state + PKCE cookies set.
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	state, err := randomHex(16)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "could not generate state")
+		return
+	}
+
+	codeVerifier, err := randomBase64URL(32)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "could not generate pkce verifier")
+		return
+	}
+	codeChallenge := pkceChallenge(codeVerifier)
+
+	setShortCookie(w, "oauth_state", state, h.cookieSecure)
+	setShortCookie(w, "oauth_verifier", codeVerifier, h.cookieSecure)
+
+	authURL := h.oauth2Config.AuthCodeURL(
+		state,
+		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	)
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+// Callback handles the OIDC provider redirect, exchanges the code, and issues a session.
+func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Validate state to prevent CSRF.
+	stateCookie, err := r.Cookie("oauth_state")
+	if err != nil || stateCookie.Value != r.URL.Query().Get("state") {
+		respondError(w, http.StatusBadRequest, "invalid state parameter")
+		return
+	}
+
+	verifierCookie, err := r.Cookie("oauth_verifier")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "missing pkce verifier")
+		return
+	}
+
+	// Clear the one-time auth cookies.
+	clearShortCookie(w, "oauth_state")
+	clearShortCookie(w, "oauth_verifier")
+
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		respondError(w, http.StatusBadRequest, "missing authorization code")
+		return
+	}
+
+	tokens, err := h.oauth2Config.Exchange(ctx, code,
+		oauth2.SetAuthURLParam("code_verifier", verifierCookie.Value),
+	)
+	if err != nil {
+		slog.Error("oauth2 token exchange failed", "err", err)
+		respondError(w, http.StatusBadRequest, "token exchange failed")
+		return
+	}
+
+	rawIDToken, ok := tokens.Extra("id_token").(string)
+	if !ok {
+		respondError(w, http.StatusBadRequest, "missing id_token in response")
+		return
+	}
+
+	idToken, err := h.verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		slog.Error("id_token verification failed", "err", err)
+		respondError(w, http.StatusUnauthorized, "id_token verification failed")
+		return
+	}
+
+	var claims struct {
+		Sub   string `json:"sub"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to parse id_token claims")
+		return
+	}
+
+	// Upsert user in the database.
+	user, err := h.queries.GetUserBySub(ctx, claims.Sub)
+	if errors.Is(err, sql.ErrNoRows) {
+		user, err = h.queries.CreateUser(ctx, db.CreateUserParams{
+			ScidSub:     claims.Sub,
+			DisplayName: claims.Name,
+			Email:       claims.Email,
+		})
+	}
+	if err != nil {
+		slog.Error("db user upsert failed", "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	// Update display name / email and last login timestamp.
+	if err := h.queries.UpdateUserLastLogin(ctx, db.UpdateUserLastLoginParams{
+		DisplayName: claims.Name,
+		Email:       claims.Email,
+		ID:          user.ID,
+	}); err != nil {
+		slog.Warn("failed to update last_login", "err", err)
+	}
+
+	if err := middleware.IssueSessionCookie(
+		w, h.sessionSecret, user.ID,
+		user.IsModerator == 1, user.IsAdmin == 1, h.cookieSecure,
+	); err != nil {
+		slog.Error("failed to issue session cookie", "err", err)
+		respondError(w, http.StatusInternalServerError, "session error")
+		return
+	}
+
+	http.Redirect(w, r, h.frontendURL, http.StatusFound)
+}
+
+// Logout clears the session cookie and redirects to the frontend.
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	middleware.ClearSessionCookie(w)
+	http.Redirect(w, r, h.frontendURL, http.StatusFound)
+}
+
+// --- helpers ---
+
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func randomBase64URL(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func pkceChallenge(verifier string) string {
+	h := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(h[:])
+}
+
+func setShortCookie(w http.ResponseWriter, name, value string, secure bool) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+		MaxAge:   300, // 5-minute window
+	})
+}
+
+func clearShortCookie(w http.ResponseWriter, name string) {
+	http.SetCookie(w, &http.Cookie{Name: name, MaxAge: -1, Path: "/"})
+}

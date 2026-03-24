@@ -1,0 +1,91 @@
+version: '3'
+
+vars:
+  BINARY: bin/scolymarket
+  DB_PATH: '{{.DB_PATH | default "./scolymarket.db"}}'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  dev:
+    desc: Run the server in development mode (requires air)
+    cmds:
+      - air
+    env:
+      ENVIRONMENT: development
+
+  run:
+    desc: Run the server directly (no hot reload)
+    cmds:
+      - go run ./cmd/server
+    env:
+      ENVIRONMENT: development
+
+  build:
+    desc: Build the production binary
+    cmds:
+      - mkdir -p bin
+      - go build -ldflags="-s -w" -o {{.BINARY}} ./cmd/server
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -race -count=1 ./...
+
+  test:verbose:
+    desc: Run tests with verbose output
+    cmds:
+      - go test -race -count=1 -v ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format all Go code
+    cmds:
+      - gofmt -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  migrate:
+    desc: Apply all pending database migrations
+    cmds:
+      - go run ./cmd/server -migrate-only
+    env:
+      DATABASE_PATH: '{{.DB_PATH}}'
+
+  migrate:status:
+    desc: Show migration status
+    cmds:
+      - go run ./cmd/server -migrate-status
+    env:
+      DATABASE_PATH: '{{.DB_PATH}}'
+
+  migrate:create:
+    desc: Create a new migration file (NAME= required)
+    cmds:
+      - goose -dir migrations create {{.NAME}} sql
+
+  generate:
+    desc: Run sqlc code generation
+    cmds:
+      - sqlc generate
+
+  tidy:
+    desc: Tidy go modules
+    cmds:
+      - go mod tidy
+
+  setup:
+    desc: Initial setup — download deps and run migrations
+    cmds:
+      - task: tidy
+      - task: migrate

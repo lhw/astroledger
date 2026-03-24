@@ -260,7 +260,7 @@ Markets that pass auto-filter land in a moderator dashboard:
 
 | Tool | Purpose |
 |---|---|
-| **Go 1.22+** | Language. Statically typed, fast compilation, excellent stdlib, single binary deployment. |
+| **Go 1.26** | Language. Statically typed, fast compilation, excellent stdlib, single binary deployment. |
 | **chi** (`github.com/go-chi/chi/v5`) | HTTP router & middleware. Lightweight, idiomatic, composable. Perfect for a project of this size — not too bare (stdlib only), not too heavy (Gin/Echo). Chi is built on `net/http` so all stdlib middleware and handlers are compatible. |
 | **SQLite** via `modernc.org/sqlite` | Database — pure Go SQLite driver (no CGo required). Single file, zero config, perfect for ~200 users. |
 | **sqlc** (`github.com/sqlc-dev/sqlc`) | Generates type-safe Go code from SQL queries. You write SQL, sqlc generates Go structs and query functions. No ORM magic, no reflection, full control over queries. Compile-time type safety. |
