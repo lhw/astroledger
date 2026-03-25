@@ -11,11 +11,19 @@ tasks:
       - task --list
 
   dev:
-    desc: Run the server in development mode (requires air)
+    desc: |
+      Run the backend with Air live-reload (recompiles on Go file changes).
+      Air must be installed first: go install github.com/air-verse/air@latest
+      Config lives in .air.toml — binary is built to ./tmp/main.
     cmds:
       - air
     env:
       ENVIRONMENT: development
+
+  install:air:
+    desc: Install Air live-reload tool (go install)
+    cmds:
+      - go install github.com/air-verse/air@latest
 
   run:
     desc: Run the server directly (no hot reload)

@@ -1,0 +1,55 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  dev:
+    desc: |
+      Start both dev servers concurrently:
+        • backend  — Go server with Air hot-reload on :8080
+        • frontend — Vite dev server on :5173 (proxies /api + /auth to :8080)
+
+      Prerequisites:
+        • Air: go install github.com/air-verse/air@latest
+        • Frontend deps: cd frontend && npm install
+        • Backend .env with real SCID credentials (copy backend/.env.example)
+    deps:
+      - task: dev:backend
+      - task: dev:frontend
+
+  dev:backend:
+    desc: Start Go backend (Air hot-reload)
+    dir: backend
+    cmds:
+      - air
+
+  dev:frontend:
+    desc: Start Vite frontend dev server
+    dir: frontend
+    cmds:
+      - npm run dev
+
+  build:backend:
+    desc: Build Go production binary
+    dir: backend
+    cmds:
+      - task: build
+      
+  build:frontend:
+    desc: Build frontend for production
+    dir: frontend
+    cmds:
+      - npm run build
+
+  setup:
+    desc: Initial project setup (install deps, run migrations)
+    cmds:
+      - cmd: go install github.com/air-verse/air@latest
+        dir: backend
+      - cmd: go mod tidy
+        dir: backend
+      - cmd: npm install
+        dir: frontend

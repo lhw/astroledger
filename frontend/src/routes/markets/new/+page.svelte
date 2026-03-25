@@ -1,45 +1,66 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { createMarket } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
-	import { goto } from '$app/navigation';
 	import type { MarketCategory } from '$lib/types';
 
-	let title = '';
-	let description = '';
-	let category: MarketCategory = 'bug_fixes';
-	let resolutionCriteria = '';
-	let deadline = '';
-	let submitting = false;
-	let error = '';
+	let title = $state('');
+	let description = $state('');
+	let resolutionCriteria = $state('');
+	let category = $state<MarketCategory>('bug_fixes');
+	let deadlineType = $state<'date' | 'patch'>('date');
+	let deadlineDate = $state('');
+	let patchTarget = $state('');
+	let submitting = $state(false);
+	let error = $state('');
 
-	const CATEGORIES: { value: MarketCategory; label: string }[] = [
-		{ value: 'bug_fixes', label: '🐛 Bug Fixes' },
-		{ value: 'feature_delivery', label: '🚀 Feature Delivery' },
-		{ value: 'patch_timing', label: '⏰ Patch Timing' },
-		{ value: 'cig_drama', label: '🎭 CIG Drama' },
-		{ value: 'community_events', label: '🎉 Community Events' },
-		{ value: 'meta', label: '🤔 Meta' }
+	const minDate = $derived(() => {
+		const d = new Date();
+		d.setDate(d.getDate() + 1);
+		return d.toISOString().slice(0, 10);
+	});
+
+	const isValid = $derived(
+		title.trim().length > 0 &&
+			(deadlineType === 'date' ? deadlineDate.length > 0 : patchTarget.trim().length > 0)
+	);
+
+	const categories: { value: MarketCategory; label: string }[] = [
+		{ value: 'bug_fixes', label: 'Bug Fix' },
+		{ value: 'feature_delivery', label: 'Feature / Patch' },
+		{ value: 'patch_timing', label: 'Patch Timing' },
+		{ value: 'community_events', label: 'Community Event' },
+		{ value: 'meta', label: 'Meta' }
 	];
 
-	// Set minimum deadline to tomorrow
-	const tomorrow = new Date();
-	tomorrow.setDate(tomorrow.getDate() + 1);
-	const minDeadline = tomorrow.toISOString().slice(0, 16);
-
-	async function submit() {
-		if (!title.trim() || !resolutionCriteria.trim() || !deadline) return;
+	async function handleSubmit(e: Event) {
+		e.preventDefault();
+		if (!isValid) return;
 		submitting = true;
 		error = '';
 		try {
+			let deadline: string;
+			let criteria = resolutionCriteria.trim();
+
+			if (deadlineType === 'patch') {
+				// Set deadline 2 years out; resolution criteria records the target patch.
+				const far = new Date();
+				far.setFullYear(far.getFullYear() + 2);
+				deadline = far.toISOString();
+				const prefix = `Resolves when patch ${patchTarget.trim()} ships.`;
+				criteria = criteria ? `${prefix} ${criteria}` : prefix;
+			} else {
+				deadline = new Date(deadlineDate + 'T23:59:59Z').toISOString();
+			}
+
 			const market = await createMarket({
 				title: title.trim(),
 				description: description.trim(),
+				resolution_criteria: criteria,
 				category,
-				resolution_criteria: resolutionCriteria.trim(),
-				deadline: new Date(deadline).toISOString()
+				deadline
 			});
-			await goto(`/markets/${market.id}`);
+			goto(`/markets/${market.id}`);
 		} catch (e) {
 			error = String(e);
 		} finally {
@@ -48,93 +69,137 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Create Market — ScolyMarket</title>
+</svelte:head>
+
 <div class="container mx-auto px-4 max-w-2xl py-8">
 	<div class="mb-6">
-		<a href="/markets" class="text-surface-400 hover:text-primary-400 text-sm">← Back to Markets</a>
-		<h1 class="h2 text-surface-100 mt-2">Submit a Market</h1>
+		<a href="/markets" class="text-surface-400 hover:text-primary-400 text-sm no-underline">← Markets</a>
+		<h1 class="text-3xl font-bold text-surface-100 mt-2">Create a Market</h1>
 		<p class="text-surface-400 text-sm mt-1">
-			Markets go through mod review before going live. Keep it civilised.
+			Predict something Star Citizen-related. Be specific. No personal attacks.
 		</p>
 	</div>
 
 	{#if !$isLoggedIn}
-		<div class="alert variant-filled-warning">
-			You must be logged in to submit a market.
+		<div class="card preset-tonal-surface p-6 rounded-lg text-center">
+			<p class="text-surface-300 mb-4">You must be logged in to create a market.</p>
+			<a href="/auth/login" class="btn preset-filled-primary-500">Login with SCID</a>
 		</div>
 	{:else}
-		<form on:submit|preventDefault={submit} class="card variant-glass-surface p-6 rounded-lg space-y-5">
-			<label class="label">
-				<span class="text-surface-300 text-sm font-medium">Question Title *</span>
+		<form onsubmit={handleSubmit} class="space-y-5">
+			{#if error}
+				<div class="p-4 bg-error-500/20 border border-error-500 rounded-lg text-error-300 text-sm">
+					{error}
+				</div>
+			{/if}
+
+			<label class="block">
+				<span class="text-surface-300 text-sm font-medium">Question <span class="text-error-400">*</span></span>
 				<input
 					type="text"
 					bind:value={title}
-					placeholder="Will the Pyro system ship in 2025?"
-					maxlength="200"
 					required
-					class="input mt-1"
+					maxlength="200"
+					placeholder="Will [bug] be fixed before [date]?"
+					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none"
 				/>
 				<span class="text-surface-500 text-xs">{title.length}/200</span>
 			</label>
 
-			<label class="label">
-				<span class="text-surface-300 text-sm font-medium">Category *</span>
-				<select bind:value={category} class="select mt-1">
-					{#each CATEGORIES as cat}
+			<label class="block">
+				<span class="text-surface-300 text-sm font-medium">Category <span class="text-error-400">*</span></span>
+				<select
+					bind:value={category}
+					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 focus:border-primary-500 outline-none"
+				>
+					{#each categories as cat}
 						<option value={cat.value}>{cat.label}</option>
 					{/each}
 				</select>
 			</label>
 
-			<label class="label">
+			<!-- Deadline type toggle -->
+			<fieldset class="block">
+				<legend class="text-surface-300 text-sm font-medium mb-2">
+					Resolution Timing <span class="text-error-400">*</span>
+				</legend>
+				<div class="flex gap-2 mb-3">
+					<button
+						type="button"
+						onclick={() => (deadlineType = 'date')}
+						class="flex-1 btn btn-sm {deadlineType === 'date' ? 'preset-filled-primary-500' : 'preset-outlined'}"
+					>
+						Specific Date
+					</button>
+					<button
+						type="button"
+						onclick={() => (deadlineType = 'patch')}
+						class="flex-1 btn btn-sm {deadlineType === 'patch' ? 'preset-filled-primary-500' : 'preset-outlined'}"
+					>
+						Patch Release
+					</button>
+				</div>
+
+				{#if deadlineType === 'date'}
+					<label class="block">
+						<span class="text-surface-400 text-xs">Closes on</span>
+						<input
+							type="date"
+							bind:value={deadlineDate}
+							required
+							min={minDate()}
+							class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 focus:border-primary-500 outline-none"
+						/>
+					</label>
+				{:else}
+					<label class="block">
+						<span class="text-surface-400 text-xs">Target patch version</span>
+						<input
+							type="text"
+							bind:value={patchTarget}
+							required
+							placeholder="e.g. 4.1.0, 4.2.0-PTU"
+							class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none"
+						/>
+						<span class="text-surface-500 text-xs">
+							Market resolves when this patch ships. Moderators resolve it manually.
+						</span>
+					</label>
+				{/if}
+			</fieldset>
+
+			<label class="block">
 				<span class="text-surface-300 text-sm font-medium">Description</span>
 				<textarea
 					bind:value={description}
-					placeholder="Optional context or background information…"
 					rows="3"
-					class="textarea mt-1"
+					maxlength="2000"
+					placeholder="Provide context for your question…"
+					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none resize-y"
 				></textarea>
 			</label>
 
-			<label class="label">
-				<span class="text-surface-300 text-sm font-medium">Resolution Criteria *</span>
+			<label class="block">
+				<span class="text-surface-300 text-sm font-medium">Resolution Criteria</span>
 				<textarea
 					bind:value={resolutionCriteria}
-					placeholder="This resolves YES if CIG officially releases Pyro in the patch notes before 2026-01-01."
 					rows="3"
-					required
-					class="textarea mt-1"
+					maxlength="2000"
+					placeholder="How will this market be resolved? What counts as YES vs NO?"
+					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none resize-y"
 				></textarea>
 			</label>
 
-			<label class="label">
-				<span class="text-surface-300 text-sm font-medium">Resolution Deadline *</span>
-				<input
-					type="datetime-local"
-					bind:value={deadline}
-					min={minDeadline}
-					required
-					class="input mt-1"
-				/>
-			</label>
-
-			{#if error}
-				<div class="alert variant-filled-error text-sm">{error}</div>
-			{/if}
-
-			<div class="flex gap-3">
-				<button
-					type="submit"
-					disabled={submitting || !title.trim() || !resolutionCriteria.trim() || !deadline}
-					class="btn variant-filled-primary flex-1"
-				>
+			<div class="pt-2">
+				<button type="submit" disabled={submitting || !isValid} class="btn preset-filled-primary-500 w-full">
 					{submitting ? 'Submitting…' : 'Submit for Review'}
 				</button>
-				<a href="/markets" class="btn variant-ghost">Cancel</a>
+				<p class="text-surface-500 text-xs text-center mt-2">
+					Markets are reviewed before going live. No harassment, no player targeting.
+				</p>
 			</div>
-
-			<p class="text-surface-500 text-xs">
-				Markets about real money, harassment, doxxing, or player targeting will be automatically rejected.
-			</p>
 		</form>
 	{/if}
 </div>

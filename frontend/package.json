@@ -2,30 +2,33 @@
   "name": "scolymarket-frontend",
   "version": "0.0.1",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed"
   },
   "devDependencies": {
-    "@skeletonlabs/skeleton": "2.11.0",
-    "@skeletonlabs/tw-plugin": "0.4.1",
-    "@sveltejs/adapter-auto": "^7.0.1",
-    "@sveltejs/kit": "^2.55.0",
-    "@tailwindcss/forms": "^0.5.9",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.2",
-    "svelte": "^4.2.20",
-    "svelte-check": "^3.8.6",
-    "tailwindcss": "^3.4.17",
+    "@playwright/test": "^1.52.0",
+    "@skeletonlabs/skeleton": "^4.9.0",
+    "@skeletonlabs/skeleton-svelte": "^4.9.0",
+    "@sveltejs/adapter-auto": "^4.0.0",
+    "@sveltejs/kit": "^2.53.0",
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/node": "^24.0.0",
+    "svelte": "^5.43.0",
+    "svelte-check": "^4.3.0",
+    "tailwindcss": "^4.1.0",
     "typescript": "^5.7.3",
-    "vite": "^5.4.14"
+    "vite": "^7.0.0"
   },
   "dependencies": {
-    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "@types/dompurify": "^3.0.0",
     "dompurify": "^3.2.4"
-  },
-  "type": "module"
+  }
 }

@@ -37,7 +37,6 @@ export type MarketCategory =
 	| 'bug_fixes'
 	| 'feature_delivery'
 	| 'patch_timing'
-	| 'cig_drama'
 	| 'community_events'
 	| 'meta';
 

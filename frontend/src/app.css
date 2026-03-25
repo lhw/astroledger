@@ -1,3 +1,40 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import '@skeletonlabs/skeleton';
+@import '@skeletonlabs/skeleton/themes/wintry';
+
+/* ── ScolyMarket: Origin Jumpworks Luxury Gold theme ───────────────────────
+   Override Wintry's primary palette with warm gold. Surface stays charcoal.
+   oklch(L C H) — L=lightness 0-1, C=chroma, H=hue angle (75 = warm gold)
+   ─────────────────────────────────────────────────────────────────────── */
+:root {
+	--color-primary-50: oklch(97% 0.015 75);
+	--color-primary-100: oklch(93% 0.04 75);
+	--color-primary-200: oklch(87% 0.07 75);
+	--color-primary-300: oklch(81% 0.10 75);
+	--color-primary-400: oklch(75% 0.13 75);
+	/* 500 ≈ #D4A843 — main gold */
+	--color-primary-500: oklch(69% 0.14 75);
+	--color-primary-600: oklch(62% 0.13 75);
+	--color-primary-700: oklch(54% 0.12 75);
+	--color-primary-800: oklch(44% 0.10 75);
+	--color-primary-900: oklch(34% 0.07 75);
+	--color-primary-950: oklch(22% 0.04 75);
+
+	/* Champagne accent for highlights */
+	--color-secondary-500: oklch(84% 0.09 70);
+
+	font-family: system-ui, 'Inter', Avenir, Helvetica, Arial, sans-serif;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+}
+
+#app {
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+}

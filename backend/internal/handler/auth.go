@@ -21,9 +21,9 @@ import (
 
 // AuthHandler handles OIDC login, callback, and logout.
 type AuthHandler struct {
-	queries      *db.Queries
-	oauth2Config oauth2.Config
-	verifier     *oidc.IDTokenVerifier
+	queries       *db.Queries
+	oauth2Config  oauth2.Config
+	verifier      *oidc.IDTokenVerifier
 	sessionSecret string
 	cookieSecure  bool
 	frontendURL   string
@@ -48,7 +48,7 @@ func NewAuthHandler(
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "groups"},
 	}
 
 	return &AuthHandler{
@@ -137,14 +137,20 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var claims struct {
-		Sub   string `json:"sub"`
-		Name  string `json:"name"`
-		Email string `json:"email"`
+		Sub    string   `json:"sub"`
+		Name   string   `json:"name"`
+		Email  string   `json:"email"`
+		Groups []string `json:"groups"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to parse id_token claims")
 		return
 	}
+
+	// Determine mod/admin from OIDC group membership.
+	// scolymod = moderator access; admin = admin access.
+	isMod := containsGroup(claims.Groups, "scolymod")
+	isAdmin := containsGroup(claims.Groups, "admin")
 
 	// Upsert user in the database.
 	user, err := h.queries.GetUserBySub(ctx, claims.Sub)
@@ -170,9 +176,22 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("failed to update last_login", "err", err)
 	}
 
+	// Sync group-derived mod/admin flags to the DB so /api/me reflects current membership.
+	modInt := int64(0)
+	if isMod {
+		modInt = 1
+	}
+	adminInt := int64(0)
+	if isAdmin {
+		adminInt = 1
+	}
+	if err := h.queries.UpdateUserGroups(ctx, user.ID, modInt, adminInt); err != nil {
+		slog.Warn("failed to update user groups", "err", err)
+	}
+
 	if err := middleware.IssueSessionCookie(
 		w, h.sessionSecret, user.ID,
-		user.IsModerator == 1, user.IsAdmin == 1, h.cookieSecure,
+		isMod, isAdmin, h.cookieSecure,
 	); err != nil {
 		slog.Error("failed to issue session cookie", "err", err)
 		respondError(w, http.StatusInternalServerError, "session error")
@@ -196,6 +215,16 @@ func randomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// containsGroup returns true if group is present in the OIDC groups claim slice.
+func containsGroup(groups []string, group string) bool {
+	for _, g := range groups {
+		if g == group {
+			return true
+		}
+	}
+	return false
 }
 
 func randomBase64URL(n int) (string, error) {

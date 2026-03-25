@@ -300,13 +300,14 @@ Markets that pass auto-filter land in a moderator dashboard:
 
 | Tool | Purpose |
 |---|---|
-| **SvelteKit** | Framework — SSR, routing, file-based routes. |
-| **Skeleton UI** (`@skeletonlabs/skeleton`) | Component library for Svelte — polished, themeable, accessible. Provides the design system, form elements, cards, modals, toasts, etc. The luxury gold theme is implemented via Skeleton's custom theme system. |
+| **SvelteKit 2.53+** | Framework — file-based routing, SSR, adapter-auto. **Svelte 5** runes syntax (`$state`, `$derived`, `$props`, `{@render children()}`). |
+| **Svelte 5.43+** | Component language. Runes-compatible. Layout uses `$props()` / `{@render children()}`. Route pages can mix Svelte 4-compat syntax. |
+| **Vite 7** + **`@sveltejs/vite-plugin-svelte` ^6** | Bundler — embedded in SvelteKit, v6 plugin required for Svelte 5 compatibility. |
+| **Tailwind CSS v4** via `@tailwindcss/vite` | Utility-first CSS. No `tailwind.config.js` or PostCSS needed — pure Vite plugin approach. |
+| **Skeleton UI v4** (`@skeletonlabs/skeleton`) | Component library — polished, themeable, accessible. Gold luxury theme via CSS custom properties in `app.css`. |
 | **TypeScript** | Type safety. Strict mode — no `any` types. |
-| **Vite** | Bundler (built into SvelteKit). |
-| **Chart.js** or **Layerchart** | Price history charts for markets. |
-| **date-fns** | Date formatting/manipulation. |
-| **ESLint + Prettier** | Linting & formatting. |
+| **Playwright** (`@playwright/test`) | End-to-end browser tests. Mocked API calls via `page.route()` — tests don't require a running backend. |
+| **DOMPurify** | Sanitize user-generated markdown before rendering with `{@html}`. |
 
 #### SvelteKit Best Practices to Follow
 
@@ -700,39 +701,40 @@ Use appropriate HTTP status codes: `200` OK, `201` Created, `400` Bad Request, `
 
 ## 12. Implementation Phases
 
-### Phase 1 — Foundation
-- [ ] Set up monorepo structure (backend + frontend directories)
-- [ ] Backend: Go module, chi router, basic middleware (logging, CORS, recovery)
-- [ ] SQLite database setup with goose migrations — initial schema (users table)
-- [ ] OIDC auth flow: `/auth/login` → scid.my → `/auth/callback` → session cookie → `/api/me`
-- [ ] sqlc setup: first query file and code generation for users
-- [ ] Frontend: SvelteKit + Skeleton scaffolding, custom luxury gold theme, AppShell layout, nav bar
-- [ ] "Login with SCID" button → auth flow → display logged-in user
-- [ ] Taskfile.yml with dev, build, test, lint, migrate commands
-- [ ] Docker Compose for local dev (Go backend + SvelteKit frontend)
+### Phase 1 — Foundation ✅ Complete
+- [x] Set up monorepo structure (backend + frontend directories)
+- [x] Backend: Go module, chi router, basic middleware (logging, CORS, recovery)
+- [x] SQLite database setup with goose migrations — initial schema (users table)
+- [x] OIDC auth flow: `/auth/login` → scid.my → `/auth/callback` → session cookie → `/api/me`
+- [x] sqlc setup: first query file and code generation for users
+- [x] Frontend: SvelteKit 2 + Svelte 5 + Tailwind v4 + Skeleton v4, luxury gold theme, layout with nav bar
+- [x] "Login with SCID" button → auth flow → display logged-in user
+- [x] Taskfile.yml with `task dev` (runs air backend + vite frontend concurrently)
+- [x] `.air.toml` for Go hot-reload in development
 
-### Phase 2 — Core Market Flow
-- [ ] Database migrations for markets, trades, positions tables
-- [ ] sqlc queries for market CRUD
-- [ ] Market CRUD API (create, list, get, update status)
-- [ ] AMM implementation in `internal/service/amm.go` (LMSR cost function, buy/sell logic)
-- [ ] Trading API (buy/sell shares, position tracking, balance checks)
-- [ ] Market list page with category filtering and sorting
-- [ ] Market detail page with price display
-- [ ] Buy/sell UI widget
-- [ ] Market submission form
+### Phase 2 — Core Market Flow ✅ Complete
+- [x] Database migrations for markets, trades, positions tables
+- [x] sqlc queries for market CRUD
+- [x] Market CRUD API (create, list, get, update status)
+- [x] AMM implementation in `internal/service/amm.go` (LMSR cost function, buy/sell logic)
+- [x] Trading API (`POST /api/trades` — unified buy/sell endpoint)
+- [x] Market list page with category filtering and pagination
+- [x] Market detail page with YES/NO price display
+- [x] Buy/sell UI widget
+- [x] Market submission form (`/markets/new`)
+- [x] Leaderboard page and profile (me) page
+- [x] Playwright e2e test setup with mocked API (`tests/helpers/mock-api.ts`)
+- [x] `tests/home.spec.ts` and `tests/markets.spec.ts`
 
 ### Phase 3 — Moderation & Auto-filter
+- [x] Mod queue API (`GET /api/mod/markets`, approve/reject/resolve)
+- [x] Mod dashboard page (`/mod`) — approve, reject, resolve markets
 - [ ] Auto-filter service (keyword matching, duplicate detection, rate limiting)
-- [ ] Mod queue API and dashboard page
-- [ ] Market approval/rejection flow
 - [ ] Report system (submit + review)
 - [ ] Rate limiting on market submission and auth endpoints
 
 ### Phase 4 — Economy & Social
 - [ ] Weekly credit payout (scheduled goroutine or cron-triggered endpoint)
-- [ ] Leaderboard API and page
-- [ ] User profile page (portfolio, history, submitted markets)
 - [ ] Market resolution flow (mod resolves, payouts distributed atomically in a transaction)
 - [ ] Price history chart on market detail page
 
