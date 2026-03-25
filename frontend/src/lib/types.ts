@@ -40,6 +40,9 @@ export type MarketCategory =
 	| 'community_events'
 	| 'meta';
 
+/** Market resolution type */
+export type MarketResolutionType = 'binary' | 'date' | 'numeric';
+
 /** Market as returned by the API */
 export interface Market {
 	id: number;
@@ -58,6 +61,10 @@ export interface Market {
 	liquidity_param: number;
 	yes_shares: number;
 	no_shares: number;
+	/** Market subtype: binary yes/no, date prediction, or numeric/price prediction */
+	resolution_type: MarketResolutionType;
+	/** For date markets: ISO date string. For numeric: stringified number (e.g. "200" for $200). */
+	resolution_threshold: string | null;
 }
 
 /** Market with current prices */
@@ -66,6 +73,12 @@ export interface MarketWithPrice {
 	yes_price: number; // 1-99 cents
 	no_price: number;  // 1-99 cents
 	my_position?: { yes_shares: number; no_shares: number };
+	/** Total bUEC traded in this market across all time */
+	total_volume: number;
+	/** Number of unique users who have traded */
+	trader_count: number;
+	/** Total number of individual trades */
+	trade_count: number;
 }
 
 /** Resolution request row returned by GET /api/mod/resolution-requests */
@@ -153,6 +166,8 @@ export interface CreateMarketBody {
 	category: MarketCategory;
 	resolution_criteria: string;
 	deadline: string; // RFC3339
+	resolution_type?: MarketResolutionType;
+	resolution_threshold?: string; // ISO date or numeric value string
 }
 
 /** API error response */

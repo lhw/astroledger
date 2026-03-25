@@ -51,6 +51,29 @@ func (q *Queries) CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade
 	return i, err
 }
 
+const getMarketStats = `-- name: GetMarketStats :one
+SELECT
+    COALESCE(SUM(cost), 0)          AS total_volume,
+    COUNT(DISTINCT user_id)         AS trader_count,
+    COUNT(*)                        AS trade_count
+FROM trades
+WHERE market_id = ?
+`
+
+type GetMarketStatsRow struct {
+	TotalVolume interface{} `json:"total_volume"`
+	TraderCount int64       `json:"trader_count"`
+	TradeCount  int64       `json:"trade_count"`
+}
+
+// Returns aggregate trade statistics for a single market.
+func (q *Queries) GetMarketStats(ctx context.Context, marketID int64) (GetMarketStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, getMarketStats, marketID)
+	var i GetMarketStatsRow
+	err := row.Scan(&i.TotalVolume, &i.TraderCount, &i.TradeCount)
+	return i, err
+}
+
 const getMarketTrades = `-- name: GetMarketTrades :many
 SELECT t.id, t.user_id, t.market_id, t.side, t."action", t.shares, t.cost, t.price_at_trade, t.created_at, u.display_name AS trader_name
 FROM trades t

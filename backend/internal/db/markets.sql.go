@@ -30,19 +30,21 @@ func (q *Queries) CountMarkets(ctx context.Context, arg CountMarketsParams) (int
 }
 
 const createMarket = `-- name: CreateMarket :one
-INSERT INTO markets (title, description, category, resolution_criteria, resolution_deadline, created_by, liquidity_param)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, title, description, category, resolution_criteria, resolution_deadline, status, resolution, created_by, resolved_by, created_at, resolved_at, liquidity_param, yes_shares, no_shares
+INSERT INTO markets (title, description, category, resolution_criteria, resolution_deadline, created_by, liquidity_param, resolution_type, resolution_threshold)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, title, description, category, resolution_criteria, resolution_deadline, status, resolution, created_by, resolved_by, created_at, resolved_at, liquidity_param, yes_shares, no_shares, resolution_type, resolution_threshold
 `
 
 type CreateMarketParams struct {
-	Title              string    `json:"title"`
-	Description        string    `json:"description"`
-	Category           string    `json:"category"`
-	ResolutionCriteria string    `json:"resolution_criteria"`
-	ResolutionDeadline time.Time `json:"resolution_deadline"`
-	CreatedBy          int64     `json:"created_by"`
-	LiquidityParam     float64   `json:"liquidity_param"`
+	Title               string    `json:"title"`
+	Description         string    `json:"description"`
+	Category            string    `json:"category"`
+	ResolutionCriteria  string    `json:"resolution_criteria"`
+	ResolutionDeadline  time.Time `json:"resolution_deadline"`
+	CreatedBy           int64     `json:"created_by"`
+	LiquidityParam      float64   `json:"liquidity_param"`
+	ResolutionType      string    `json:"resolution_type"`
+	ResolutionThreshold *string   `json:"resolution_threshold"`
 }
 
 func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error) {
@@ -54,6 +56,8 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		arg.ResolutionDeadline,
 		arg.CreatedBy,
 		arg.LiquidityParam,
+		arg.ResolutionType,
+		arg.ResolutionThreshold,
 	)
 	var i Market
 	err := row.Scan(
@@ -72,6 +76,8 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.LiquidityParam,
 		&i.YesShares,
 		&i.NoShares,
+		&i.ResolutionType,
+		&i.ResolutionThreshold,
 	)
 	return i, err
 }
@@ -106,7 +112,7 @@ func (q *Queries) GetActivePendingMarketTitles(ctx context.Context) ([]string, e
 }
 
 const getMarketByID = `-- name: GetMarketByID :one
-SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, u.display_name AS creator_name
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, m.resolution_type, m.resolution_threshold, u.display_name AS creator_name
 FROM markets m
 JOIN users u ON u.id = m.created_by
 WHERE m.id = ?
@@ -114,22 +120,24 @@ LIMIT 1
 `
 
 type GetMarketByIDRow struct {
-	ID                 int64      `json:"id"`
-	Title              string     `json:"title"`
-	Description        string     `json:"description"`
-	Category           string     `json:"category"`
-	ResolutionCriteria string     `json:"resolution_criteria"`
-	ResolutionDeadline time.Time  `json:"resolution_deadline"`
-	Status             string     `json:"status"`
-	Resolution         *string    `json:"resolution"`
-	CreatedBy          int64      `json:"created_by"`
-	ResolvedBy         *int64     `json:"resolved_by"`
-	CreatedAt          time.Time  `json:"created_at"`
-	ResolvedAt         *time.Time `json:"resolved_at"`
-	LiquidityParam     float64    `json:"liquidity_param"`
-	YesShares          float64    `json:"yes_shares"`
-	NoShares           float64    `json:"no_shares"`
-	CreatorName        string     `json:"creator_name"`
+	ID                  int64      `json:"id"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description"`
+	Category            string     `json:"category"`
+	ResolutionCriteria  string     `json:"resolution_criteria"`
+	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
+	Status              string     `json:"status"`
+	Resolution          *string    `json:"resolution"`
+	CreatedBy           int64      `json:"created_by"`
+	ResolvedBy          *int64     `json:"resolved_by"`
+	CreatedAt           time.Time  `json:"created_at"`
+	ResolvedAt          *time.Time `json:"resolved_at"`
+	LiquidityParam      float64    `json:"liquidity_param"`
+	YesShares           float64    `json:"yes_shares"`
+	NoShares            float64    `json:"no_shares"`
+	ResolutionType      string     `json:"resolution_type"`
+	ResolutionThreshold *string    `json:"resolution_threshold"`
+	CreatorName         string     `json:"creator_name"`
 }
 
 func (q *Queries) GetMarketByID(ctx context.Context, id int64) (GetMarketByIDRow, error) {
@@ -151,6 +159,8 @@ func (q *Queries) GetMarketByID(ctx context.Context, id int64) (GetMarketByIDRow
 		&i.LiquidityParam,
 		&i.YesShares,
 		&i.NoShares,
+		&i.ResolutionType,
+		&i.ResolutionThreshold,
 		&i.CreatorName,
 	)
 	return i, err
@@ -193,7 +203,7 @@ func (q *Queries) GetMarketPriceHistory(ctx context.Context, marketID int64) ([]
 }
 
 const listMarkets = `-- name: ListMarkets :many
-SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, u.display_name AS creator_name
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, m.resolution_type, m.resolution_threshold, u.display_name AS creator_name
 FROM markets m
 JOIN users u ON u.id = m.created_by
 WHERE m.status = ?
@@ -211,22 +221,24 @@ type ListMarketsParams struct {
 }
 
 type ListMarketsRow struct {
-	ID                 int64      `json:"id"`
-	Title              string     `json:"title"`
-	Description        string     `json:"description"`
-	Category           string     `json:"category"`
-	ResolutionCriteria string     `json:"resolution_criteria"`
-	ResolutionDeadline time.Time  `json:"resolution_deadline"`
-	Status             string     `json:"status"`
-	Resolution         *string    `json:"resolution"`
-	CreatedBy          int64      `json:"created_by"`
-	ResolvedBy         *int64     `json:"resolved_by"`
-	CreatedAt          time.Time  `json:"created_at"`
-	ResolvedAt         *time.Time `json:"resolved_at"`
-	LiquidityParam     float64    `json:"liquidity_param"`
-	YesShares          float64    `json:"yes_shares"`
-	NoShares           float64    `json:"no_shares"`
-	CreatorName        string     `json:"creator_name"`
+	ID                  int64      `json:"id"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description"`
+	Category            string     `json:"category"`
+	ResolutionCriteria  string     `json:"resolution_criteria"`
+	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
+	Status              string     `json:"status"`
+	Resolution          *string    `json:"resolution"`
+	CreatedBy           int64      `json:"created_by"`
+	ResolvedBy          *int64     `json:"resolved_by"`
+	CreatedAt           time.Time  `json:"created_at"`
+	ResolvedAt          *time.Time `json:"resolved_at"`
+	LiquidityParam      float64    `json:"liquidity_param"`
+	YesShares           float64    `json:"yes_shares"`
+	NoShares            float64    `json:"no_shares"`
+	ResolutionType      string     `json:"resolution_type"`
+	ResolutionThreshold *string    `json:"resolution_threshold"`
+	CreatorName         string     `json:"creator_name"`
 }
 
 func (q *Queries) ListMarkets(ctx context.Context, arg ListMarketsParams) ([]ListMarketsRow, error) {
@@ -260,6 +272,8 @@ func (q *Queries) ListMarkets(ctx context.Context, arg ListMarketsParams) ([]Lis
 			&i.LiquidityParam,
 			&i.YesShares,
 			&i.NoShares,
+			&i.ResolutionType,
+			&i.ResolutionThreshold,
 			&i.CreatorName,
 		); err != nil {
 			return nil, err
@@ -276,7 +290,7 @@ func (q *Queries) ListMarkets(ctx context.Context, arg ListMarketsParams) ([]Lis
 }
 
 const listPendingMarkets = `-- name: ListPendingMarkets :many
-SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, u.display_name AS creator_name
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, m.resolution_type, m.resolution_threshold, u.display_name AS creator_name
 FROM markets m
 JOIN users u ON u.id = m.created_by
 WHERE m.status = 'pending_review'
@@ -284,22 +298,24 @@ ORDER BY m.created_at ASC
 `
 
 type ListPendingMarketsRow struct {
-	ID                 int64      `json:"id"`
-	Title              string     `json:"title"`
-	Description        string     `json:"description"`
-	Category           string     `json:"category"`
-	ResolutionCriteria string     `json:"resolution_criteria"`
-	ResolutionDeadline time.Time  `json:"resolution_deadline"`
-	Status             string     `json:"status"`
-	Resolution         *string    `json:"resolution"`
-	CreatedBy          int64      `json:"created_by"`
-	ResolvedBy         *int64     `json:"resolved_by"`
-	CreatedAt          time.Time  `json:"created_at"`
-	ResolvedAt         *time.Time `json:"resolved_at"`
-	LiquidityParam     float64    `json:"liquidity_param"`
-	YesShares          float64    `json:"yes_shares"`
-	NoShares           float64    `json:"no_shares"`
-	CreatorName        string     `json:"creator_name"`
+	ID                  int64      `json:"id"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description"`
+	Category            string     `json:"category"`
+	ResolutionCriteria  string     `json:"resolution_criteria"`
+	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
+	Status              string     `json:"status"`
+	Resolution          *string    `json:"resolution"`
+	CreatedBy           int64      `json:"created_by"`
+	ResolvedBy          *int64     `json:"resolved_by"`
+	CreatedAt           time.Time  `json:"created_at"`
+	ResolvedAt          *time.Time `json:"resolved_at"`
+	LiquidityParam      float64    `json:"liquidity_param"`
+	YesShares           float64    `json:"yes_shares"`
+	NoShares            float64    `json:"no_shares"`
+	ResolutionType      string     `json:"resolution_type"`
+	ResolutionThreshold *string    `json:"resolution_threshold"`
+	CreatorName         string     `json:"creator_name"`
 }
 
 func (q *Queries) ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsRow, error) {
@@ -327,6 +343,8 @@ func (q *Queries) ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsR
 			&i.LiquidityParam,
 			&i.YesShares,
 			&i.NoShares,
+			&i.ResolutionType,
+			&i.ResolutionThreshold,
 			&i.CreatorName,
 		); err != nil {
 			return nil, err

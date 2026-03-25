@@ -1,6 +1,6 @@
 -- name: CreateMarket :one
-INSERT INTO markets (title, description, category, resolution_criteria, resolution_deadline, created_by, liquidity_param)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO markets (title, description, category, resolution_criteria, resolution_deadline, created_by, liquidity_param, resolution_type, resolution_threshold)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetMarketByID :one

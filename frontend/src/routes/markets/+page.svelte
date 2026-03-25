@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { listMarkets, getMyPositions } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
+	import { yesProb } from '$lib/amm';
 	import type { MarketList, MarketCategory } from '$lib/types';
 
 	let { data } = $props<{ data: { markets: MarketList | null } }>();
@@ -82,6 +83,7 @@
 			<option value="active">Active</option>
 			<option value="resolved">Resolved</option>
 			<option value="pending_review">Pending Review</option>
+			<option value="cancelled">Cancelled</option>
 		</select>
 
 		<select
@@ -107,6 +109,8 @@
 		<div class="space-y-2 mb-6">
 			{#each markets.markets as market}
 				{@const owned = ownedMarketIds.has(market.id)}
+				{@const prob = yesProb(market.liquidity_param, market.yes_shares, market.no_shares)}
+				{@const yesPct = Math.round(prob * 100)}
 				<a
 					href="/markets/{market.id}"
 					class="p-4 flex items-start justify-between gap-4 transition-all no-underline block rounded-lg border
@@ -120,6 +124,9 @@
 							{#if market.status === 'resolved'}
 								<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">Resolved</span>
 							{/if}
+							{#if market.status === 'cancelled'}
+								<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-surface-100 text-surface-500 border border-surface-200">Cancelled</span>
+							{/if}
 							{#if owned}
 								<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Your Position</span>
 							{/if}
@@ -128,7 +135,26 @@
 						<div class="text-surface-500 text-xs mt-1">
 							{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
 						</div>
+						<!-- Probability bar -->
+						{#if market.status === 'active'}
+							<div class="mt-2.5">
+								<div class="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
+									<span class="text-green-600">YES {yesPct}%</span>
+									<span class="text-red-500">NO {100 - yesPct}%</span>
+								</div>
+								<div class="h-1.5 w-full rounded-full bg-red-100 overflow-hidden">
+									<div class="h-full rounded-full bg-green-500 transition-all" style="width: {yesPct}%"></div>
+								</div>
+							</div>
+						{/if}
 					</div>
+					<!-- Right: YES price pill -->
+					{#if market.status === 'active'}
+						<div class="flex-shrink-0 flex flex-col items-center justify-center min-w-[52px]">
+							<div class="text-xl font-black leading-none {yesPct >= 50 ? 'text-green-600' : 'text-red-500'}">{yesPct}%</div>
+							<div class="text-[10px] text-surface-400 font-semibold uppercase tracking-wider mt-0.5">YES</div>
+						</div>
+					{/if}
 				</a>
 			{/each}
 		</div>

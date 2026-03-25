@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { createMarket } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
-	import type { MarketCategory } from '$lib/types';
+	import type { MarketCategory, MarketResolutionType } from '$lib/types';
 
 	let title = $state('');
 	let description = $state('');
@@ -11,6 +11,8 @@
 	let deadlineType = $state<'date' | 'patch'>('date');
 	let deadlineDate = $state('');
 	let patchTarget = $state('');
+	let resolutionType = $state<MarketResolutionType>('binary');
+	let resolutionThreshold = $state('');
 	let submitting = $state(false);
 	let error = $state('');
 
@@ -22,7 +24,8 @@
 
 	const isValid = $derived(
 		title.trim().length > 0 &&
-			(deadlineType === 'date' ? deadlineDate.length > 0 : patchTarget.trim().length > 0)
+			(deadlineType === 'date' ? deadlineDate.length > 0 : patchTarget.trim().length > 0) &&
+			(resolutionType === 'binary' || resolutionThreshold.trim().length > 0)
 	);
 
 	const categories: { value: MarketCategory; label: string }[] = [
@@ -58,7 +61,9 @@
 				description: description.trim(),
 				resolution_criteria: criteria,
 				category,
-				deadline
+				deadline,
+				resolution_type: resolutionType,
+				resolution_threshold: resolutionType !== 'binary' ? resolutionThreshold.trim() : undefined
 			});
 			goto(`/markets/${market.id}`);
 		} catch (e) {
@@ -120,7 +125,42 @@
 				</select>
 			</label>
 
-			<!-- Deadline type toggle -->
+			<!-- Market type / resolution type -->
+			<fieldset class="block">
+				<legend class="text-surface-700 text-xs font-bold uppercase tracking-wider mb-2.5">Market Type <span class="text-red-500">*</span></legend>
+				<div class="flex gap-2 mb-3">
+					<button type="button" onclick={() => { resolutionType = 'binary'; resolutionThreshold = ''; }}
+						class="flex-1 btn btn-sm {resolutionType === 'binary' ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400'} transition-colors text-xs uppercase tracking-wider">
+						Yes / No
+					</button>
+					<button type="button" onclick={() => { resolutionType = 'date'; resolutionThreshold = ''; }}
+						class="flex-1 btn btn-sm {resolutionType === 'date' ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400'} transition-colors text-xs uppercase tracking-wider">
+						Date Prediction
+					</button>
+					<button type="button" onclick={() => { resolutionType = 'numeric'; resolutionThreshold = ''; }}
+						class="flex-1 btn btn-sm {resolutionType === 'numeric' ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400'} transition-colors text-xs uppercase tracking-wider">
+						Numeric ($)
+					</button>
+				</div>
+				{#if resolutionType === 'binary'}
+					<p class="text-surface-400 text-xs">Standard yes/no question. Resolves YES or NO based on your criteria.</p>
+				{:else if resolutionType === 'date'}
+					<label class="block">
+						<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Will the event happen before… <span class="text-red-500">*</span></span>
+						<input type="date" bind:value={resolutionThreshold} required class="sc-input mt-1.5" />
+						<span class="text-surface-400 text-xs mt-1 block">Resolves YES if the event happens before this date, NO otherwise.</span>
+					</label>
+				{:else if resolutionType === 'numeric'}
+					<label class="block">
+						<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Threshold value (USD or units) <span class="text-red-500">*</span></span>
+						<div class="flex items-center gap-1 mt-1.5">
+							<span class="text-surface-500 font-semibold pl-2">$</span>
+							<input type="number" bind:value={resolutionThreshold} required min="0" step="any" placeholder="e.g. 45" class="sc-input flex-1" />
+						</div>
+						<span class="text-surface-400 text-xs mt-1 block">Resolves YES if the value reaches or exceeds this threshold.</span>
+					</label>
+				{/if}
+			</fieldset>
 			<fieldset class="block">
 				<legend class="text-surface-700 text-xs font-bold uppercase tracking-wider mb-2.5">
 					Resolution Timing <span class="text-red-500">*</span>

@@ -45,3 +45,12 @@ SELECT user_id, yes_shares, no_shares
 FROM positions
 WHERE market_id = ?
   AND (yes_shares > 0 OR no_shares > 0);
+
+-- name: GetMarketStats :one
+-- Returns aggregate trade statistics for a single market.
+SELECT
+    COALESCE(SUM(cost), 0)          AS total_volume,
+    COUNT(DISTINCT user_id)         AS trader_count,
+    COUNT(*)                        AS trade_count
+FROM trades
+WHERE market_id = ?;

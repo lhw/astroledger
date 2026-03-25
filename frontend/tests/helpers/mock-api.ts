@@ -41,7 +41,9 @@ export const MARKETS_RESPONSE: MarketList = {
 			resolved_at: null,
 			liquidity_param: 100,
 			yes_shares: 0,
-			no_shares: 0
+			no_shares: 0,
+			resolution_type: 'binary',
+			resolution_threshold: null
 		},
 		{
 			id: 2,
@@ -59,7 +61,9 @@ export const MARKETS_RESPONSE: MarketList = {
 			resolved_at: null,
 			liquidity_param: 100,
 			yes_shares: 0,
-			no_shares: 0
+			no_shares: 0,
+			resolution_type: 'binary',
+			resolution_threshold: null
 		}
 	]
 };

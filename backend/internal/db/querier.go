@@ -19,6 +19,8 @@ type Querier interface {
 	GetLeaderboard(ctx context.Context, limit int64) ([]GetLeaderboardRow, error)
 	GetMarketByID(ctx context.Context, id int64) (GetMarketByIDRow, error)
 	GetMarketPriceHistory(ctx context.Context, marketID int64) ([]GetMarketPriceHistoryRow, error)
+	// Returns aggregate trade statistics for a single market.
+	GetMarketStats(ctx context.Context, marketID int64) (GetMarketStatsRow, error)
 	GetMarketTrades(ctx context.Context, arg GetMarketTradesParams) ([]GetMarketTradesRow, error)
 	GetPositionsForResolution(ctx context.Context, marketID int64) ([]GetPositionsForResolutionRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)

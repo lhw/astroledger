@@ -40,6 +40,14 @@ export function sellRevenue(
 	return Math.floor(before - after);
 }
 
+/**
+ * Instantaneous probability / price of YES shares (0–1 range).
+ * This is the LMSR derivative: exp(qYes/b) / (exp(qYes/b) + exp(qNo/b)).
+ */
+export function yesProb(b: number, qYes: number, qNo: number): number {
+	return 1 / (1 + Math.exp((qNo - qYes) / b));
+}
+
 /** Binary-search the maximum whole shares buyable within a bUEC budget. */
 export function maxAffordable(
 	b: number,

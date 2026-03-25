@@ -39,12 +39,14 @@ func NewMarketService(queries *db.Queries, sqlDB *sql.DB, badgeSvc *BadgeService
 
 // CreateMarketInput is the validated input for creating a market.
 type CreateMarketInput struct {
-	Title              string
-	Description        string
-	Category           string
-	ResolutionCriteria string
-	Deadline           time.Time
-	CreatedBy          int64
+	Title               string
+	Description         string
+	Category            string
+	ResolutionCriteria  string
+	Deadline            time.Time
+	CreatedBy           int64
+	ResolutionType      string  // "binary" | "date" | "numeric"
+	ResolutionThreshold *string // target date (ISO) or threshold value
 }
 
 // CreateMarket validates input, runs auto-filter, and inserts a new market.
@@ -53,14 +55,21 @@ func (s *MarketService) CreateMarket(ctx context.Context, inp CreateMarketInput)
 		return nil, err
 	}
 
+	resType := inp.ResolutionType
+	if resType == "" {
+		resType = "binary"
+	}
+
 	market, err := s.queries.CreateMarket(ctx, db.CreateMarketParams{
-		Title:              inp.Title,
-		Description:        inp.Description,
-		Category:           inp.Category,
-		ResolutionCriteria: inp.ResolutionCriteria,
-		ResolutionDeadline: inp.Deadline,
-		CreatedBy:          inp.CreatedBy,
-		LiquidityParam:     100.0,
+		Title:               inp.Title,
+		Description:         inp.Description,
+		Category:            inp.Category,
+		ResolutionCriteria:  inp.ResolutionCriteria,
+		ResolutionDeadline:  inp.Deadline,
+		CreatedBy:           inp.CreatedBy,
+		LiquidityParam:      100.0,
+		ResolutionType:      resType,
+		ResolutionThreshold: inp.ResolutionThreshold,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create market: %w", err)

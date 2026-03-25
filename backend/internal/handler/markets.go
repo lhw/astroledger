@@ -88,10 +88,16 @@ func (h *MarketHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	yesPrice := service.PriceCents(market.LiquidityParam, market.YesShares, market.NoShares)
 
+	// Fetch trade statistics (volume, trader count, trade count).
+	stats, _ := h.queries.GetMarketStats(r.Context(), id)
+
 	resp := map[string]any{
-		"market":    market,
-		"yes_price": yesPrice,
-		"no_price":  100 - yesPrice,
+		"market":       market,
+		"yes_price":    yesPrice,
+		"no_price":     100 - yesPrice,
+		"total_volume": stats.TotalVolume,
+		"trader_count": stats.TraderCount,
+		"trade_count":  stats.TradeCount,
 	}
 
 	// Include the caller's position when authenticated.
@@ -115,11 +121,13 @@ func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Title              string `json:"title"`
-		Description        string `json:"description"`
-		Category           string `json:"category"`
-		ResolutionCriteria string `json:"resolution_criteria"`
-		Deadline           string `json:"deadline"` // RFC3339
+		Title               string  `json:"title"`
+		Description         string  `json:"description"`
+		Category            string  `json:"category"`
+		ResolutionCriteria  string  `json:"resolution_criteria"`
+		Deadline            string  `json:"deadline"`             // RFC3339
+		ResolutionType      string  `json:"resolution_type"`      // binary|date|numeric
+		ResolutionThreshold *string `json:"resolution_threshold"` // ISO date or numeric value
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
@@ -133,12 +141,14 @@ func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	market, err := h.svc.CreateMarket(r.Context(), service.CreateMarketInput{
-		Title:              body.Title,
-		Description:        body.Description,
-		Category:           body.Category,
-		ResolutionCriteria: body.ResolutionCriteria,
-		Deadline:           deadline,
-		CreatedBy:          claims.UserID,
+		Title:               body.Title,
+		Description:         body.Description,
+		Category:            body.Category,
+		ResolutionCriteria:  body.ResolutionCriteria,
+		Deadline:            deadline,
+		CreatedBy:           claims.UserID,
+		ResolutionType:      body.ResolutionType,
+		ResolutionThreshold: body.ResolutionThreshold,
 	})
 	if errors.Is(err, service.ErrRejected) {
 		respondError(w, http.StatusUnprocessableEntity, err.Error())
