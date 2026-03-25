@@ -1,0 +1,13 @@
+# ScolyMarket Caddyfile — production reverse proxy
+#
+# Replace "scolymarket.example.com" with your actual domain.
+# Caddy automatically provisions HTTPS via Let's Encrypt.
+
+scolymarket.example.com {
+    # Backend API and auth endpoints
+    reverse_proxy /api/* backend:8080
+    reverse_proxy /auth/* backend:8080
+
+    # Everything else goes to the SvelteKit frontend
+    reverse_proxy frontend:3000
+}

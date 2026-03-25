@@ -268,7 +268,61 @@ func (s *MarketService) validateMarketInput(ctx context.Context, inp CreateMarke
 	if inp.Deadline.Before(time.Now().Add(24 * time.Hour)) {
 		return fmt.Errorf("deadline must be at least 24 hours in the future")
 	}
-	return s.runAutoFilter(ctx, inp.Title+" "+inp.Description)
+	if err := s.runAutoFilter(ctx, inp.Title+" "+inp.Description); err != nil {
+		return err
+	}
+	return s.checkDuplicateTitle(ctx, inp.Title)
+}
+
+// checkDuplicateTitle queries active and pending markets and rejects if any
+// existing title is too similar (Jaccard trigram similarity > 0.6).
+func (s *MarketService) checkDuplicateTitle(ctx context.Context, newTitle string) error {
+	rows, err := s.sqlDB.QueryContext(ctx,
+		"SELECT title FROM markets WHERE status IN ('pending_review', 'active', 'resolution_requested')")
+	if err != nil {
+		return fmt.Errorf("check duplicates: %w", err)
+	}
+	defer rows.Close()
+
+	newSet := trigramSet(strings.ToLower(newTitle))
+	for rows.Next() {
+		var existing string
+		if err := rows.Scan(&existing); err != nil {
+			continue
+		}
+		if jaccardSimilarity(newSet, trigramSet(strings.ToLower(existing))) > 0.6 {
+			return fmt.Errorf("%w: a very similar market already exists — %q", ErrRejected, existing)
+		}
+	}
+	return rows.Err()
+}
+
+// trigramSet returns the set of character trigrams for a string.
+func trigramSet(s string) map[string]struct{} {
+	runes := []rune(s)
+	set := make(map[string]struct{}, len(runes))
+	for i := 0; i+2 < len(runes); i++ {
+		set[string(runes[i:i+3])] = struct{}{}
+	}
+	return set
+}
+
+// jaccardSimilarity returns |A∩B| / |A∪B|, or 0 if both sets are empty.
+func jaccardSimilarity(a, b map[string]struct{}) float64 {
+	if len(a) == 0 && len(b) == 0 {
+		return 0
+	}
+	inter := 0
+	for k := range a {
+		if _, ok := b[k]; ok {
+			inter++
+		}
+	}
+	union := len(a) + len(b) - inter
+	if union == 0 {
+		return 0
+	}
+	return float64(inter) / float64(union)
 }
 
 func (s *MarketService) runAutoFilter(ctx context.Context, text string) error {
@@ -298,6 +352,13 @@ func (s *MarketService) runAutoFilter(ctx context.Context, text string) error {
 			}
 			if re.MatchString(lower) {
 				return fmt.Errorf("%w: matches banned pattern", ErrRejected)
+			}
+		case "min_length":
+			var minLen int
+			if _, err2 := fmt.Sscanf(value, "%d", &minLen); err2 == nil {
+				if utf8.RuneCountInString(strings.TrimSpace(text)) < minLen {
+					return fmt.Errorf("%w: submission too short (minimum %d characters)", ErrRejected, minLen)
+				}
 			}
 		}
 	}

@@ -726,24 +726,31 @@ Use appropriate HTTP status codes: `200` OK, `201` Created, `400` Bad Request, `
 - [x] Playwright e2e test setup with mocked API (`tests/helpers/mock-api.ts`)
 - [x] `tests/home.spec.ts` and `tests/markets.spec.ts`
 
-### Phase 3 — Moderation & Auto-filter
+### Phase 3 — Moderation & Auto-filter ✅ Complete
 - [x] Mod queue API (`GET /api/mod/markets`, approve/reject/resolve)
-- [x] Mod dashboard page (`/mod`) — approve, reject, resolve markets
-- [ ] Auto-filter service (keyword matching, duplicate detection, rate limiting)
-- [ ] Report system (submit + review)
-- [ ] Rate limiting on market submission and auth endpoints
+- [x] Mod dashboard page (`/mod`) — approve, reject, resolve, deny resolution, review reports
+- [x] Resolution request flow — user requests resolution, mod approves or denies
+- [x] Auto-filter service — keyword/regex matching against `autofilter_rules` table
+- [x] Auto-filter — fuzzy duplicate title detection (trigram-based Jaccard similarity, >0.6 threshold)
+- [x] Auto-filter — min-length validation enforced from DB `min_length` rules
+- [x] Report system (submit + mod review + dismiss)
+- [x] Rate limiting on auth, market creation, trading, and report submission
+- [x] Integration tests for full market lifecycle, AMM math, mod queue, reports, payout
 
-### Phase 4 — Economy & Social
-- [ ] Weekly credit payout (scheduled goroutine or cron-triggered endpoint)
-- [ ] Market resolution flow (mod resolves, payouts distributed atomically in a transaction)
-- [ ] Price history chart on market detail page
+### Phase 4 — Economy & Social ✅ Complete
+- [x] Weekly credit payout (hourly goroutine, idempotent via weekly_payout_log)
+- [x] Market resolution flow (mod resolves YES/NO/CANCELLED, atomic payout transaction)
+- [x] Price history chart on market detail page (inline SVG sparkline)
+- [x] Sell shares UI on market detail page
+- [x] Badge system (first_blood, market_maven, bug_prophet, eternal_optimist, doomsayer)
+- [x] Profile badges display on `/me` page
 
-### Phase 5 — Polish & Deploy
-- [ ] Theme refinement: typography, mobile responsive, loading states
-- [ ] Satirical copy, Easter eggs, badge system
-- [ ] Caddyfile for reverse proxy + HTTPS
-- [ ] Docker Compose production setup (Go binary + SvelteKit build + Caddy)
-- [ ] GitHub Actions CI (golangci-lint, go test, npm lint, npm build)
+### Phase 5 — Polish & Deploy ✅ Complete
+- [x] Theme: luxury gold dark mode, Outfit font, luxury typography throughout
+- [x] Satirical copy and badge system
+- [x] Caddyfile for reverse proxy + HTTPS (`Caddyfile` at repo root)
+- [x] Docker Compose production setup (`docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, root `.env.example`)
+- [x] GitHub Actions CI (`golangci-lint`, `go test -race`, `svelte-check`, `npm run build`, Playwright) — `.github/workflows/ci.yml`
 - [ ] Deploy to a small VPS
 
 ---

@@ -527,3 +527,43 @@ func TestAutoFilter(t *testing.T) {
 		t.Error("market with banned keyword should be rejected, got nil error")
 	}
 }
+
+// TestDuplicateTitleDetection verifies that submitting a market with a title
+// very similar to an existing active market is rejected by the auto-filter.
+func TestDuplicateTitleDetection(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, q := newTestDB(t)
+	marketSvc, _, _ := newServices(sqlDB, q)
+	_ = sqlDB
+
+	mod := createTestUser(t, ctx, q, "test:mod8", "Mod8", true)
+
+	// Create and activate the first market.
+	orig := createActiveMarket(t, ctx, marketSvc,
+		"Will the Reclaimer elevator bug be fixed in 4.1?", mod.ID, mod.ID)
+	_ = orig
+
+	// Try to submit a near-duplicate (high trigram overlap with the approved title).
+	_, err := marketSvc.CreateMarket(ctx, service.CreateMarketInput{
+		Title:              "Will the Reclaimer elevator bug be fixed in patch 4.1?",
+		Description:        "Same elevator, still broken.",
+		Category:           "bug_fixes",
+		ResolutionCriteria: "Not on known issues.",
+		Deadline:           time.Now().Add(48 * time.Hour),
+		CreatedBy:          mod.ID,
+	})
+	if err == nil {
+		t.Error("near-duplicate market should be rejected, got nil error")
+	}
+
+	// A clearly different market should pass.
+	_, err = marketSvc.CreateMarket(ctx, service.CreateMarketInput{
+		Title:              "Will quantum travel stutter be resolved before 4.2?",
+		Description:        "Persistent quantum stutter affecting all ships.",
+		Category:           "bug_fixes",
+		ResolutionCriteria: "No stutter reports in live PTU patch notes.",
+		Deadline:           time.Now().Add(48 * time.Hour),
+		CreatedBy:          mod.ID,
+	})
+	must(t, err, "distinct market should be accepted")
+}
