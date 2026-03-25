@@ -3,10 +3,20 @@
 	import { onMount } from 'svelte';
 	import { initAuth, currentUser, isLoggedIn, isModerator } from '$lib/stores/auth';
 	import { loginWithSCID, logout } from '$lib/api';
+	import type { User } from '$lib/types';
 
-	let { children } = $props();
+	let { children, data } = $props<{ children: unknown; data: { user: User | null } }>();
+
+	// Initialise auth store from server-provided data immediately (no flash).
+	// $effect keeps the store in sync when the layout re-runs on navigation.
+	$effect(() => {
+		currentUser.set(data.user);
+	});
 
 	onMount(async () => {
+		// Client-side refresh: confirms session validity and picks up any
+		// balance/role changes since the SSR snapshot. Also acts as fallback
+		// when the backend was unreachable during SSR (e.g., in tests).
 		await initAuth();
 	});
 </script>
@@ -63,7 +73,7 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="text-center text-surface-500 text-xs py-5 border-t border-surface-200 bg-white">
+	<footer class="text-center text-surface-500 text-xs py-5 border-t border-surface-800 bg-surface-900">
 		ScolyMarket — No real money. No real ships delivered.
 	</footer>
 </div>

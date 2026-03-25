@@ -1,49 +1,22 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { getMarket, executeTrade, requestResolution, getMarketPriceHistory, submitReport } from '$lib/api';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
+	import { buyCost, sellRevenue, maxAffordable } from '$lib/amm';
+	import { renderMarkdown } from '$lib/markdown';
 	import type { MarketWithPrice, PricePoint } from '$lib/types';
 
-	// -- LMSR helpers --------------------------------------------------------
-	function lmsrCost(b: number, qYes: number, qNo: number): number {
-		const a = qYes / b, c = qNo / b;
-		const m = Math.max(a, c);
-		return b * (m + Math.log(Math.exp(a - m) + Math.exp(c - m)));
-	}
-
-	function buyCost(b: number, qYes: number, qNo: number, shares: number, yes: boolean): number {
-		const before = lmsrCost(b, qYes, qNo);
-		const after = yes ? lmsrCost(b, qYes + shares, qNo) : lmsrCost(b, qYes, qNo + shares);
-		return Math.ceil(after - before);
-	}
-
-	function sellRevenue(b: number, qYes: number, qNo: number, shares: number, yes: boolean): number {
-		if (shares <= 0) return 0;
-		const before = lmsrCost(b, qYes, qNo);
-		const after = yes ? lmsrCost(b, qYes - shares, qNo) : lmsrCost(b, qYes, qNo - shares);
-		return Math.floor(before - after);
-	}
-
-	/** Binary-search the maximum shares buyable within a budget. */
-	function maxAffordable(b: number, qYes: number, qNo: number, budget: number, yes: boolean): number {
-		if (budget <= 0) return 0;
-		let lo = 0, hi = budget;
-		while (lo < hi) {
-			const mid = Math.floor((lo + hi + 1) / 2);
-			if (buyCost(b, qYes, qNo, mid, yes) <= budget) lo = mid;
-			else hi = mid - 1;
-		}
-		return lo;
-	}
-	// -------------------------------------------------------------------------
+	let { data } = $props<{ data: { market: MarketWithPrice | null; history: PricePoint[] } }>();
 
 	const id = $derived(Number($page.params.id));
 
-	let data = $state<MarketWithPrice | null>(null);
-	let loading = $state(true);
+	// untrack() signals that we intentionally want a one-time snapshot, not a reactive dependency.
+	const { market: initialMarket, history: initialHistory } = untrack(() => data);
+	let data_ = $state<MarketWithPrice | null>(initialMarket ?? null);
+	let loading = $state(initialMarket == null);
 	let error = $state('');
-	let priceHistory = $state<PricePoint[]>([]);
+	let priceHistory = $state<PricePoint[]>(initialHistory ?? []);
 
 	// Trading
 	let tradeAction = $state<'buy' | 'sell'>('buy');
@@ -67,37 +40,37 @@
 	let reportMsg = $state('');
 
 	// Reactive cost/revenue estimates
-	// Reactive cost/revenue estimates
 	let estimatedCost = $derived.by(() => {
-		if (!data) return 0;
-		const m = data.market;
+		if (!data_) return 0;
+		const m = data_.market;
 		return buyCost(m.liquidity_param, m.yes_shares, m.no_shares, Math.max(1, tradeShares), tradeSide === 'yes');
 	});
 
 	let estimatedRevenue = $derived.by(() => {
-		if (!data) return 0;
-		const m = data.market;
+		if (!data_) return 0;
+		const m = data_.market;
 		return sellRevenue(m.liquidity_param, m.yes_shares, m.no_shares, Math.max(1, sellShares), tradeSide === 'yes');
 	});
 
 	let maxShares = $derived.by(() => {
-		if (!data || !$currentUser) return 1000;
-		const m = data.market;
+		if (!data_ || !$currentUser) return 1000;
+		const m = data_.market;
 		return maxAffordable(m.liquidity_param, m.yes_shares, m.no_shares, $currentUser.balance, tradeSide === 'yes');
 	});
 
 	let maxSellShares = $derived.by(() => {
-		if (!data?.my_position) return 0;
+		if (!data_?.my_position) return 0;
 		return tradeSide === 'yes'
-			? Math.floor(data.my_position.yes_shares)
-			: Math.floor(data.my_position.no_shares);
+			? Math.floor(data_.my_position.yes_shares)
+			: Math.floor(data_.my_position.no_shares);
 	});
 
 	let canAfford = $derived($currentUser ? estimatedCost <= $currentUser.balance : false);
 
 	onMount(async () => {
+		if (initialMarket) return; // SSR already provided data
 		try {
-			[data, priceHistory] = await Promise.all([
+			[data_, priceHistory] = await Promise.all([
 				getMarket(id),
 				getMarketPriceHistory(id).catch(() => [] as PricePoint[])
 			]);
@@ -109,7 +82,7 @@
 	});
 
 	async function doTrade() {
-		if (!$isLoggedIn || !data) return;
+		if (!$isLoggedIn || !data_) return;
 		trading = true;
 		tradeError = '';
 		tradeSuccess = '';
@@ -125,7 +98,7 @@
 				tradeSuccess = `Sold ${sellShares} ${tradeSide.toUpperCase()} share${sellShares !== 1 ? 's' : ''} for ${received.toLocaleString()} bUEC.`;
 			}
 			// Refresh market data and price history.
-			[data, priceHistory] = await Promise.all([
+			[data_, priceHistory] = await Promise.all([
 				getMarket(id),
 				getMarketPriceHistory(id).catch(() => [] as PricePoint[])
 			]);
@@ -142,7 +115,7 @@
 		try {
 			await requestResolution(id, resolutionLink, resolutionNote);
 			resolutionRequestMsg = 'Resolution request sent to mods.';
-			data = await getMarket(id);
+			data_ = await getMarket(id);
 		} catch (e) {
 			resolutionRequestMsg = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -168,7 +141,7 @@
 </script>
 
 <svelte:head>
-	<title>{data?.market.title ?? 'Market'} — ScolyMarket</title>
+	<title>{data_?.market.title ?? 'Market'} — ScolyMarket</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-4xl py-10">
@@ -176,9 +149,9 @@
 		<div class="text-surface-400 text-center py-16 text-sm">Loading market…</div>
 	{:else if error}
 		<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{error}</div>
-	{:else if data}
-		{@const market = data.market}
-		{@const myPos = data.my_position}
+	{:else if data_}
+		{@const market = data_.market}
+		{@const myPos = data_.my_position}
 		{@const hasYes = (myPos?.yes_shares ?? 0) > 0}
 		{@const hasNo = (myPos?.no_shares ?? 0) > 0}
 		{@const hasPosition = hasYes || hasNo}
@@ -213,14 +186,14 @@
 				{#if market.description}
 					<div class="sc-card p-5">
 						<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-3">Description</h3>
-						<p class="text-surface-700 text-sm leading-relaxed">{market.description}</p>
+						<div class="text-surface-700 text-sm leading-relaxed prose prose-sm max-w-none">{@html renderMarkdown(market.description)}</div>
 					</div>
 				{/if}
 
 				{#if market.resolution_criteria}
 					<div class="sc-card p-5">
 						<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-3">Resolution Criteria</h3>
-						<p class="text-surface-700 text-sm leading-relaxed">{market.resolution_criteria}</p>
+						<div class="text-surface-700 text-sm leading-relaxed prose prose-sm max-w-none">{@html renderMarkdown(market.resolution_criteria)}</div>
 					</div>
 				{/if}
 
@@ -375,11 +348,11 @@
 					<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-4">Current Odds</h3>
 					<div class="grid grid-cols-2 gap-3">
 						<div class="text-center p-3 rounded bg-green-50 border border-green-100">
-							<div class="text-2xl font-bold text-green-700">{data.yes_price}¢</div>
+							<div class="text-2xl font-bold text-green-700">{data_.yes_price}¢</div>
 							<div class="text-green-600 text-xs mt-1 uppercase tracking-wider font-semibold">YES</div>
 						</div>
 						<div class="text-center p-3 rounded bg-red-50 border border-red-100">
-							<div class="text-2xl font-bold text-red-600">{data.no_price}¢</div>
+							<div class="text-2xl font-bold text-red-600">{data_.no_price}¢</div>
 							<div class="text-red-500 text-xs mt-1 uppercase tracking-wider font-semibold">NO</div>
 						</div>
 					</div>

@@ -1,22 +1,16 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { listMarkets } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
 	import { loginWithSCID } from '$lib/api';
 	import type { MarketList } from '$lib/types';
 
-	let featured: MarketList | null = null;
-	let loading = true;
+	let { data } = $props<{ data: { featured: MarketList | null } }>();
 
-	onMount(async () => {
-		try {
-			featured = await listMarkets('active', '', 0);
-		} catch {
-			featured = null;
-		} finally {
-			loading = false;
-		}
-	});
+	// untrack() signals that we intentionally want a one-time snapshot, not a reactive dependency.
+	const { featured: initialFeatured } = untrack(() => data);
+	let featured = $state<MarketList | null>(initialFeatured ?? null);
+	let loading = $state(initialFeatured == null);
 
 	const CATEGORY_LABELS: Record<string, string> = {
 		bug_fixes: 'Bug Fix',
@@ -25,6 +19,17 @@
 		community_events: 'Community Event',
 		meta: 'Meta'
 	};
+
+	onMount(async () => {
+		if (initialFeatured) return; // SSR already provided data
+		try {
+			featured = await listMarkets('active', '', 0);
+		} catch {
+			featured = null;
+		} finally {
+			loading = false;
+		}
+	});
 </script>
 
 <svelte:head>

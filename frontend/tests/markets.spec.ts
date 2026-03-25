@@ -14,14 +14,14 @@ test.describe('Markets list page', () => {
 		await mockMe(page, null);
 		await mockMarkets(page);
 		await page.goto('/markets');
-		await expect(page.getByText('2')).toBeVisible();
+		await expect(page.getByText('1\u20132 of 2')).toBeVisible();
 	});
 
 	test('shows create market button when logged in', async ({ page }) => {
 		await mockMe(page, USER_LOGGED_IN);
 		await mockMarkets(page);
 		await page.goto('/markets');
-		await expect(page.getByRole('link', { name: /create/i })).toBeVisible();
+		await expect(page.getByRole('link', { name: /submit market/i })).toBeVisible();
 	});
 
 	test('market link navigates to detail page', async ({ page }) => {
@@ -66,6 +66,9 @@ test.describe('Market detail page', () => {
 				})
 			});
 		});
+		await page.route('/api/markets/1/history', (route) => {
+			route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+		});
 	});
 
 	test('shows market title', async ({ page }) => {
@@ -81,6 +84,6 @@ test.describe('Market detail page', () => {
 
 	test('shows buy widget when logged in', async ({ page }) => {
 		await page.goto('/markets/1');
-		await expect(page.getByRole('button', { name: /buy/i })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Buy', exact: true })).toBeVisible();
 	});
 });

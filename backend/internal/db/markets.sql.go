@@ -76,6 +76,35 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 	return i, err
 }
 
+const getActivePendingMarketTitles = `-- name: GetActivePendingMarketTitles :many
+SELECT title FROM markets
+WHERE status IN ('pending_review', 'active', 'resolution_requested')
+`
+
+// Returns titles of all non-archived markets for duplicate-title detection.
+func (q *Queries) GetActivePendingMarketTitles(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getActivePendingMarketTitles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var title string
+		if err := rows.Scan(&title); err != nil {
+			return nil, err
+		}
+		items = append(items, title)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMarketByID = `-- name: GetMarketByID :one
 SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, u.display_name AS creator_name
 FROM markets m

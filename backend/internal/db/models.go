@@ -59,6 +59,14 @@ type Report struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+type ResolutionRequestDetail struct {
+	MarketID    int64     `json:"market_id"`
+	RequestedBy int64     `json:"requested_by"`
+	Link        *string   `json:"link"`
+	Note        *string   `json:"note"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Trade struct {
 	ID           int64     `json:"id"`
 	UserID       int64     `json:"user_id"`
@@ -81,4 +89,18 @@ type User struct {
 	IsAdmin     int64     `json:"is_admin"`
 	CreatedAt   time.Time `json:"created_at"`
 	LastLoginAt time.Time `json:"last_login_at"`
+}
+
+type UserBadge struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	BadgeKey  string    `json:"badge_key"`
+	AwardedAt time.Time `json:"awarded_at"`
+}
+
+type WeeklyPayoutLog struct {
+	ID        int64     `json:"id"`
+	WeekKey   string    `json:"week_key"`
+	UserCount int64     `json:"user_count"`
+	PaidAt    time.Time `json:"paid_at"`
 }

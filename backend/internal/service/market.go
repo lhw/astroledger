@@ -304,24 +304,18 @@ func (s *MarketService) validateMarketInput(ctx context.Context, inp CreateMarke
 // checkDuplicateTitle queries active and pending markets and rejects if any
 // existing title is too similar (Jaccard trigram similarity > 0.6).
 func (s *MarketService) checkDuplicateTitle(ctx context.Context, newTitle string) error {
-	rows, err := s.sqlDB.QueryContext(ctx,
-		"SELECT title FROM markets WHERE status IN ('pending_review', 'active', 'resolution_requested')")
+	existing, err := s.queries.GetActivePendingMarketTitles(ctx)
 	if err != nil {
 		return fmt.Errorf("check duplicates: %w", err)
 	}
-	defer rows.Close()
 
 	newSet := trigramSet(strings.ToLower(newTitle))
-	for rows.Next() {
-		var existing string
-		if err := rows.Scan(&existing); err != nil {
-			continue
-		}
-		if jaccardSimilarity(newSet, trigramSet(strings.ToLower(existing))) > 0.6 {
-			return fmt.Errorf("%w: a very similar market already exists — %q", ErrRejected, existing)
+	for _, title := range existing {
+		if jaccardSimilarity(newSet, trigramSet(strings.ToLower(title))) > 0.6 {
+			return fmt.Errorf("%w: a very similar market already exists — %q", ErrRejected, title)
 		}
 	}
-	return rows.Err()
+	return nil
 }
 
 // trigramSet returns the set of character trigrams for a string.
@@ -354,26 +348,20 @@ func jaccardSimilarity(a, b map[string]struct{}) float64 {
 
 func (s *MarketService) runAutoFilter(ctx context.Context, text string) error {
 	// Load enabled auto-filter rules from the DB each time (small table, fine for ~200 users).
-	rows, err := s.sqlDB.QueryContext(ctx,
-		"SELECT rule_type, value FROM autofilter_rules WHERE enabled = 1")
+	rules, err := s.queries.GetEnabledAutofilterRules(ctx)
 	if err != nil {
 		return fmt.Errorf("load autofilter rules: %w", err)
 	}
-	defer rows.Close()
 
 	lower := strings.ToLower(text)
-	for rows.Next() {
-		var ruleType, value string
-		if err := rows.Scan(&ruleType, &value); err != nil {
-			continue
-		}
-		switch ruleType {
+	for _, rule := range rules {
+		switch rule.RuleType {
 		case "keyword":
-			if strings.Contains(lower, strings.ToLower(value)) {
-				return fmt.Errorf("%w: contains banned keyword %q", ErrRejected, value)
+			if strings.Contains(lower, strings.ToLower(rule.Value)) {
+				return fmt.Errorf("%w: contains banned keyword %q", ErrRejected, rule.Value)
 			}
 		case "regex":
-			re, compErr := regexp.Compile(value)
+			re, compErr := regexp.Compile(rule.Value)
 			if compErr != nil {
 				continue // skip bad rules
 			}
@@ -382,12 +370,12 @@ func (s *MarketService) runAutoFilter(ctx context.Context, text string) error {
 			}
 		case "min_length":
 			var minLen int
-			if _, err2 := fmt.Sscanf(value, "%d", &minLen); err2 == nil {
+			if _, err2 := fmt.Sscanf(rule.Value, "%d", &minLen); err2 == nil {
 				if utf8.RuneCountInString(strings.TrimSpace(text)) < minLen {
 					return fmt.Errorf("%w: submission too short (minimum %d characters)", ErrRejected, minLen)
 				}
 			}
 		}
 	}
-	return rows.Err()
+	return nil
 }

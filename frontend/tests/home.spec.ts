@@ -13,15 +13,15 @@ test.describe('Home page', () => {
 		await mockMe(page, null);
 		await mockMarkets(page);
 		await page.goto('/');
-		await expect(page.getByRole('link', { name: /login/i })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Login with SCID' }).first()).toBeVisible();
 	});
 
 	test('shows user balance when authenticated', async ({ page }) => {
 		await mockMe(page, USER_LOGGED_IN);
 		await mockMarkets(page);
 		await page.goto('/');
-		await expect(page.getByText('TestPilot')).toBeVisible();
-		await expect(page.getByText('1,000')).toBeVisible();
+		await expect(page.getByRole('link', { name: 'TestPilot', exact: true })).toBeVisible();
+		await expect(page.getByText('1,000 bUEC')).toBeVisible();
 	});
 
 	test('shows featured markets on home page', async ({ page }) => {

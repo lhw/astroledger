@@ -1,17 +1,21 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { listMarkets, getMyPositions } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
 	import type { MarketList, MarketCategory } from '$lib/types';
 
-	let markets: MarketList | null = null;
-	let loading = true;
-	let error = '';
-	let ownedMarketIds = new Set<number>();
+	let { data } = $props<{ data: { markets: MarketList | null } }>();
 
-	let statusFilter = 'active';
-	let categoryFilter: MarketCategory | '' = '';
-	let offset = 0;
+	// untrack() signals that we intentionally want a one-time snapshot, not a reactive dependency.
+	const { markets: initialMarkets } = untrack(() => data);
+	let markets = $state<MarketList | null>(initialMarkets ?? null);
+	let loading = $state(initialMarkets == null);
+	let error = $state('');
+	let ownedMarketIds = $state(new Set<number>());
+
+	let statusFilter = $state('active');
+	let categoryFilter = $state<MarketCategory | ''>('');
+	let offset = $state(0);
 
 	const CATEGORIES: { value: MarketCategory | ''; label: string }[] = [
 		{ value: '', label: 'All Categories' },
@@ -40,7 +44,10 @@
 		}
 	}
 
-	onMount(load);
+	onMount(async () => {
+		if (initialMarkets) return; // SSR already provided initial data
+		await load();
+	});
 
 	function prev() {
 		offset = Math.max(0, offset - 20);

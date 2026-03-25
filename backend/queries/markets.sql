@@ -53,3 +53,8 @@ SELECT price_at_trade, side, created_at
 FROM trades
 WHERE market_id = ?
 ORDER BY created_at ASC;
+
+-- name: GetActivePendingMarketTitles :many
+-- Returns titles of all non-archived markets for duplicate-title detection.
+SELECT title FROM markets
+WHERE status IN ('pending_review', 'active', 'resolution_requested');

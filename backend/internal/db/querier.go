@@ -13,6 +13,9 @@ type Querier interface {
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	// Returns titles of all non-archived markets for duplicate-title detection.
+	GetActivePendingMarketTitles(ctx context.Context) ([]string, error)
+	GetEnabledAutofilterRules(ctx context.Context) ([]GetEnabledAutofilterRulesRow, error)
 	GetLeaderboard(ctx context.Context, limit int64) ([]GetLeaderboardRow, error)
 	GetMarketByID(ctx context.Context, id int64) (GetMarketByIDRow, error)
 	GetMarketPriceHistory(ctx context.Context, marketID int64) ([]GetMarketPriceHistoryRow, error)
