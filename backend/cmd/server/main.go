@@ -56,10 +56,9 @@ func run() error {
 	creditsSvc := service.NewCreditsService(queries)
 
 	// Handlers
-	frontendURL := cfg.CORSAllowedOrigins[0]
 	authH, err := handler.NewAuthHandler(ctx, queries,
 		cfg.SCIDIssuer, cfg.SCIDClientID, cfg.SCIDClientSecret, cfg.SCIDRedirectURL,
-		cfg.SessionSecret, frontendURL, cfg.CookieSecure,
+		cfg.SessionSecret, cfg.FrontendURL, cfg.CookieSecure,
 	)
 	if err != nil {
 		return fmt.Errorf("auth handler: %w", err)
@@ -90,9 +89,9 @@ func run() error {
 	// Auth routes (rate-limited)
 	r.Group(func(r chi.Router) {
 		r.Use(httprate.LimitByIP(10, time.Minute))
+		r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 		r.Get("/auth/login", authH.Login)
 		r.Get("/auth/callback", authH.Callback)
-		r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 		r.Post("/auth/logout", authH.Logout)
 	})
 

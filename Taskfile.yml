@@ -23,6 +23,11 @@ tasks:
   dev:backend:
     desc: Start Go backend (Air hot-reload)
     dir: backend
+    env:
+      ENVIRONMENT: development
+      COOKIE_SECURE: "false"
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      FRONTEND_URL: http://localhost:5173
     cmds:
       - air
 

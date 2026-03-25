@@ -11,12 +11,14 @@ import (
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
+	Environment        string
 	Port               string
 	DBPath             string
 	SCIDIssuer         string
 	SCIDClientID       string
 	SCIDClientSecret   string
 	SCIDRedirectURL    string
+	FrontendURL        string
 	SessionSecret      string
 	CORSAllowedOrigins []string
 	LogLevel           string
@@ -29,22 +31,28 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
+		Environment:      env("ENVIRONMENT", "development"),
 		Port:             env("PORT", "8080"),
-		DBPath:           env("DB_PATH", "./scolymarket.db"),
+		DBPath:           envWithAliases([]string{"DB_PATH", "DATABASE_PATH"}, "./scolymarket.db"),
 		SCIDIssuer:       os.Getenv("SCID_ISSUER"),
 		SCIDClientID:     os.Getenv("SCID_CLIENT_ID"),
 		SCIDClientSecret: os.Getenv("SCID_CLIENT_SECRET"),
 		SCIDRedirectURL:  os.Getenv("SCID_REDIRECT_URL"),
 		SessionSecret:    os.Getenv("SESSION_SECRET"),
 		LogLevel:         env("LOG_LEVEL", "info"),
-		CookieSecure:     env("COOKIE_SECURE", "true") != "false",
+		CookieSecure:     cookieSecureDefault(),
 	}
 
-	origins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	origins := envWithAliases([]string{"CORS_ALLOWED_ORIGINS", "ALLOWED_ORIGINS"}, "")
 	if origins != "" {
 		cfg.CORSAllowedOrigins = splitOrigins(origins)
 	} else {
 		cfg.CORSAllowedOrigins = []string{"http://localhost:5173"}
+	}
+
+	cfg.FrontendURL = envWithAliases([]string{"FRONTEND_URL", "SCID_POST_LOGIN_URL"}, "")
+	if cfg.FrontendURL == "" && len(cfg.CORSAllowedOrigins) > 0 {
+		cfg.FrontendURL = cfg.CORSAllowedOrigins[0]
 	}
 
 	return cfg, cfg.validate()
@@ -75,6 +83,10 @@ func (c *Config) validate() error {
 			return fmt.Errorf("invalid CORS origin %q", origin)
 		}
 	}
+	parsedFrontend, err := url.Parse(c.FrontendURL)
+	if err != nil || parsedFrontend.Scheme == "" || parsedFrontend.Host == "" {
+		return fmt.Errorf("invalid FRONTEND_URL %q", c.FrontendURL)
+	}
 	return nil
 }
 
@@ -97,4 +109,20 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envWithAliases(keys []string, fallback string) string {
+	for _, key := range keys {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+	}
+	return fallback
+}
+
+func cookieSecureDefault() bool {
+	if v := os.Getenv("COOKIE_SECURE"); v != "" {
+		return v != "false"
+	}
+	return env("ENVIRONMENT", "development") != "development"
 }

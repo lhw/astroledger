@@ -19,6 +19,9 @@ tasks:
       - air
     env:
       ENVIRONMENT: development
+      COOKIE_SECURE: 'false'
+      CORS_ALLOWED_ORIGINS: 'http://localhost:5173'
+      FRONTEND_URL: 'http://localhost:5173'
 
   install:air:
     desc: Install Air live-reload tool (go install)
@@ -31,6 +34,9 @@ tasks:
       - go run ./cmd/server
     env:
       ENVIRONMENT: development
+      COOKIE_SECURE: 'false'
+      CORS_ALLOWED_ORIGINS: 'http://localhost:5173'
+      FRONTEND_URL: 'http://localhost:5173'
 
   build:
     desc: Build the production binary
