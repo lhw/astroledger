@@ -2,11 +2,14 @@ package middleware
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/lhw/scolymarket/internal/db"
 )
 
 type contextKey string
@@ -16,9 +19,7 @@ const UserClaimsKey contextKey = "user_claims"
 
 // Claims represents the payload stored in the session JWT cookie.
 type Claims struct {
-	UserID      int64 `json:"uid"`
-	IsModerator bool  `json:"mod"`
-	IsAdmin     bool  `json:"adm"`
+	UserID int64 `json:"uid"`
 	jwt.RegisteredClaims
 }
 
@@ -64,16 +65,32 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// RequireMod rejects non-moderator requests with 403.
-func RequireMod(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		claims := GetClaims(r)
-		if claims == nil || (!claims.IsModerator && !claims.IsAdmin) {
-			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+// RequireMod rejects non-moderator requests with 403 using the current DB role state.
+func RequireMod(queries *db.Queries) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := GetClaims(r)
+			if claims == nil {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+
+			user, err := queries.GetUserByID(r.Context(), claims.UserID)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			if user.IsModerator != 1 && user.IsAdmin != 1 {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // GetClaims retrieves session claims from the context. Returns nil if unauthenticated.
@@ -83,11 +100,9 @@ func GetClaims(r *http.Request) *Claims {
 }
 
 // IssueSessionCookie signs and writes a session JWT as an httpOnly cookie.
-func IssueSessionCookie(w http.ResponseWriter, secret string, userID int64, isMod, isAdmin, secure bool) error {
+func IssueSessionCookie(w http.ResponseWriter, secret string, userID int64, secure bool) error {
 	claims := Claims{
-		UserID:      userID,
-		IsModerator: isMod,
-		IsAdmin:     isAdmin,
+		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

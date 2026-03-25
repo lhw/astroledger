@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -41,7 +42,7 @@ func Load() (*Config, error) {
 
 	origins := os.Getenv("CORS_ALLOWED_ORIGINS")
 	if origins != "" {
-		cfg.CORSAllowedOrigins = strings.Split(origins, ",")
+		cfg.CORSAllowedOrigins = splitOrigins(origins)
 	} else {
 		cfg.CORSAllowedOrigins = []string{"http://localhost:5173"}
 	}
@@ -65,7 +66,30 @@ func (c *Config) validate() error {
 	if len(c.SessionSecret) < 32 {
 		return fmt.Errorf("SESSION_SECRET must be at least 32 characters")
 	}
+	if len(c.CORSAllowedOrigins) == 0 {
+		return fmt.Errorf("CORS_ALLOWED_ORIGINS must contain at least one origin")
+	}
+	for _, origin := range c.CORSAllowedOrigins {
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("invalid CORS origin %q", origin)
+		}
+	}
 	return nil
+}
+
+func splitOrigins(raw string) []string {
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		trimmed = strings.TrimRight(trimmed, "/")
+		if trimmed == "" {
+			continue
+		}
+		origins = append(origins, trimmed)
+	}
+	return origins
 }
 
 func env(key, fallback string) string {

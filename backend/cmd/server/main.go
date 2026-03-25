@@ -92,6 +92,7 @@ func run() error {
 		r.Use(httprate.LimitByIP(10, time.Minute))
 		r.Get("/auth/login", authH.Login)
 		r.Get("/auth/callback", authH.Callback)
+		r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 		r.Post("/auth/logout", authH.Logout)
 	})
 
@@ -121,6 +122,7 @@ func run() error {
 		// Authenticated market creation (rate-limited)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Use(httprate.LimitByIP(5, time.Minute))
 			r.Post("/markets", marketH.Create)
 		})
@@ -128,12 +130,14 @@ func run() error {
 		// Creator requests mod resolution
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Post("/markets/{id}/request-resolution", marketH.RequestResolution)
 		})
 
 		// Trading (rate-limited)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Use(httprate.LimitByIP(30, time.Minute))
 			r.Post("/trades", tradeH.Trade)
 			r.Post("/trades/quote", tradeH.Quote)
@@ -142,6 +146,7 @@ func run() error {
 		// Report submission (auth required, rate-limited)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Use(httprate.LimitByIP(10, time.Minute))
 			r.Post("/reports", modH.SubmitReport)
 		})
@@ -149,7 +154,8 @@ func run() error {
 		// Moderation routes
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
-			r.Use(middleware.RequireMod)
+			r.Use(middleware.RequireMod(queries))
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Get("/mod/markets", marketH.ListPending)
 			r.Post("/mod/markets/{id}/approve", marketH.Approve)
 			r.Post("/mod/markets/{id}/reject", marketH.Reject)

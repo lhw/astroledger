@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -233,6 +234,9 @@ func (s *MarketService) RequestResolution(ctx context.Context, inp RequestResolu
 	if pos.YesShares == 0 && pos.NoShares == 0 {
 		return ErrForbidden
 	}
+	if err := validateResolutionRequestMetadata(inp.Link, inp.Note); err != nil {
+		return err
+	}
 	if err := s.queries.UpdateMarketStatus(ctx, db.UpdateMarketStatusParams{
 		Status: "resolution_requested",
 		ID:     inp.MarketID,
@@ -252,6 +256,29 @@ func (s *MarketService) RequestResolution(ctx context.Context, inp RequestResolu
 		slog.Warn("failed to store resolution request details", "err", err)
 	}
 	slog.Info("resolution requested", "market_id", inp.MarketID, "user_id", inp.CallerID)
+	return nil
+}
+
+func validateResolutionRequestMetadata(link, note string) error {
+	if len(note) > 500 {
+		return fmt.Errorf("resolution note too long (max 500 chars)")
+	}
+	if link == "" {
+		return nil
+	}
+	if len(link) > 2048 {
+		return fmt.Errorf("resolution link too long (max 2048 chars)")
+	}
+	parsed, err := url.ParseRequestURI(link)
+	if err != nil {
+		return fmt.Errorf("resolution link must be a valid URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("resolution link must use http or https")
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("resolution link must include a host")
+	}
 	return nil
 }
 

@@ -68,14 +68,14 @@ tasks:
     cmds:
       - go run ./cmd/server -migrate-only
     env:
-      DATABASE_PATH: '{{.DB_PATH}}'
+      DB_PATH: '{{.DB_PATH}}'
 
   migrate:status:
     desc: Show migration status
     cmds:
       - go run ./cmd/server -migrate-status
     env:
-      DATABASE_PATH: '{{.DB_PATH}}'
+      DB_PATH: '{{.DB_PATH}}'
 
   migrate:create:
     desc: Create a new migration file (NAME= required)

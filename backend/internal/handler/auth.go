@@ -189,10 +189,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("failed to update user groups", "err", err)
 	}
 
-	if err := middleware.IssueSessionCookie(
-		w, h.sessionSecret, user.ID,
-		isMod, isAdmin, h.cookieSecure,
-	); err != nil {
+	if err := middleware.IssueSessionCookie(w, h.sessionSecret, user.ID, h.cookieSecure); err != nil {
 		slog.Error("failed to issue session cookie", "err", err)
 		respondError(w, http.StatusInternalServerError, "session error")
 		return
