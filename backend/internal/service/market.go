@@ -26,13 +26,14 @@ var validCategories = map[string]bool{
 
 // MarketService handles business logic for markets.
 type MarketService struct {
-	queries *db.Queries
-	sqlDB   *sql.DB
+	queries  *db.Queries
+	sqlDB    *sql.DB
+	badgeSvc *BadgeService
 }
 
 // NewMarketService creates a MarketService.
-func NewMarketService(queries *db.Queries, sqlDB *sql.DB) *MarketService {
-	return &MarketService{queries: queries, sqlDB: sqlDB}
+func NewMarketService(queries *db.Queries, sqlDB *sql.DB, badgeSvc *BadgeService) *MarketService {
+	return &MarketService{queries: queries, sqlDB: sqlDB, badgeSvc: badgeSvc}
 }
 
 // CreateMarketInput is the validated input for creating a market.
@@ -138,8 +139,8 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 	if err != nil {
 		return fmt.Errorf("get market: %w", err)
 	}
-	if market.Status != "active" {
-		return fmt.Errorf("market is not active (status: %s)", market.Status)
+	if market.Status != "active" && market.Status != "resolution_requested" {
+		return fmt.Errorf("market must be active or resolution_requested (status: %s)", market.Status)
 	}
 
 	if err := qTx.ResolveMarket(ctx, db.ResolveMarketParams{
@@ -179,14 +180,80 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 		slog.Info("payout", "user_id", pos.UserID, "payout", payout)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit resolution: %w", err)
+	}
+
+	// Award badges to everyone who had a position — non-blocking.
+	if s.badgeSvc != nil {
+		for _, pos := range positions {
+			userID := pos.UserID
+			go s.badgeSvc.CheckAndAward(context.Background(), userID)
+		}
+	}
+	return nil
 }
 
 // ErrNotFound is returned when a requested entity does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrForbidden is returned when the caller does not own the resource.
+var ErrForbidden = errors.New("forbidden")
+
 // ErrRejected is returned when a market is rejected by the auto-filter.
 var ErrRejected = errors.New("market rejected by auto-filter")
+
+// RequestResolutionInput holds the parameters for a resolution request.
+type RequestResolutionInput struct {
+	MarketID int64
+	CallerID int64
+	Link     string
+	Note     string
+}
+
+// RequestResolution flags an active market for moderator resolution.
+// Any user who holds shares in the market may call this; a short link and
+// explanatory note are stored so mods have context.
+func (s *MarketService) RequestResolution(ctx context.Context, inp RequestResolutionInput) error {
+	market, err := s.queries.GetMarketByID(ctx, inp.MarketID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("get market: %w", err)
+	}
+	if market.Status != "active" {
+		return fmt.Errorf("market must be active to request resolution (status: %s)", market.Status)
+	}
+	// Require the caller to have a position in the market.
+	pos, err := s.queries.GetUserPositionOrZero(ctx, inp.CallerID, inp.MarketID)
+	if err != nil {
+		return fmt.Errorf("get position: %w", err)
+	}
+	if pos.YesShares == 0 && pos.NoShares == 0 {
+		return ErrForbidden
+	}
+	if err := s.queries.UpdateMarketStatus(ctx, db.UpdateMarketStatusParams{
+		Status: "resolution_requested",
+		ID:     inp.MarketID,
+	}); err != nil {
+		return fmt.Errorf("update market status: %w", err)
+	}
+	// Store optional link/note for the mod team.
+	var link, note *string
+	if inp.Link != "" {
+		link = &inp.Link
+	}
+	if inp.Note != "" {
+		note = &inp.Note
+	}
+	if err := s.queries.UpsertResolutionRequestDetails(ctx, inp.MarketID, inp.CallerID, link, note); err != nil {
+		// Non-fatal: status already updated; log and continue.
+		slog.Warn("failed to store resolution request details", "err", err)
+	}
+	slog.Info("resolution requested", "market_id", inp.MarketID, "user_id", inp.CallerID)
+	return nil
+}
 
 func (s *MarketService) validateMarketInput(ctx context.Context, inp CreateMarketInput) error {
 	if utf8.RuneCountInString(strings.TrimSpace(inp.Title)) < 10 {

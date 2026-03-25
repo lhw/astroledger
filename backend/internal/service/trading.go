@@ -13,13 +13,14 @@ import (
 
 // TradingService handles buy/sell operations.
 type TradingService struct {
-	queries *db.Queries
-	sqlDB   *sql.DB
+	queries  *db.Queries
+	sqlDB    *sql.DB
+	badgeSvc *BadgeService
 }
 
 // NewTradingService creates a TradingService.
-func NewTradingService(queries *db.Queries, sqlDB *sql.DB) *TradingService {
-	return &TradingService{queries: queries, sqlDB: sqlDB}
+func NewTradingService(queries *db.Queries, sqlDB *sql.DB, badgeSvc *BadgeService) *TradingService {
+	return &TradingService{queries: queries, sqlDB: sqlDB, badgeSvc: badgeSvc}
 }
 
 // TradeInput is the validated request for a buy or sell.
@@ -34,7 +35,7 @@ type TradeInput struct {
 // TradeResult is the outcome of a trade.
 type TradeResult struct {
 	TradeID      int64
-	Cost         int64   // positive = spent, negative = received (for sell)
+	Cost         int64 // positive = spent, negative = received (for sell)
 	Shares       float64
 	PriceAtTrade float64
 	NewBalance   int64
@@ -67,8 +68,8 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 	if err != nil {
 		return nil, fmt.Errorf("get market: %w", err)
 	}
-	if market.Status != "active" {
-		return nil, fmt.Errorf("market is not active")
+	if market.Status != "active" && market.Status != "resolution_requested" {
+		return nil, fmt.Errorf("market is not open for trading")
 	}
 	if market.ResolutionDeadline.Before(time.Now()) {
 		return nil, fmt.Errorf("market has passed its resolution deadline")
@@ -198,6 +199,12 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 		"shares", inp.Shares,
 		"cost", cost,
 	)
+
+	// Check badge eligibility non-blockingly after the transaction is committed.
+	if s.badgeSvc != nil {
+		userID := inp.UserID
+		go s.badgeSvc.CheckAndAward(context.Background(), userID)
+	}
 
 	return &TradeResult{
 		TradeID:      trade.ID,

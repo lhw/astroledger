@@ -43,9 +43,9 @@ SELECT u.id, u.display_name, u.balance,
        COALESCE(SUM(
            CASE
                WHEN p.yes_shares > 0 AND m.status = 'active' THEN
-                   CAST(p.yes_shares * (m.yes_shares / (m.yes_shares + m.no_shares + 0.0001) * 100) AS INTEGER)
+                   CAST(p.yes_shares * (1.0 / (1.0 + exp((m.no_shares - m.yes_shares) / m.liquidity_param)) * 100) AS INTEGER)
                WHEN p.no_shares > 0 AND m.status = 'active' THEN
-                   CAST(p.no_shares * ((1 - m.yes_shares / (m.yes_shares + m.no_shares + 0.0001)) * 100) AS INTEGER)
+                   CAST(p.no_shares * (1.0 / (1.0 + exp((m.yes_shares - m.no_shares) / m.liquidity_param)) * 100) AS INTEGER)
                ELSE 0
            END
        ), 0) AS portfolio_value

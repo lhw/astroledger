@@ -68,7 +68,7 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Get returns a single market by ID with current prices.
+// Get returns a single market by ID with current prices and (if authenticated) the caller's position.
 func (h *MarketHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
@@ -88,11 +88,22 @@ func (h *MarketHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	yesPrice := service.PriceCents(market.LiquidityParam, market.YesShares, market.NoShares)
 
-	respondJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"market":    market,
 		"yes_price": yesPrice,
 		"no_price":  100 - yesPrice,
-	})
+	}
+
+	// Include the caller's position when authenticated.
+	if claims := middleware.GetClaims(r); claims != nil {
+		pos, _ := h.queries.GetUserPositionOrZero(r.Context(), claims.UserID, id)
+		resp["my_position"] = map[string]float64{
+			"yes_shares": pos.YesShares,
+			"no_shares":  pos.NoShares,
+		}
+	}
+
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // Create submits a new market for moderation review.
@@ -236,7 +247,7 @@ func (h *MarketHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
-// Resolve resolves an active market as yes or no.
+// Resolve resolves an active (or resolution_requested) market as yes or no.
 func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -266,4 +277,75 @@ func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "resolved"})
+}
+
+// RequestResolution lets the market creator ask the mod team to resolve their market.
+func (h *MarketHandler) RequestResolution(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid market id")
+		return
+	}
+
+	var body struct {
+		Link string `json:"link"`
+		Note string `json:"note"`
+	}
+	// Body is optional — ignore decode errors (no body is fine).
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	if err := h.svc.RequestResolution(r.Context(), service.RequestResolutionInput{
+		MarketID: id,
+		CallerID: claims.UserID,
+		Link:     body.Link,
+		Note:     body.Note,
+	}); errors.Is(err, service.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "market not found")
+	} else if errors.Is(err, service.ErrForbidden) {
+		respondError(w, http.StatusForbidden, "you must hold shares to request resolution")
+	} else if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+	} else {
+		respondJSON(w, http.StatusOK, map[string]string{"status": "resolution_requested"})
+	}
+}
+
+// ListResolutionRequested returns markets where the creator has requested resolution (mod only).
+func (h *MarketHandler) ListResolutionRequested(w http.ResponseWriter, r *http.Request) {
+	markets, err := h.queries.ListResolutionRequestedMarkets(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusOK, markets)
+}
+
+// DenyResolution rejects a resolution request and sets the market back to active.
+func (h *MarketHandler) DenyResolution(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid market id")
+		return
+	}
+	market, err := h.queries.GetMarketByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "market not found")
+		return
+	}
+	if market.Status != "resolution_requested" {
+		respondError(w, http.StatusBadRequest, "market is not awaiting resolution")
+		return
+	}
+	if err := h.queries.UpdateMarketStatus(r.Context(), db.UpdateMarketStatusParams{Status: "active", ID: id}); err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	// Clean up the request details so a fresh request can be filed later.
+	_ = h.queries.DeleteResolutionRequestDetails(r.Context(), id)
+	respondJSON(w, http.StatusOK, map[string]string{"status": "active"})
 }

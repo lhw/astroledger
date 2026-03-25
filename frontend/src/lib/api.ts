@@ -16,7 +16,11 @@ import type {
 	Position,
 	TradeResult,
 	CreateMarketBody,
-	ApiError
+	ApiError,
+	ResolutionRequestMarket,
+	Badge,
+	Report,
+	PricePoint
 } from './types';
 
 class ApiClientError extends Error {
@@ -113,10 +117,8 @@ export async function createMarket(body: CreateMarketBody): Promise<Market> {
 	});
 }
 
-export async function getMarketPriceHistory(
-	id: number
-): Promise<{ price_at_trade: number; side: string; created_at: string }[]> {
-	return request(`/api/markets/${id}/history`);
+export async function getMarketPriceHistory(id: number): Promise<PricePoint[]> {
+	return request<PricePoint[]>(`/api/markets/${id}/history`);
 }
 
 export async function getMarketTrades(id: number, offset = 0): Promise<TradeWithTrader[]> {
@@ -156,6 +158,56 @@ export async function resolveMarket(id: number, resolution: 'yes' | 'no'): Promi
 		method: 'POST',
 		body: JSON.stringify({ resolution })
 	});
+}
+
+export async function requestResolution(
+	marketId: number,
+	link?: string,
+	note?: string
+): Promise<void> {
+	await request(`/api/markets/${marketId}/request-resolution`, {
+		method: 'POST',
+		body: JSON.stringify({ link: link ?? '', note: note ?? '' })
+	});
+}
+
+export async function listResolutionRequestedMarkets(): Promise<ResolutionRequestMarket[]> {
+	return request('/api/mod/resolution-requests');
+}
+
+export async function denyResolutionRequest(marketId: number): Promise<void> {
+	await request(`/api/mod/markets/${marketId}/deny-resolution`, { method: 'POST' });
+}
+
+// --- Badges ---
+
+export async function getMyBadges(): Promise<Badge[]> {
+	return request<Badge[]>('/api/me/badges');
+}
+
+export async function getUserBadges(id: number): Promise<Badge[]> {
+	return request<Badge[]>(`/api/users/${id}/badges`);
+}
+
+// --- Reports ---
+
+export async function submitReport(marketId: number, reason: string): Promise<{ id: number }> {
+	return request<{ id: number }>('/api/reports', {
+		method: 'POST',
+		body: JSON.stringify({ market_id: marketId, reason })
+	});
+}
+
+export async function listPendingReports(): Promise<Report[]> {
+	return request<Report[]>('/api/mod/reports');
+}
+
+export async function reviewReport(id: number): Promise<void> {
+	await request(`/api/mod/reports/${id}/review`, { method: 'POST' });
+}
+
+export async function dismissReport(id: number): Promise<void> {
+	await request(`/api/mod/reports/${id}/dismiss`, { method: 'POST' });
 }
 
 export { ApiClientError };

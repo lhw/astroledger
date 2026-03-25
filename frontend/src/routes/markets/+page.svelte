@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listMarkets } from '$lib/api';
+	import { listMarkets, getMyPositions } from '$lib/api';
+	import { isLoggedIn } from '$lib/stores/auth';
 	import type { MarketList, MarketCategory } from '$lib/types';
 
 	let markets: MarketList | null = null;
 	let loading = true;
 	let error = '';
+	let ownedMarketIds = new Set<number>();
 
 	let statusFilter = 'active';
 	let categoryFilter: MarketCategory | '' = '';
@@ -24,9 +26,15 @@
 		loading = true;
 		error = '';
 		try {
-			markets = await listMarkets(statusFilter, categoryFilter, offset);
+			const fetches: [Promise<MarketList>, Promise<unknown>] = [
+				listMarkets(statusFilter, categoryFilter, offset),
+				$isLoggedIn ? getMyPositions() : Promise.resolve([])
+			];
+			const [m, positions] = await Promise.all(fetches);
+			markets = m;
+			ownedMarketIds = new Set((positions as { market_id: number }[]).map((p) => p.market_id));
 		} catch (e) {
-			error = String(e);
+			error = e instanceof Error ? e.message : String(e);
 		} finally {
 			loading = false;
 		}
@@ -48,18 +56,21 @@
 	<title>Markets — ScolyMarket</title>
 </svelte:head>
 
-<div class="container mx-auto px-4 max-w-4xl py-8">
-	<div class="flex items-center justify-between mb-6">
-		<h1 class="text-3xl font-bold text-surface-100">Markets</h1>
-		<a href="/markets/new" class="btn btn-sm preset-filled-primary-500 no-underline">+ Submit Market</a>
+<div class="container mx-auto px-4 max-w-4xl py-10">
+	<div class="flex items-center justify-between mb-8">
+		<div>
+			<p class="text-xs font-bold uppercase tracking-[0.15em] text-primary-600 mb-1">Browse</p>
+			<h1 class="text-2xl font-bold text-surface-900 tracking-tight">Markets</h1>
+		</div>
+		<a href="/markets/new" class="btn btn-sm preset-filled-primary-500 no-underline uppercase tracking-wider text-xs">+ Submit Market</a>
 	</div>
 
 	<!-- Filters -->
-	<div class="flex flex-wrap gap-3 mb-6">
+	<div class="flex flex-wrap gap-3 mb-7">
 		<select
 			bind:value={statusFilter}
 			onchange={() => { offset = 0; load(); }}
-			class="bg-surface-800 border border-surface-600 rounded-lg px-3 py-1.5 text-surface-100 text-sm"
+			class="sc-input !w-auto !py-1.5 text-sm"
 		>
 			<option value="active">Active</option>
 			<option value="resolved">Resolved</option>
@@ -69,7 +80,7 @@
 		<select
 			bind:value={categoryFilter}
 			onchange={() => { offset = 0; load(); }}
-			class="bg-surface-800 border border-surface-600 rounded-lg px-3 py-1.5 text-surface-100 text-sm"
+			class="sc-input !w-auto !py-1.5 text-sm"
 		>
 			{#each CATEGORIES as cat}
 				<option value={cat.value}>{cat.label}</option>
@@ -78,30 +89,37 @@
 	</div>
 
 	{#if loading}
-		<div class="text-surface-400 text-center py-16">Loading markets…</div>
+		<div class="text-surface-400 text-center py-16 text-sm">Loading markets…</div>
 	{:else if error}
-		<div class="p-4 bg-error-500/20 border border-error-500 rounded-lg text-error-300 mb-4">{error}</div>
+		<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{error}</div>
 	{:else if !markets || markets.markets.length === 0}
-		<div class="card preset-tonal-surface p-8 text-center rounded-lg">
-			<p class="text-surface-400">No markets found.</p>
+		<div class="sc-card p-8 text-center">
+			<p class="text-surface-500 text-sm">No markets found.</p>
 		</div>
 	{:else}
-		<div class="space-y-3 mb-6">
+		<div class="space-y-2 mb-6">
 			{#each markets.markets as market}
+				{@const owned = ownedMarketIds.has(market.id)}
 				<a
 					href="/markets/{market.id}"
-					class="card preset-tonal-surface p-4 rounded-lg flex items-start justify-between gap-4 hover:preset-tonal-primary transition-all no-underline block"
+					class="p-4 flex items-start justify-between gap-4 transition-all no-underline block rounded-lg border
+						{owned
+							? 'bg-amber-50 border-primary-300 shadow-sm hover:border-primary-400 hover:shadow-md'
+							: 'bg-white border-surface-200 shadow-[0_1px_4px_0_rgba(0,0,0,0.06)] hover:border-primary-300 hover:shadow-md'}"
 				>
 					<div class="flex-1 min-w-0">
-						<div class="flex items-center gap-2 mb-1">
-							<span class="badge preset-tonal-surface text-xs">{market.category.replace('_', ' ')}</span>
+						<div class="flex items-center gap-2 mb-1.5">
+							<span class="sc-tag">{market.category.replace('_', ' ')}</span>
 							{#if market.status === 'resolved'}
-								<span class="badge preset-filled-success-500 text-xs">Resolved</span>
+								<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">Resolved</span>
+							{/if}
+							{#if owned}
+								<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Your Position</span>
 							{/if}
 						</div>
-						<div class="text-surface-100 font-medium">{market.title}</div>
-						<div class="text-surface-400 text-xs mt-1">
-							by {market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
+						<div class="text-surface-800 font-medium text-sm">{market.title}</div>
+						<div class="text-surface-500 text-xs mt-1">
+							{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
 						</div>
 					</div>
 				</a>
@@ -110,12 +128,12 @@
 
 		<!-- Pagination -->
 		<div class="flex items-center justify-between">
-			<button onclick={prev} disabled={offset === 0} class="btn btn-sm preset-outlined">← Prev</button>
-			<span class="text-surface-400 text-sm">{offset + 1}–{offset + markets.markets.length} of {markets.total}</span>
+			<button onclick={prev} disabled={offset === 0} class="btn btn-sm preset-outlined text-xs uppercase tracking-wider">← Prev</button>
+			<span class="text-surface-500 text-xs">{offset + 1}–{offset + markets.markets.length} of {markets.total}</span>
 			<button
 				onclick={next}
 				disabled={offset + markets.markets.length >= markets.total}
-				class="btn btn-sm preset-outlined"
+				class="btn btn-sm preset-outlined text-xs uppercase tracking-wider"
 			>
 				Next →
 			</button>

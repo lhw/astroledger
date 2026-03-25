@@ -62,7 +62,7 @@
 			});
 			goto(`/markets/${market.id}`);
 		} catch (e) {
-			error = String(e);
+			error = e instanceof Error ? e.message : String(e);
 		} finally {
 			submitting = false;
 		}
@@ -73,46 +73,46 @@
 	<title>Create Market — ScolyMarket</title>
 </svelte:head>
 
-<div class="container mx-auto px-4 max-w-2xl py-8">
-	<div class="mb-6">
-		<a href="/markets" class="text-surface-400 hover:text-primary-400 text-sm no-underline">← Markets</a>
-		<h1 class="text-3xl font-bold text-surface-100 mt-2">Create a Market</h1>
-		<p class="text-surface-400 text-sm mt-1">
+<div class="container mx-auto px-4 max-w-2xl py-10">
+	<div class="mb-7">
+		<a href="/markets" class="text-surface-500 hover:text-primary-600 text-xs uppercase tracking-wider no-underline transition-colors">← Markets</a>
+		<h1 class="text-2xl font-bold text-surface-900 mt-3 tracking-tight">Create a Market</h1>
+		<p class="text-surface-500 text-sm mt-1">
 			Predict something Star Citizen-related. Be specific. No personal attacks.
 		</p>
 	</div>
 
 	{#if !$isLoggedIn}
-		<div class="card preset-tonal-surface p-6 rounded-lg text-center">
-			<p class="text-surface-300 mb-4">You must be logged in to create a market.</p>
-			<a href="/auth/login" class="btn preset-filled-primary-500">Login with SCID</a>
+		<div class="sc-card p-6 text-center">
+			<p class="text-surface-600 mb-4 text-sm">You must be logged in to create a market.</p>
+			<a href="/auth/login" class="btn preset-filled-primary-500 text-xs uppercase tracking-wider">Login with SCID</a>
 		</div>
 	{:else}
 		<form onsubmit={handleSubmit} class="space-y-5">
 			{#if error}
-				<div class="p-4 bg-error-500/20 border border-error-500 rounded-lg text-error-300 text-sm">
+				<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
 					{error}
 				</div>
 			{/if}
 
 			<label class="block">
-				<span class="text-surface-300 text-sm font-medium">Question <span class="text-error-400">*</span></span>
+				<span class="text-surface-700 text-xs font-bold uppercase tracking-wider">Question <span class="text-red-500">*</span></span>
 				<input
 					type="text"
 					bind:value={title}
 					required
 					maxlength="200"
 					placeholder="Will [bug] be fixed before [date]?"
-					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none"
+					class="sc-input mt-1.5"
 				/>
-				<span class="text-surface-500 text-xs">{title.length}/200</span>
+				<span class="text-surface-400 text-xs">{title.length}/200</span>
 			</label>
 
 			<label class="block">
-				<span class="text-surface-300 text-sm font-medium">Category <span class="text-error-400">*</span></span>
+				<span class="text-surface-700 text-xs font-bold uppercase tracking-wider">Category <span class="text-red-500">*</span></span>
 				<select
 					bind:value={category}
-					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 focus:border-primary-500 outline-none"
+					class="sc-input mt-1.5"
 				>
 					{#each categories as cat}
 						<option value={cat.value}>{cat.label}</option>
@@ -122,21 +122,21 @@
 
 			<!-- Deadline type toggle -->
 			<fieldset class="block">
-				<legend class="text-surface-300 text-sm font-medium mb-2">
-					Resolution Timing <span class="text-error-400">*</span>
+				<legend class="text-surface-700 text-xs font-bold uppercase tracking-wider mb-2.5">
+					Resolution Timing <span class="text-red-500">*</span>
 				</legend>
 				<div class="flex gap-2 mb-3">
 					<button
 						type="button"
 						onclick={() => (deadlineType = 'date')}
-						class="flex-1 btn btn-sm {deadlineType === 'date' ? 'preset-filled-primary-500' : 'preset-outlined'}"
+						class="flex-1 btn btn-sm {deadlineType === 'date' ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400'} transition-colors text-xs uppercase tracking-wider"
 					>
 						Specific Date
 					</button>
 					<button
 						type="button"
 						onclick={() => (deadlineType = 'patch')}
-						class="flex-1 btn btn-sm {deadlineType === 'patch' ? 'preset-filled-primary-500' : 'preset-outlined'}"
+						class="flex-1 btn btn-sm {deadlineType === 'patch' ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400'} transition-colors text-xs uppercase tracking-wider"
 					>
 						Patch Release
 					</button>
@@ -144,26 +144,26 @@
 
 				{#if deadlineType === 'date'}
 					<label class="block">
-						<span class="text-surface-400 text-xs">Closes on</span>
+						<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Closes on</span>
 						<input
 							type="date"
 							bind:value={deadlineDate}
 							required
 							min={minDate()}
-							class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 focus:border-primary-500 outline-none"
+							class="sc-input mt-1.5"
 						/>
 					</label>
 				{:else}
 					<label class="block">
-						<span class="text-surface-400 text-xs">Target patch version</span>
+						<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Target patch version</span>
 						<input
 							type="text"
 							bind:value={patchTarget}
 							required
 							placeholder="e.g. 4.1.0, 4.2.0-PTU"
-							class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none"
+							class="sc-input mt-1.5"
 						/>
-						<span class="text-surface-500 text-xs">
+						<span class="text-surface-400 text-xs mt-1 block">
 							Market resolves when this patch ships. Moderators resolve it manually.
 						</span>
 					</label>
@@ -171,32 +171,32 @@
 			</fieldset>
 
 			<label class="block">
-				<span class="text-surface-300 text-sm font-medium">Description</span>
+				<span class="text-surface-700 text-xs font-bold uppercase tracking-wider">Description</span>
 				<textarea
 					bind:value={description}
 					rows="3"
 					maxlength="2000"
 					placeholder="Provide context for your question…"
-					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none resize-y"
+					class="sc-input mt-1.5 resize-y"
 				></textarea>
 			</label>
 
 			<label class="block">
-				<span class="text-surface-300 text-sm font-medium">Resolution Criteria</span>
+				<span class="text-surface-700 text-xs font-bold uppercase tracking-wider">Resolution Criteria</span>
 				<textarea
 					bind:value={resolutionCriteria}
 					rows="3"
 					maxlength="2000"
 					placeholder="How will this market be resolved? What counts as YES vs NO?"
-					class="mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 placeholder-surface-500 focus:border-primary-500 outline-none resize-y"
+					class="sc-input mt-1.5 resize-y"
 				></textarea>
 			</label>
 
 			<div class="pt-2">
-				<button type="submit" disabled={submitting || !isValid} class="btn preset-filled-primary-500 w-full">
+				<button type="submit" disabled={submitting || !isValid} class="btn preset-filled-primary-500 w-full uppercase tracking-wider text-sm">
 					{submitting ? 'Submitting…' : 'Submit for Review'}
 				</button>
-				<p class="text-surface-500 text-xs text-center mt-2">
+				<p class="text-surface-400 text-xs text-center mt-2">
 					Markets are reviewed before going live. No harassment, no player targeting.
 				</p>
 			</div>

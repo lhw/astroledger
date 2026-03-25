@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import type { User, LeaderboardRow, MarketList } from '../../src/lib/types';
+import type { User, LeaderboardRow, MarketList, ResolutionRequestMarket, Report } from '../../src/lib/types';
 
 // --- Fixtures ---
 
@@ -103,5 +103,64 @@ export async function mockUserData(page: Page) {
 	);
 	await page.route('/api/me/trades*', (route) =>
 		route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+	);
+}
+
+export const RESOLUTION_REQUEST: ResolutionRequestMarket = {
+	id: 10,
+	title: 'Will quantum fuel fix before 4.2?',
+	description: 'Been broken for years.',
+	category: 'bug_fixes',
+	resolution_criteria: 'Patch notes confirm fix.',
+	resolution_deadline: '2026-12-31T23:59:59Z',
+	status: 'resolution_requested',
+	resolution: null,
+	created_by: 1,
+	creator_name: 'TestPilot',
+	resolved_by: null,
+	created_at: '2026-01-01T00:00:00Z',
+	resolved_at: null,
+	liquidity_param: 100,
+	yes_shares: 10,
+	no_shares: 5,
+	requested_by: 1,
+	requester_name: 'TestPilot',
+	request_link: 'https://robertsspaceindustries.com/patch/4.2',
+	request_note: 'Confirmed in PTU patch notes.',
+	requested_at: '2026-03-20T10:00:00Z'
+};
+
+export const PENDING_REPORT: Report = {
+	id: 1,
+	reporter_id: 1,
+	reporter_name: 'TestPilot',
+	market_id: 10,
+	market_title: 'Will quantum fuel fix before 4.2?',
+	reason: 'This market topic duplicates an existing one.',
+	status: 'pending',
+	created_at: '2026-03-21T09:00:00Z'
+};
+
+/** Mock all three mod queue endpoints. */
+export async function mockModQueue(
+	page: Page,
+	opts: {
+		pending?: (typeof MARKETS_RESPONSE.markets)[number][];
+		resolutionRequests?: ResolutionRequestMarket[];
+		reports?: Report[];
+	} = {}
+) {
+	const pending = opts.pending ?? [];
+	const resolutionRequests = opts.resolutionRequests ?? [];
+	const reports = opts.reports ?? [];
+
+	await page.route('/api/mod/markets', (route) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pending) })
+	);
+	await page.route('/api/mod/resolution-requests', (route) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resolutionRequests) })
+	);
+	await page.route('/api/mod/reports', (route) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reports) })
 	);
 }

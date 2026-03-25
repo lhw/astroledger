@@ -27,7 +27,7 @@ export interface LeaderboardRow {
 }
 
 /** Market status values */
-export type MarketStatus = 'pending_review' | 'active' | 'resolved' | 'cancelled';
+export type MarketStatus = 'pending_review' | 'active' | 'resolved' | 'cancelled' | 'resolution_requested';
 
 /** Market resolution */
 export type Resolution = 'yes' | 'no' | null;
@@ -65,6 +65,33 @@ export interface MarketWithPrice {
 	market: Market;
 	yes_price: number; // 1-99 cents
 	no_price: number;  // 1-99 cents
+	my_position?: { yes_shares: number; no_shares: number };
+}
+
+/** Resolution request row returned by GET /api/mod/resolution-requests */
+export interface ResolutionRequestMarket {
+	id: number;
+	title: string;
+	description: string;
+	category: MarketCategory;
+	resolution_criteria: string;
+	resolution_deadline: string;
+	status: MarketStatus;
+	resolution: Resolution;
+	created_by: number;
+	creator_name: string;
+	resolved_by: number | null;
+	created_at: string;
+	resolved_at: string | null;
+	liquidity_param: number;
+	yes_shares: number;
+	no_shares: number;
+	// Resolution-request metadata
+	requested_by: number;
+	requester_name: string;
+	request_link: string | null;
+	request_note: string | null;
+	requested_at: string;
 }
 
 /** Paginated market list response */
@@ -131,4 +158,31 @@ export interface CreateMarketBody {
 /** API error response */
 export interface ApiError {
 	error: string;
+}
+
+/** Badge awarded to a user */
+export interface Badge {
+	badge_key: string;
+	awarded_at: string;
+	title: string;
+	description: string;
+}
+
+/** A pending moderation report */
+export interface Report {
+	id: number;
+	reporter_id: number;
+	reporter_name: string;
+	market_id: number;
+	market_title: string;
+	reason: string;
+	status: string;
+	created_at: string;
+}
+
+/** Price history data point for charting */
+export interface PricePoint {
+	price_at_trade: number; // 0.0 – 1.0 YES probability
+	side: string;           // 'yes' | 'no'
+	created_at: string;
 }

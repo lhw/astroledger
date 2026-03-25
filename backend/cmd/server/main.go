@@ -50,8 +50,10 @@ func run() error {
 	queries := db.New(sqlDB)
 
 	// Services
-	marketSvc := service.NewMarketService(queries, sqlDB)
-	tradingSvc := service.NewTradingService(queries, sqlDB)
+	badgeSvc := service.NewBadgeService(queries)
+	marketSvc := service.NewMarketService(queries, sqlDB, badgeSvc)
+	tradingSvc := service.NewTradingService(queries, sqlDB, badgeSvc)
+	creditsSvc := service.NewCreditsService(queries)
 
 	// Handlers
 	frontendURL := cfg.CORSAllowedOrigins[0]
@@ -66,6 +68,7 @@ func run() error {
 	userH := handler.NewUserHandler(queries)
 	marketH := handler.NewMarketHandler(queries, marketSvc)
 	tradeH := handler.NewTradingHandler(tradingSvc)
+	modH := handler.NewModerationHandler(queries, badgeSvc)
 
 	r := chi.NewRouter()
 
@@ -104,7 +107,10 @@ func run() error {
 			r.Use(middleware.RequireAuth)
 			r.Get("/me/positions", userH.GetUserPositions)
 			r.Get("/me/trades", userH.GetUserTrades)
+			r.Get("/me/badges", modH.GetMyBadges)
 		})
+
+		r.Get("/users/{id}/badges", modH.GetUserBadges)
 
 		// Markets (read-only is public)
 		r.Get("/markets", marketH.List)
@@ -119,12 +125,25 @@ func run() error {
 			r.Post("/markets", marketH.Create)
 		})
 
+		// Creator requests mod resolution
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Post("/markets/{id}/request-resolution", marketH.RequestResolution)
+		})
+
 		// Trading (rate-limited)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(httprate.LimitByIP(30, time.Minute))
 			r.Post("/trades", tradeH.Trade)
 			r.Post("/trades/quote", tradeH.Quote)
+		})
+
+		// Report submission (auth required, rate-limited)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Use(httprate.LimitByIP(10, time.Minute))
+			r.Post("/reports", modH.SubmitReport)
 		})
 
 		// Moderation routes
@@ -135,6 +154,11 @@ func run() error {
 			r.Post("/mod/markets/{id}/approve", marketH.Approve)
 			r.Post("/mod/markets/{id}/reject", marketH.Reject)
 			r.Post("/mod/markets/{id}/resolve", marketH.Resolve)
+			r.Get("/mod/resolution-requests", marketH.ListResolutionRequested)
+			r.Post("/mod/markets/{id}/deny-resolution", marketH.DenyResolution)
+			r.Get("/mod/reports", modH.ListReports)
+			r.Post("/mod/reports/{id}/review", modH.ReviewReport)
+			r.Post("/mod/reports/{id}/dismiss", modH.DismissReport)
 		})
 	})
 
@@ -150,6 +174,26 @@ func run() error {
 	go func() {
 		slog.Info("starting server", "addr", srv.Addr)
 		serverErr <- srv.ListenAndServe()
+	}()
+
+	// Weekly payout goroutine — checks every hour; idempotent so safe to run often.
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		// Run immediately at startup to catch any missed payouts.
+		if _, err := creditsSvc.WeeklyPayout(ctx); err != nil {
+			slog.Warn("weekly payout error", "err", err)
+		}
+		for {
+			select {
+			case <-ticker.C:
+				if _, err := creditsSvc.WeeklyPayout(ctx); err != nil {
+					slog.Warn("weekly payout error", "err", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
 	}()
 
 	select {
