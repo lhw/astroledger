@@ -427,6 +427,9 @@ VALUES (?, ?, ?)`
 
 // ─── Weekly payout ────────────────────────────────────────────────────────────
 
+// WeeklyPayoutAmount is the number of ScollyBucks awarded to every user in the weekly payout.
+const WeeklyPayoutAmount int64 = 200
+
 // WeeklyPayoutAlreadyRan returns true if the weekly payout for the given week key
 // has already been executed (idempotent guard).
 func (q *Queries) WeeklyPayoutAlreadyRan(ctx context.Context, weekKey string) (bool, error) {
@@ -436,9 +439,9 @@ func (q *Queries) WeeklyPayoutAlreadyRan(ctx context.Context, weekKey string) (b
 	return n > 0, err
 }
 
-// RunWeeklyPayout adds 200 bUEC to every user and records the run.
+// RunWeeklyPayout adds WeeklyPayoutAmount bUEC to every user and records the run.
 func (q *Queries) RunWeeklyPayout(ctx context.Context, weekKey string) (int64, error) {
-	res, err := q.db.ExecContext(ctx, `UPDATE users SET balance = balance + 200`)
+	res, err := q.db.ExecContext(ctx, `UPDATE users SET balance = balance + ?`, WeeklyPayoutAmount)
 	if err != nil {
 		return 0, err
 	}

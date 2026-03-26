@@ -161,7 +161,6 @@ func run() error {
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Use(httprate.LimitByIP(30, time.Minute))
 			r.Post("/trades", tradeH.Trade)
-			r.Post("/trades/quote", tradeH.Quote)
 		})
 
 		// Comment submission (rate-limited to 10/min)

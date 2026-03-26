@@ -21,11 +21,8 @@ type Comment struct {
 	// Hidden is true when this comment was shadow-hidden by the abuse detector
 	// AND the viewer is the author (the author can always see their own comment).
 	// Other viewers never receive hidden=true — they simply don't see the comment.
-	Hidden bool `json:"hidden"`
-	// IsOwnHidden is an alias of Hidden, used by the frontend to show a
-	// "your comment is under review" notice without breaking the API contract.
-	IsOwnHidden bool      `json:"is_own_hidden"`
-	CreatedAt   time.Time `json:"created_at"`
+	Hidden    bool      `json:"hidden"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // CreateCommentInput is the input for PostComment.
@@ -105,14 +102,13 @@ func (s *CommentService) PostComment(ctx context.Context, inp CreateCommentInput
 	}
 
 	return &Comment{
-		ID:          row.ID,
-		MarketID:    row.MarketID,
-		UserID:      row.UserID,
-		AuthorName:  "", // populated by caller from session claims if needed
-		Content:     row.Content,
-		Hidden:      modResult.Hide,
-		IsOwnHidden: modResult.Hide, // always the creator's own at post time
-		CreatedAt:   row.CreatedAt,
+		ID:         row.ID,
+		MarketID:   row.MarketID,
+		UserID:     row.UserID,
+		AuthorName: "", // populated by caller from session claims if needed
+		Content:    row.Content,
+		Hidden:     modResult.Hide,
+		CreatedAt:  row.CreatedAt,
 	}, nil
 }
 
@@ -140,9 +136,8 @@ func (s *CommentService) ListComments(ctx context.Context, marketID, viewerID in
 			AuthorName: r.AuthorName,
 			Content:    r.Content,
 			// Only expose hidden=true to the comment's own author.
-			Hidden:      isOwnHidden,
-			IsOwnHidden: isOwnHidden,
-			CreatedAt:   r.CreatedAt,
+			Hidden:    isOwnHidden,
+			CreatedAt: r.CreatedAt,
 		})
 	}
 

@@ -4,6 +4,7 @@
 	import { isLoggedIn } from '$lib/stores/auth';
 	import { yesProb } from '$lib/amm';
 	import type { MarketList, MarketCategory } from '$lib/types';
+	import { CATEGORY_LABELS, CATEGORY_FILTER_OPTIONS } from '$lib/categories';
 
 	let { data } = $props<{ data: { markets: MarketList | null } }>();
 
@@ -17,15 +18,6 @@
 	let statusFilter = $state('active');
 	let categoryFilter = $state<MarketCategory | ''>('');
 	let offset = $state(0);
-
-	const CATEGORIES: { value: MarketCategory | ''; label: string }[] = [
-		{ value: '', label: 'All Categories' },
-		{ value: 'bug_fixes', label: 'Bug Fixes' },
-		{ value: 'feature_delivery', label: 'Feature Delivery' },
-		{ value: 'patch_timing', label: 'Patch Timing' },
-		{ value: 'community_events', label: 'Community Events' },
-		{ value: 'meta', label: 'Meta' }
-	];
 
 	async function load() {
 		loading = true;
@@ -91,7 +83,7 @@
 			onchange={() => { offset = 0; load(); }}
 			class="sc-input !w-auto !py-1.5 text-sm"
 		>
-			{#each CATEGORIES as cat}
+			{#each CATEGORY_FILTER_OPTIONS as cat}
 				<option value={cat.value}>{cat.label}</option>
 			{/each}
 		</select>
@@ -120,7 +112,7 @@
 				>
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-2 mb-1.5">
-							<span class="sc-tag">{market.category.replace('_', ' ')}</span>
+							<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
 							{#if market.status === 'resolved'}
 								<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">Resolved</span>
 							{/if}

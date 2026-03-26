@@ -3,6 +3,7 @@
 	import { createMarket } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
 	import type { MarketCategory, MarketResolutionType } from '$lib/types';
+	import { CATEGORY_CREATE_OPTIONS } from '$lib/categories';
 
 	let title = $state('');
 	let description = $state('');
@@ -27,14 +28,6 @@
 			(deadlineType === 'date' ? deadlineDate.length > 0 : patchTarget.trim().length > 0) &&
 			(resolutionType === 'binary' || resolutionThreshold.trim().length > 0)
 	);
-
-	const categories: { value: MarketCategory; label: string }[] = [
-		{ value: 'bug_fixes', label: 'Bug Fix' },
-		{ value: 'feature_delivery', label: 'Feature / Patch' },
-		{ value: 'patch_timing', label: 'Patch Timing' },
-		{ value: 'community_events', label: 'Community Event' },
-		{ value: 'meta', label: 'Meta' }
-	];
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
@@ -119,7 +112,7 @@
 					bind:value={category}
 					class="sc-input mt-1.5"
 				>
-					{#each categories as cat}
+					{#each CATEGORY_CREATE_OPTIONS as cat}
 						<option value={cat.value}>{cat.label}</option>
 					{/each}
 				</select>

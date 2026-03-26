@@ -15,6 +15,7 @@
 	} from '$lib/api';
 	import { isModerator } from '$lib/stores/auth';
 	import type { Market, ResolutionRequestMarket, Report, DetectedPatch } from '$lib/types';
+	import { CATEGORY_LABELS } from '$lib/categories';
 
 	let pending = $state<(Market & { creator_name: string })[]>([]);
 	let resolutionRequests = $state<ResolutionRequestMarket[]>([]);
@@ -229,7 +230,7 @@
 							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 								<div class="flex-1 min-w-0">
 									<div class="flex items-center gap-2 mb-2">
-										<span class="sc-tag">{market.category.replace('_', ' ')}</span>
+										<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
 									</div>
 									<h2 class="text-surface-800 font-semibold text-base">{market.title}</h2>
 									{#if market.description}
@@ -321,7 +322,7 @@
 							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 								<div class="flex-1 min-w-0">
 									<div class="flex items-center gap-2 mb-2">
-										<span class="sc-tag">{rr.category.replace('_', ' ')}</span>
+										<span class="sc-tag">{CATEGORY_LABELS[rr.category] ?? rr.category}</span>
 										<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Resolution Requested</span>
 									</div>
 									<h2 class="text-surface-800 font-semibold text-base">

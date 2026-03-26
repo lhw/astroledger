@@ -198,7 +198,6 @@ export interface Comment {
 	 * Other viewers never receive hidden comments in their response at all.
 	 */
 	hidden: boolean;
-	is_own_hidden: boolean;
 	created_at: string;
 }
 

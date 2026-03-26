@@ -87,7 +87,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 	price := YESPrice(b, qYes, qNo)
 
 	var cost int64
-	var deltaYes, deltaNp float64
+	var deltaYes, deltaNo float64
 
 	switch inp.Action {
 	case "buy":
@@ -101,7 +101,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 		if sideYes {
 			deltaYes = inp.Shares
 		} else {
-			deltaNp = inp.Shares
+			deltaNo = inp.Shares
 		}
 		// Deduct cost from user.
 		if err := qTx.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{Balance: -cost, ID: inp.UserID}); err != nil {
@@ -133,7 +133,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 		if sideYes {
 			deltaYes = -inp.Shares
 		} else {
-			deltaNp = -inp.Shares
+			deltaNo = -inp.Shares
 		}
 		// Credit user with revenue.
 		if revenue > 0 {
@@ -146,7 +146,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 	// Update AMM pool state.
 	if err := qTx.UpdateMarketAMMState(ctx, db.UpdateMarketAMMStateParams{
 		YesShares: qYes + deltaYes,
-		NoShares:  qNo + deltaNp,
+		NoShares:  qNo + deltaNo,
 		ID:        inp.MarketID,
 	}); err != nil {
 		return nil, fmt.Errorf("update amm state: %w", err)
@@ -157,7 +157,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 		UserID:    inp.UserID,
 		MarketID:  inp.MarketID,
 		YesShares: deltaYes,
-		NoShares:  deltaNp,
+		NoShares:  deltaNo,
 	}); err != nil {
 		return nil, fmt.Errorf("upsert position: %w", err)
 	}

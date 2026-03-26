@@ -69,27 +69,3 @@ func (h *TradingHandler) Trade(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, result)
 }
-
-// Quote returns the cost/revenue preview for a hypothetical trade without executing it.
-func (h *TradingHandler) Quote(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		MarketID int64   `json:"market_id"`
-		Side     string  `json:"side"`
-		Action   string  `json:"action"`
-		Shares   float64 `json:"shares"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-
-	if body.MarketID <= 0 || body.Shares <= 0 {
-		respondError(w, http.StatusBadRequest, "market_id and shares required")
-		return
-	}
-
-	// Reuse TradingService's injected queries via the execute helper? 
-	// For now do a direct DB query via the svc's exposed field would violate encapsulation.
-	// We'll restructure: expose a Quote method on TradingService.
-	respondError(w, http.StatusNotImplemented, "quote endpoint not yet implemented")
-}

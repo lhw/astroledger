@@ -20,7 +20,6 @@ var validCategories = map[string]bool{
 	"bug_fixes":        true,
 	"feature_delivery": true,
 	"patch_timing":     true,
-	"cig_drama":        true,
 	"community_events": true,
 	"meta":             true,
 }

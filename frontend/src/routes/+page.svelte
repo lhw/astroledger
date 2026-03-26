@@ -4,6 +4,7 @@
 	import { isLoggedIn } from '$lib/stores/auth';
 	import { loginWithSCID } from '$lib/api';
 	import type { MarketList } from '$lib/types';
+	import { CATEGORY_LABELS } from '$lib/categories';
 
 	let { data } = $props<{ data: { featured: MarketList | null } }>();
 
@@ -11,14 +12,6 @@
 	const { featured: initialFeatured } = untrack(() => data);
 	let featured = $state<MarketList | null>(initialFeatured ?? null);
 	let loading = $state(initialFeatured == null);
-
-	const CATEGORY_LABELS: Record<string, string> = {
-		bug_fixes: 'Bug Fix',
-		feature_delivery: 'Feature / Patch',
-		patch_timing: 'Patch Timing',
-		community_events: 'Community Event',
-		meta: 'Meta'
-	};
 
 	onMount(async () => {
 		if (initialFeatured) return; // SSR already provided data

@@ -6,6 +6,7 @@
 	import { buyCost, sellRevenue, maxAffordable } from '$lib/amm';
 	import { renderMarkdown } from '$lib/markdown';
 	import type { MarketWithPrice, PricePoint, Comment } from '$lib/types';
+	import { CATEGORY_LABELS } from '$lib/categories';
 
 	let { data } = $props<{ data: { market: MarketWithPrice | null; history: PricePoint[] } }>();
 
@@ -113,7 +114,7 @@
 			const c = await postComment(id, commentInput.trim());
 			commentInput = '';
 			await loadComments();
-			if (c.is_own_hidden) {
+			if (c.hidden) {
 				commentError = '⚠ Your comment was flagged for review and is only visible to you until a moderator clears it.';
 			}
 		} catch (e) {
@@ -246,7 +247,7 @@
 			<div class="flex items-center gap-2 mb-3">
 				<a href="/markets" class="text-surface-500 hover:text-primary-600 text-xs uppercase tracking-wider no-underline transition-colors">← Markets</a>
 				<span class="text-surface-300">/</span>
-				<span class="sc-tag">{market.category.replace('_', ' ')}</span>
+				<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
 				{#if market.status === 'resolved'}
 					<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">
 						Resolved {market.resolution?.toUpperCase()}
@@ -465,7 +466,7 @@
 				<!-- Discussion / Comments -->
 				<div class="sc-card p-5">
 					<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-4">
-						Discussion ({comments.filter((c) => !c.hidden || c.is_own_hidden).length})
+						Discussion ({comments.length})
 					</h3>
 
 					{#if comments.length === 0}
@@ -484,7 +485,7 @@
 											>Delete</button>
 										{/if}
 									</div>
-									{#if comment.is_own_hidden}
+									{#if comment.hidden}
 										<div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-1.5">
 											<span class="font-bold">⚠ Under review</span> — your comment is only visible to you until a moderator clears it.
 										</div>

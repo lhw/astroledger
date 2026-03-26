@@ -15,8 +15,6 @@ import (
 	"github.com/lhw/scolymarket/internal/service"
 )
 
-const weeklyCreditsPerUser = 200
-
 // AdminHandler handles admin-only endpoints.
 type AdminHandler struct {
 	queries    *db.Queries
@@ -74,7 +72,7 @@ func (h *AdminHandler) TriggerWeeklyPayout(w http.ResponseWriter, r *http.Reques
 	}
 	respondJSON(w, http.StatusOK, map[string]any{
 		"users_paid":       count,
-		"credits_per_user": weeklyCreditsPerUser,
+		"credits_per_user": db.WeeklyPayoutAmount,
 		"message":          "Payout complete",
 	})
 }
