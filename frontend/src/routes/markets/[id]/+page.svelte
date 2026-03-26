@@ -61,6 +61,17 @@
 		return maxAffordable(m.liquidity_param, m.yes_shares, m.no_shares, Math.max(0, budgetAmount), tradeSide === 'yes');
 	});
 
+	// Whole shares actually purchased (backend works with integers).
+	let floorBudgetShares = $derived(Math.floor(budgetShares));
+
+	// Exact cost for the floored share count — may be less than budgetAmount.
+	let actualBudgetCost = $derived.by(() => {
+		if (!data_) return 0;
+		const m = data_.market;
+		if (floorBudgetShares <= 0) return 0;
+		return buyCost(m.liquidity_param, m.yes_shares, m.no_shares, floorBudgetShares, tradeSide === 'yes');
+	});
+
 	let estimatedRevenue = $derived.by(() => {
 		if (!data_) return 0;
 		const m = data_.market;
@@ -70,7 +81,7 @@
 	let maxShares = $derived.by(() => {
 		if (!data_ || !$currentUser) return 1000;
 		const m = data_.market;
-		return maxAffordable(m.liquidity_param, m.yes_shares, m.no_shares, $currentUser.balance, tradeSide === 'yes');
+		return Math.floor(maxAffordable(m.liquidity_param, m.yes_shares, m.no_shares, $currentUser.balance, tradeSide === 'yes'));
 	});
 
 	let maxSellShares = $derived.by(() => {
@@ -80,8 +91,11 @@
 			: Math.floor(data_.my_position.no_shares);
 	});
 
-	let canAfford = $derived($currentUser ? estimatedCost <= $currentUser.balance : false);
-	let canAffordBudget = $derived($currentUser ? budgetAmount <= $currentUser.balance : false);
+	let canAfford = $derived($currentUser ? estimatedCost <= $currentUser.balance && tradeShares <= maxShares : false);
+	let canAffordBudget = $derived($currentUser ? actualBudgetCost <= $currentUser.balance && floorBudgetShares > 0 : false);
+
+	// Chart UI state
+	let chartLogScale = $state(false);
 
 	async function loadComments() {
 		try {
@@ -153,15 +167,15 @@
 		tradeSuccess = '';
 		try {
 			if (tradeAction === 'buy') {
-				// Budget mode: use the computed share count from the LMSR inversion.
-				const sharesToBuy = budgetMode ? budgetShares : tradeShares;
-				if (sharesToBuy <= 0) {
-					tradeError = 'Budget too low — cannot purchase any shares at this price.';
-					return;
-				}
-				const result = await executeTrade(id, tradeSide, 'buy', sharesToBuy);
-				currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
-				tradeSuccess = `Bought ${sharesToBuy.toFixed(2)} ${tradeSide.toUpperCase()} share${sharesToBuy !== 1 ? 's' : ''} for ${result.Cost.toLocaleString()} bUEC.`;
+			// Budget mode: use the floored whole-share count derived from the LMSR inversion.
+			const sharesToBuy = budgetMode ? floorBudgetShares : tradeShares;
+			if (sharesToBuy <= 0) {
+				tradeError = 'Budget too low — cannot purchase any shares at this price.';
+				return;
+			}
+			const result = await executeTrade(id, tradeSide, 'buy', sharesToBuy);
+			currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
+			tradeSuccess = `Bought ${sharesToBuy} ${tradeSide.toUpperCase()} share${sharesToBuy !== 1 ? 's' : ''} for ${result.Cost.toLocaleString()} bUEC.`;
 			} else {
 				const result = await executeTrade(id, tradeSide, 'sell', sellShares);
 				currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
@@ -273,30 +287,64 @@
 
 				<!-- Price history chart -->
 				<div class="sc-card p-5">
-					<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-3">Price History</h3>
+					<div class="flex items-center justify-between mb-3">
+						<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em]">Price History</h3>
+						{#if priceHistory.length > 1}
+							<button
+								onclick={() => (chartLogScale = !chartLogScale)}
+								class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border transition-colors
+									{chartLogScale ? 'border-primary-400 text-primary-600 bg-primary-50' : 'border-surface-300 text-surface-400 hover:border-surface-400'}"
+								title="Toggle log scale"
+							>Log</button>
+						{/if}
+					</div>
 					{#if priceHistory.length > 1}
 						{@const W = 600}
 						{@const H = 100}
 						{@const n = priceHistory.length}
-						{@const pts = priceHistory.map((p, i) =>
-							`${(i / (n - 1)) * W},${H - p.price_at_trade * H}`
-						).join(' ')}
-						<div class="flex items-end gap-3 mb-2">
-							<span class="text-green-700 text-xs font-semibold">
-								YES {Math.round((priceHistory.at(-1)?.price_at_trade ?? 0) * 100)}¢
+						{@const scaleP = (p: number) => chartLogScale
+							? Math.log1p(p * 9) / Math.log1p(9)
+							: p}
+						{@const yOf = (p: number) => H - scaleP(Math.max(0.001, Math.min(0.999, p))) * H}
+						{@const xOf = (i: number) => (i / (n - 1)) * W}
+						{@const yesPts = priceHistory.map((p, i) => `${xOf(i)},${yOf(p.price_at_trade)}`).join(' ')}
+						{@const noPts  = priceHistory.map((p, i) => `${xOf(i)},${yOf(1 - p.price_at_trade)}`).join(' ')}
+						{@const lastP  = priceHistory.at(-1)!.price_at_trade}
+						{@const resolved = market.resolution !== null}
+						<div class="flex items-center gap-4 mb-2">
+							<span class="flex items-center gap-1 text-xs font-semibold text-yellow-700">
+								<span class="inline-block w-3 h-0.5 bg-yellow-500 rounded"></span>
+								YES {Math.round(lastP * 100)}%
 							</span>
-							<span class="text-surface-400 text-xs">last {priceHistory.length} trades</span>
+							<span class="flex items-center gap-1 text-xs font-semibold text-red-500">
+								<span class="inline-block w-3 h-0.5 bg-red-400 rounded"></span>
+								NO {Math.round((1 - lastP) * 100)}%
+							</span>
+							<span class="text-surface-400 text-xs ml-auto">{priceHistory.length} trades</span>
 						</div>
-						<svg viewBox="0 0 {W} {H}" class="w-full rounded" style="height:90px;background:#fafaf8">
+						<svg viewBox="0 0 {W} {H}" class="w-full rounded" style="height:100px;background:#fafaf8">
 							<!-- 50% reference line -->
-							<line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4 4"/>
-							<polyline points={pts} fill="none" stroke="#D4A843" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+							<line x1="0" y1={yOf(0.5)} x2={W} y2={yOf(0.5)} stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4 4"/>
+							<!-- NO price line -->
+							<polyline points={noPts} fill="none" stroke="#f87171" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="3 3" opacity="0.7"/>
+							<!-- YES price line -->
+							<polyline points={yesPts} fill="none" stroke="#D4A843" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+							<!-- Resolution marker: vertical line at rightmost point -->
+							{#if resolved}
+								<line x1={W} y1="0" x2={W} y2={H} stroke="{market.resolution === 'yes' ? '#16a34a' : '#dc2626'}" stroke-width="2" stroke-dasharray="4 3" opacity="0.8"/>
+								<text x={W - 4} y="10" text-anchor="end" font-size="8" fill="{market.resolution === 'yes' ? '#16a34a' : '#dc2626'}" font-weight="bold" font-family="sans-serif">RESOLVED {market.resolution?.toUpperCase()}</text>
+							{/if}
 							<!-- Latest dot -->
-							<circle cx={W} cy={H - (priceHistory.at(-1)?.price_at_trade ?? 0.5) * H} r="4" fill="#D4A843"/>
+							<circle cx={W} cy={yOf(lastP)} r="4" fill="#D4A843"/>
 						</svg>
+						<!-- Time axis -->
 						<div class="flex justify-between mt-1">
-							<span class="text-surface-400 text-[10px]">{new Date(priceHistory[0].created_at).toLocaleDateString()}</span>
-							<span class="text-surface-400 text-[10px]">{new Date(priceHistory.at(-1)!.created_at).toLocaleDateString()}</span>
+							{#each [0, 0.25, 0.5, 0.75, 1] as frac}
+								{@const idx = Math.round(frac * (n - 1))}
+								<span class="text-surface-400 text-[10px]">
+									{new Date(priceHistory[idx].created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+								</span>
+							{/each}
 						</div>
 					{:else}
 						<p class="text-surface-400 text-xs text-center py-4">No trades yet — be the first!</p>
@@ -489,11 +537,11 @@
 					<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-4">Current Odds</h3>
 					<div class="grid grid-cols-2 gap-3">
 						<div class="text-center p-3 rounded bg-green-50 border border-green-100">
-							<div class="text-2xl font-bold text-green-700">{data_.yes_price}¢</div>
+							<div class="text-2xl font-bold text-green-700">{data_.yes_price}%</div>
 							<div class="text-green-600 text-xs mt-1 uppercase tracking-wider font-semibold">YES</div>
 						</div>
 						<div class="text-center p-3 rounded bg-red-50 border border-red-100">
-							<div class="text-2xl font-bold text-red-600">{data_.no_price}¢</div>
+							<div class="text-2xl font-bold text-red-600">{data_.no_price}%</div>
 							<div class="text-red-500 text-xs mt-1 uppercase tracking-wider font-semibold">NO</div>
 						</div>
 					</div>
@@ -631,18 +679,20 @@
 									</div>
 									{#if $currentUser}
 										<div class="mb-4 text-xs text-surface-500">
-											Est. cost: <span class="{canAfford ? 'text-surface-700 font-semibold' : 'text-red-600 font-semibold'}">{estimatedCost.toLocaleString()} bUEC</span>
-											{#if !canAfford}
-												<span class="text-red-500"> — insufficient balance</span>
-											{/if}
-										</div>
-									{/if}
-									<button
-										onclick={doTrade}
-										disabled={trading || tradeShares <= 0 || !canAfford}
-										class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
-									>
-										{trading ? 'Buying…' : `Buy ${tradeShares} ${tradeSide.toUpperCase()}`}
+										Cost: <span class="{canAfford ? 'text-surface-700 font-semibold' : 'text-red-600 font-semibold'}">{estimatedCost.toLocaleString()} bUEC</span>
+										{#if tradeShares > maxShares}
+											<span class="text-red-500"> — max is {maxShares} shares with your balance</span>
+										{:else if !canAfford}
+											<span class="text-red-500"> — insufficient balance</span>
+										{/if}
+									</div>
+								{/if}
+								<button
+									onclick={doTrade}
+									disabled={trading || tradeShares <= 0 || !canAfford}
+									class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
+								>
+									{trading ? 'Buying…' : `Buy ${tradeShares} ${tradeSide.toUpperCase()} for ${estimatedCost.toLocaleString()} bUEC`}
 									</button>
 								{:else}
 									<!-- Budget mode: enter how much to spend -->
@@ -667,18 +717,27 @@
 											>All in</button>
 										{/if}
 									</div>
-									<div class="mb-4 text-xs text-surface-500">
-										You'll get: <span class="text-surface-700 font-semibold">~{budgetShares.toFixed(2)} {tradeSide.toUpperCase()} shares</span>
-										{#if !canAffordBudget}
-											<span class="text-red-500"> — insufficient balance</span>
+									<div class="mb-4 text-xs text-surface-500 space-y-0.5">
+										{#if floorBudgetShares > 0}
+											<div>You'll buy: <span class="text-surface-700 font-semibold">{floorBudgetShares} {tradeSide.toUpperCase()} share{floorBudgetShares !== 1 ? 's' : ''}</span></div>
+											<div>Actual cost: <span class="{canAffordBudget ? 'text-surface-700 font-semibold' : 'text-red-600 font-semibold'}">{actualBudgetCost.toLocaleString()} bUEC</span>
+												{#if budgetAmount > actualBudgetCost}
+													<span class="text-surface-400"> ({(budgetAmount - actualBudgetCost).toLocaleString()} bUEC unused)</span>
+												{/if}
+											</div>
+										{:else}
+											<div class="text-red-500">Budget too low — can't buy any shares at this price.</div>
+										{/if}
+										{#if !canAffordBudget && floorBudgetShares > 0}
+											<div class="text-red-500">Insufficient balance.</div>
 										{/if}
 									</div>
 									<button
 										onclick={doTrade}
-										disabled={trading || budgetShares <= 0 || !canAffordBudget}
+										disabled={trading || floorBudgetShares <= 0 || !canAffordBudget}
 										class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
 									>
-										{trading ? 'Buying…' : `Spend ${budgetAmount.toLocaleString()} bUEC on ${tradeSide.toUpperCase()}`}
+										{trading ? 'Buying…' : `Buy ${floorBudgetShares} ${tradeSide.toUpperCase()} for ${actualBudgetCost.toLocaleString()} bUEC`}
 									</button>
 								{/if}
 							{:else}

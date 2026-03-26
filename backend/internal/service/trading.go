@@ -59,7 +59,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 	}
 	defer tx.Rollback()
 
-	qTx := s.queries.WithTx(tx)
+	qTx := s.queries.WithBoundTx(tx)
 
 	market, err := qTx.GetMarketByID(ctx, inp.MarketID)
 	if errors.Is(err, sql.ErrNoRows) {

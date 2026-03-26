@@ -18,19 +18,6 @@ VALUES (?, ?, ?)
 RETURNING id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
           rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified;
 
--- name: UpdateUserLastLogin :exec
-UPDATE users
-SET last_login_at      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-    display_name       = ?,
-    email              = ?,
-    rsi_handle         = ?,
-    rsi_verified_at    = ?,
-    rsi_enlisted       = ?,
-    rsi_citizen_record = ?,
-    avatar_url         = ?,
-    is_rsi_verified    = ?
-WHERE id = ?;
-
 -- name: UpdateUserBalance :exec
 UPDATE users
 SET balance = balance + ?

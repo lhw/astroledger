@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log/slog"
 
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver ("pgx")
 	"github.com/lhw/scolymarket/migrations"
+	pgmigrations "github.com/lhw/scolymarket/migrations/postgres"
 	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // SQLite driver ("sqlite")
 )
 
 // Open opens the SQLite database at path, applies WAL and foreign-key pragmas,
@@ -29,7 +32,31 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	if err := migrate(db); err != nil {
+	if err := runMigrations(db, "sqlite3", migrations.FS); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return db, nil
+}
+
+// OpenPostgres opens a PostgreSQL database at the given connection URL and runs
+// any pending goose migrations using PostgreSQL-compatible migration files.
+func OpenPostgres(ctx context.Context, url string) (*sql.DB, error) {
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres: %w", err)
+	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("postgres ping: %w", err)
+	}
+
+	if err := runMigrations(db, "postgres", pgmigrations.FS); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -54,11 +81,11 @@ func applyPragmas(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func migrate(db *sql.DB) error {
+func runMigrations(db *sql.DB, dialect string, migFS fs.FS) error {
 	goose.SetLogger(goose.NopLogger())
-	goose.SetBaseFS(migrations.FS)
+	goose.SetBaseFS(migFS)
 
-	if err := goose.SetDialect("sqlite3"); err != nil {
+	if err := goose.SetDialect(dialect); err != nil {
 		return fmt.Errorf("goose set dialect: %w", err)
 	}
 
@@ -66,7 +93,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("goose up: %w", err)
 	}
 
-	slog.Info("database migrations applied")
+	slog.Info("database migrations applied", "dialect", dialect)
 	return nil
 }
 

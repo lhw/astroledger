@@ -35,15 +35,6 @@ SET yes_shares = ?,
     no_shares  = ?
 WHERE id = ?;
 
--- name: ResolveMarket :exec
-UPDATE markets
-SET status              = 'resolved',
-    resolution          = ?,
-    resolved_by         = ?,
-    resolution_evidence = ?,
-    resolved_at         = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-WHERE id = ?;
-
 -- name: ListPendingMarkets :many
 SELECT m.*, u.display_name AS creator_name
 FROM markets m
@@ -62,16 +53,4 @@ ORDER BY created_at ASC;
 SELECT title FROM markets
 WHERE status IN ('pending_review', 'active', 'resolution_requested');
 
--- name: ExpirePendingMarkets :exec
--- Auto-cancel markets that have been in pending_review for more than 14 days.
-UPDATE markets
-SET status = 'cancelled'
-WHERE status = 'pending_review'
-  AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-14 days');
 
--- name: ExpireOverdueActiveMarkets :exec
--- Move active markets past their resolution deadline into deadline_passed status.
-UPDATE markets
-SET status = 'deadline_passed'
-WHERE status = 'active'
-  AND resolution_deadline < strftime('%Y-%m-%dT%H:%M:%SZ', 'now');

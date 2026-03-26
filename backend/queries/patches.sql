@@ -1,7 +1,3 @@
--- name: InsertPatch :exec
-INSERT OR IGNORE INTO detected_patches (title, patch_version, thread_url)
-VALUES (?, ?, ?);
-
 -- name: ListNewPatches :many
 SELECT * FROM detected_patches WHERE notified = 0 ORDER BY first_seen_at DESC;
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -41,13 +42,24 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	sqlDB, err := database.Open(ctx, cfg.DBPath)
+	var sqlDB *sql.DB
+	if cfg.UsePostgres() {
+		slog.Info("connecting to PostgreSQL", "url", "DATABASE_URL")
+		sqlDB, err = database.OpenPostgres(ctx, cfg.DatabaseURL)
+	} else {
+		sqlDB, err = database.Open(ctx, cfg.DBPath)
+	}
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
 	defer sqlDB.Close()
 
-	queries := db.New(sqlDB)
+	var queries *db.Queries
+	if cfg.UsePostgres() {
+		queries = db.NewPostgres(sqlDB)
+	} else {
+		queries = db.New(sqlDB)
+	}
 
 	// Services
 	badgeSvc := service.NewBadgeService(queries)

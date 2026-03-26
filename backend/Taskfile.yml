@@ -98,6 +98,27 @@ tasks:
     cmds:
       - go mod tidy
 
+  seed:
+    desc: Seed the database with sample markets in all lifecycle states
+    cmds:
+      - go run ./cmd/seed
+    env:
+      DB_PATH: '{{.DB_PATH}}'
+
+  seed:clean:
+    desc: Delete all data then re-seed with sample markets
+    cmds:
+      - go run ./cmd/seed -clean
+    env:
+      DB_PATH: '{{.DB_PATH}}'
+
+  clean-db:
+    desc: Delete all application data while keeping the schema (migrations are preserved)
+    cmds:
+      - go run ./cmd/seed -clean-only
+    env:
+      DB_PATH: '{{.DB_PATH}}'
+
   setup:
     desc: Initial setup — download deps and run migrations
     cmds:

@@ -106,7 +106,7 @@
 						</div>
 						<div class="flex-shrink-0 text-right">
 							<div class="text-primary-600 font-bold text-sm">YES</div>
-							<div class="text-surface-400 text-xs">50¢</div>
+							<div class="text-surface-400 text-xs">50%</div>
 						</div>
 					</a>
 				{/each}

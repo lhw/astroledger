@@ -43,8 +43,9 @@ func BuyCost(b, qYes, qNo, deltaShares float64, sideYes bool) int64 {
 		after = lmsr(b, qYes, qNo+deltaShares)
 	}
 	diff := after - before
-	// Round up to protect the market maker.
-	return int64(math.Ceil(diff))
+	// Scale by payoutPerShare (100) so that per-share cost in bUEC matches the
+	// displayed probability percentage. Round up to protect the market maker.
+	return int64(math.Ceil(diff * 100))
 }
 
 // SellRevenue returns the integer ScollyBucks received for selling deltaShares.
@@ -58,8 +59,8 @@ func SellRevenue(b, qYes, qNo, deltaShares float64, sideYes bool) int64 {
 		after = lmsr(b, qYes, qNo-deltaShares)
 	}
 	diff := before - after // positive: revenue from selling
-	// Round down to protect the market maker.
-	return int64(math.Floor(diff))
+	// Scale by payoutPerShare (100) — mirror of BuyCost. Round down to protect the AMM.
+	return int64(math.Floor(diff * 100))
 }
 
 // MaxAffordableShares binary-searches for the max shares a user can buy with budget ScollyBucks.

@@ -187,8 +187,8 @@ func TestSellShares(t *testing.T) {
 
 	m := createActiveMarket(t, ctx, marketSvc, "Will 4.2 ship before May?", mod.ID, mod.ID)
 
-	// Buy 20 YES.
-	const shares = 20.0
+	// Buy 8 YES (20 shares would exceed the 1000 bUEC default balance at correct prices).
+	const shares = 8.0
 	buyCost := service.BuyCost(100.0, 0.0, 0.0, shares, true)
 
 	buyResult, err := tradingSvc.Execute(ctx, service.TradeInput{

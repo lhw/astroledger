@@ -9,22 +9,6 @@ import (
 	"context"
 )
 
-const insertPatch = `-- name: InsertPatch :exec
-INSERT OR IGNORE INTO detected_patches (title, patch_version, thread_url)
-VALUES (?, ?, ?)
-`
-
-type InsertPatchParams struct {
-	Title        string `json:"title"`
-	PatchVersion string `json:"patch_version"`
-	ThreadUrl    string `json:"thread_url"`
-}
-
-func (q *Queries) InsertPatch(ctx context.Context, arg InsertPatchParams) error {
-	_, err := q.db.ExecContext(ctx, insertPatch, arg.Title, arg.PatchVersion, arg.ThreadUrl)
-	return err
-}
-
 const listAllPatches = `-- name: ListAllPatches :many
 SELECT id, title, patch_version, thread_url, first_seen_at, notified FROM detected_patches ORDER BY first_seen_at DESC LIMIT 50
 `

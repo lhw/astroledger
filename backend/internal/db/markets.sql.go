@@ -83,32 +83,6 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 	return i, err
 }
 
-const expireOverdueActiveMarkets = `-- name: ExpireOverdueActiveMarkets :exec
-UPDATE markets
-SET status = 'deadline_passed'
-WHERE status = 'active'
-  AND resolution_deadline < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-`
-
-// Move active markets past their resolution deadline into deadline_passed status.
-func (q *Queries) ExpireOverdueActiveMarkets(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, expireOverdueActiveMarkets)
-	return err
-}
-
-const expirePendingMarkets = `-- name: ExpirePendingMarkets :exec
-UPDATE markets
-SET status = 'cancelled'
-WHERE status = 'pending_review'
-  AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-14 days')
-`
-
-// Auto-cancel markets that have been in pending_review for more than 14 days.
-func (q *Queries) ExpirePendingMarkets(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, expirePendingMarkets)
-	return err
-}
-
 const getActivePendingMarketTitles = `-- name: GetActivePendingMarketTitles :many
 SELECT title FROM markets
 WHERE status IN ('pending_review', 'active', 'resolution_requested')
@@ -397,33 +371,6 @@ func (q *Queries) ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsR
 		return nil, err
 	}
 	return items, nil
-}
-
-const resolveMarket = `-- name: ResolveMarket :exec
-UPDATE markets
-SET status              = 'resolved',
-    resolution          = ?,
-    resolved_by         = ?,
-    resolution_evidence = ?,
-    resolved_at         = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-WHERE id = ?
-`
-
-type ResolveMarketParams struct {
-	Resolution         *string `json:"resolution"`
-	ResolvedBy         *int64  `json:"resolved_by"`
-	ResolutionEvidence *string `json:"resolution_evidence"`
-	ID                 int64   `json:"id"`
-}
-
-func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) error {
-	_, err := q.db.ExecContext(ctx, resolveMarket,
-		arg.Resolution,
-		arg.ResolvedBy,
-		arg.ResolutionEvidence,
-		arg.ID,
-	)
-	return err
 }
 
 const updateMarketAMMState = `-- name: UpdateMarketAMMState :exec

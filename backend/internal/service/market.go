@@ -148,7 +148,7 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 	}
 	defer tx.Rollback()
 
-	qTx := s.queries.WithTx(tx)
+	qTx := s.queries.WithBoundTx(tx)
 
 	market, err := qTx.GetMarketByID(ctx, inp.MarketID)
 	if errors.Is(err, sql.ErrNoRows) {

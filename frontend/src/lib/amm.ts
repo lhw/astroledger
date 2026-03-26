@@ -23,7 +23,8 @@ export function buyCost(
 ): number {
 	const before = lmsrCost(b, qYes, qNo);
 	const after = yes ? lmsrCost(b, qYes + shares, qNo) : lmsrCost(b, qYes, qNo + shares);
-	return Math.ceil(after - before);
+	// Scale by payout-per-share (100) so that per-share cost in bUEC ≈ probability%.
+	return Math.ceil((after - before) * 100);
 }
 
 /** Revenue (in bUEC, rounded down) received for selling `shares` YES or NO shares. */
@@ -37,7 +38,8 @@ export function sellRevenue(
 	if (shares <= 0) return 0;
 	const before = lmsrCost(b, qYes, qNo);
 	const after = yes ? lmsrCost(b, qYes - shares, qNo) : lmsrCost(b, qYes, qNo - shares);
-	return Math.floor(before - after);
+	// Scale by payout-per-share (100) — mirror of buyCost.
+	return Math.floor((before - after) * 100);
 }
 
 /**

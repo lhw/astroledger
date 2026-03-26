@@ -48,14 +48,19 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - The current `date` and `numeric` resolution types are still binary (YES/NO against a threshold). Consider a true multi-choice market structure for questions like "Which patch will Big Ben finally get fixed in? 4.1 / 4.2 / 4.3 / Never".
 - Requires a new DB schema (`market_outcomes` table, per-outcome share pools), a different AMM formulation (multi-dimensional LMSR or simple equal-liquidity pools), and a redesigned trade UI.
 
-### Fractional Share Display / UX
-- Budget mode calculates `budgetShares` as a float (e.g., 3.72 shares). The actual trade submits `Math.floor(budgetShares)` whole shares. The UI should make it clear that only whole shares are purchased and show the exact spend.
-- Consider allowing the backend to support fractional shares if ever needed.
+### ~~Fractional Share Display / UX~~ ✅ Done
+- Budget mode now shows the actual whole-share count that will be purchased (`Math.floor(budgetShares)`) rather than a float estimate.
+- The info row below the budget input shows: exact shares to buy, real cost (from `buyCost` with the floored count), and how many bUEC go unused.
+- The buy button now reads "Buy N SIDE shares for X bUEC" so there is no surprise at confirmation.
+- `doTrade` sends the floored integer to the backend, eliminating the discrepancy between displayed budget and actual charge.
+- The "Budget too low" guard now triggers when `floorBudgetShares === 0` rather than when `budgetShares < 1`.
 
-### Price History Chart Improvements
-- The current chart shows only the last N trades. Add time-axis labels and a resolution marker line.
-- Allow switching between linear and log scale.
-- Show NO price as a secondary line (they are complementary, but visual context is useful).
+### ~~Price History Chart Improvements~~ ✅ Done
+- **Log scale toggle**: A "Log" button above the chart switches the Y axis to `log1p(p*9)/log1p(9)` scaling, spreading out the extremes at low/high probabilities.
+- **NO price secondary line**: A dashed red polyline shows the complement price (`1 - YES`) so both sides are visible at a glance.
+- **Resolution marker**: Resolved markets show a vertical dashed line (green=YES, red=NO) at the rightmost trade with a "RESOLVED YES/NO" label.
+- **Time-axis labels**: Five evenly-spaced date labels (0%, 25%, 50%, 75%, 100% of the trade range) replace the old start/end-only pair.
+- Legend row shows YES and NO current prices with colour swatches.
 
 ### User Portfolio Page Improvements
 - Show unrealized P&L per position (current share value at market price vs. cost basis — requires storing average cost, not currently tracked).

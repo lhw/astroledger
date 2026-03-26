@@ -16,10 +16,6 @@ type Querier interface {
 	CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteComment(ctx context.Context, id int64) error
-	// Move active markets past their resolution deadline into deadline_passed status.
-	ExpireOverdueActiveMarkets(ctx context.Context) error
-	// Auto-cancel markets that have been in pending_review for more than 14 days.
-	ExpirePendingMarkets(ctx context.Context) error
 	// Returns titles of all non-archived markets for duplicate-title detection.
 	GetActivePendingMarketTitles(ctx context.Context) ([]string, error)
 	GetCommentByID(ctx context.Context, id int64) (Comment, error)
@@ -39,18 +35,15 @@ type Querier interface {
 	GetUserPosition(ctx context.Context, arg GetUserPositionParams) (Position, error)
 	GetUserPositions(ctx context.Context, userID int64) ([]GetUserPositionsRow, error)
 	GetUserTrades(ctx context.Context, arg GetUserTradesParams) ([]GetUserTradesRow, error)
-	InsertPatch(ctx context.Context, arg InsertPatchParams) error
 	ListAllPatches(ctx context.Context) ([]DetectedPatch, error)
 	ListMarkets(ctx context.Context, arg ListMarketsParams) ([]ListMarketsRow, error)
 	ListNewPatches(ctx context.Context) ([]DetectedPatch, error)
 	ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsRow, error)
 	LogAdminAdjustment(ctx context.Context, arg LogAdminAdjustmentParams) error
 	MarkPatchNotified(ctx context.Context, id int64) error
-	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
 	UpdateMarketAMMState(ctx context.Context, arg UpdateMarketAMMStateParams) error
 	UpdateMarketStatus(ctx context.Context, arg UpdateMarketStatusParams) error
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
-	UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error
 	UpsertPosition(ctx context.Context, arg UpsertPositionParams) error
 }
 

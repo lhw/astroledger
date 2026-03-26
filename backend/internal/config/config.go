@@ -11,9 +11,13 @@ import (
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
-	Environment        string
-	Port               string
-	DBPath             string
+	Environment string
+	Port        string
+	// DBPath is the SQLite database file path. Ignored when DatabaseURL is set.
+	DBPath string
+	// DatabaseURL is a PostgreSQL connection string (postgres://…).
+	// When set, the backend switches to PostgreSQL and DBPath is ignored.
+	DatabaseURL        string
 	SCIDIssuer         string
 	SCIDClientID       string
 	SCIDClientSecret   string
@@ -28,6 +32,11 @@ type Config struct {
 	ModerationAPIKey string
 }
 
+// UsePostgres returns true when a PostgreSQL DATABASE_URL is configured.
+func (c *Config) UsePostgres() bool {
+	return c.DatabaseURL != ""
+}
+
 // Load reads configuration from the environment (and an optional .env file).
 func Load() (*Config, error) {
 	// Ignore error — .env is optional (not present in production).
@@ -37,6 +46,7 @@ func Load() (*Config, error) {
 		Environment:      env("ENVIRONMENT", "development"),
 		Port:             env("PORT", "8080"),
 		DBPath:           envWithAliases([]string{"DB_PATH", "DATABASE_PATH"}, "./scolymarket.db"),
+		DatabaseURL:      os.Getenv("DATABASE_URL"),
 		SCIDIssuer:       os.Getenv("SCID_ISSUER"),
 		SCIDClientID:     os.Getenv("SCID_CLIENT_ID"),
 		SCIDClientSecret: os.Getenv("SCID_CLIENT_SECRET"),

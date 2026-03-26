@@ -44,7 +44,29 @@ type ResolutionRequestRow struct {
 // ListResolutionRequestedMarkets returns markets that have had a resolution request
 // filed, together with the requester's details and any link/note provided.
 func (q *Queries) ListResolutionRequestedMarkets(ctx context.Context) ([]ResolutionRequestRow, error) {
-	const query = `
+	// SQLite returns strftime-produced TEXT; PostgreSQL returns native timestamptz.
+	// We build two variants so the scan matches what the driver returns.
+	var query string
+	if q.isPG() {
+		query = `
+SELECT m.id, m.title, m.description, m.category,
+       m.resolution_criteria, m.resolution_deadline,
+       m.status, m.resolution, m.created_by, m.resolved_by,
+       m.created_at, m.resolved_at, m.liquidity_param,
+       m.yes_shares, m.no_shares,
+       creator.display_name AS creator_name,
+       COALESCE(rrd.requested_by, m.created_by) AS requested_by,
+       COALESCE(requester.display_name, creator.display_name) AS requester_name,
+       rrd.link, rrd.note,
+       COALESCE(rrd.created_at, m.created_at) AS requested_at
+FROM markets m
+JOIN users creator ON creator.id = m.created_by
+LEFT JOIN resolution_request_details rrd ON rrd.market_id = m.id
+LEFT JOIN users requester ON requester.id = rrd.requested_by
+WHERE m.status = 'resolution_requested'
+ORDER BY requested_at ASC`
+	} else {
+		query = `
 SELECT m.id, m.title, m.description, m.category,
        m.resolution_criteria, m.resolution_deadline,
        m.status, m.resolution, m.created_by, m.resolved_by,
@@ -61,6 +83,7 @@ LEFT JOIN resolution_request_details rrd ON rrd.market_id = m.id
 LEFT JOIN users requester ON requester.id = rrd.requested_by
 WHERE m.status = 'resolution_requested'
 ORDER BY requested_at ASC`
+	}
 
 	rows, err := q.db.QueryContext(ctx, query)
 	if err != nil {
@@ -70,24 +93,38 @@ ORDER BY requested_at ASC`
 	items := make([]ResolutionRequestRow, 0)
 	for rows.Next() {
 		var i ResolutionRequestRow
-		var requestedAtStr string
-		if err := rows.Scan(
-			&i.ID, &i.Title, &i.Description, &i.Category,
-			&i.ResolutionCriteria, &i.ResolutionDeadline,
-			&i.Status, &i.Resolution, &i.CreatedBy, &i.ResolvedBy,
-			&i.CreatedAt, &i.ResolvedAt, &i.LiquidityParam,
-			&i.YesShares, &i.NoShares, &i.CreatorName,
-			&i.RequestedBy, &i.RequesterName, &i.RequestLink, &i.RequestNote,
-			&requestedAtStr,
-		); err != nil {
-			return nil, err
-		}
-		// Parse the datetime string produced by strftime. Try ISO 8601 with and
-		// without the trailing Z (covers both CURRENT_TIMESTAMP and our default).
-		for _, layout := range []string{"2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
-			if t, err2 := time.Parse(layout, requestedAtStr); err2 == nil {
-				i.RequestedAt = t.UTC()
-				break
+		if q.isPG() {
+			// PostgreSQL returns timestamptz — scan directly as time.Time.
+			if err := rows.Scan(
+				&i.ID, &i.Title, &i.Description, &i.Category,
+				&i.ResolutionCriteria, &i.ResolutionDeadline,
+				&i.Status, &i.Resolution, &i.CreatedBy, &i.ResolvedBy,
+				&i.CreatedAt, &i.ResolvedAt, &i.LiquidityParam,
+				&i.YesShares, &i.NoShares, &i.CreatorName,
+				&i.RequestedBy, &i.RequesterName, &i.RequestLink, &i.RequestNote,
+				&i.RequestedAt,
+			); err != nil {
+				return nil, err
+			}
+		} else {
+			// SQLite returns the strftime-produced TEXT string — parse manually.
+			var requestedAtStr string
+			if err := rows.Scan(
+				&i.ID, &i.Title, &i.Description, &i.Category,
+				&i.ResolutionCriteria, &i.ResolutionDeadline,
+				&i.Status, &i.Resolution, &i.CreatedBy, &i.ResolvedBy,
+				&i.CreatedAt, &i.ResolvedAt, &i.LiquidityParam,
+				&i.YesShares, &i.NoShares, &i.CreatorName,
+				&i.RequestedBy, &i.RequesterName, &i.RequestLink, &i.RequestNote,
+				&requestedAtStr,
+			); err != nil {
+				return nil, err
+			}
+			for _, layout := range []string{"2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
+				if t, err2 := time.Parse(layout, requestedAtStr); err2 == nil {
+					i.RequestedAt = t.UTC()
+					break
+				}
 			}
 		}
 		items = append(items, i)
@@ -260,6 +297,132 @@ func (q *Queries) CountMarketsWithNO(ctx context.Context, userID int64) (int64, 
 	err := q.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM positions WHERE user_id = ? AND no_shares > 0`, userID).Scan(&n)
 	return n, err
+}
+
+// ─── Dialect-aware queries (strftime / INSERT OR IGNORE differ by backend) ────
+//
+// These were removed from the sqlc sources so that both SQLite and PostgreSQL
+// can be supported at runtime via the pgDB/pgTx ? → $N rewriting wrapper.
+
+// UpdateUserLastLoginParams mirrors the struct sqlc would have generated.
+type UpdateUserLastLoginParams struct {
+	DisplayName      string  `json:"display_name"`
+	Email            string  `json:"email"`
+	RsiHandle        *string `json:"rsi_handle"`
+	RsiVerifiedAt    *string `json:"rsi_verified_at"`
+	RsiEnlisted      *string `json:"rsi_enlisted"`
+	RsiCitizenRecord *string `json:"rsi_citizen_record"`
+	AvatarUrl        *string `json:"avatar_url"`
+	IsRsiVerified    int64   `json:"is_rsi_verified"`
+	ID               int64   `json:"id"`
+}
+
+// UpdateUserLastLogin bumps last_login_at to the current time and refreshes the
+// SCID profile fields. Uses NOW() on PostgreSQL and strftime on SQLite.
+func (q *Queries) UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error {
+	ts := "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+	if q.isPG() {
+		ts = "NOW()"
+	}
+	stmt := `UPDATE users SET last_login_at = ` + ts + `,
+    display_name       = ?,
+    email              = ?,
+    rsi_handle         = ?,
+    rsi_verified_at    = ?,
+    rsi_enlisted       = ?,
+    rsi_citizen_record = ?,
+    avatar_url         = ?,
+    is_rsi_verified    = ?
+WHERE id = ?`
+	_, err := q.db.ExecContext(ctx, stmt,
+		arg.DisplayName, arg.Email,
+		arg.RsiHandle, arg.RsiVerifiedAt, arg.RsiEnlisted, arg.RsiCitizenRecord,
+		arg.AvatarUrl, arg.IsRsiVerified, arg.ID,
+	)
+	return err
+}
+
+// ResolveMarketParams mirrors the struct sqlc would have generated.
+type ResolveMarketParams struct {
+	Resolution         *string `json:"resolution"`
+	ResolvedBy         *int64  `json:"resolved_by"`
+	ResolutionEvidence *string `json:"resolution_evidence"`
+	ID                 int64   `json:"id"`
+}
+
+// ResolveMarket marks a market as resolved. Uses NOW() on PostgreSQL and
+// strftime on SQLite for the resolved_at timestamp.
+func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) error {
+	ts := "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+	if q.isPG() {
+		ts = "NOW()"
+	}
+	stmt := `UPDATE markets
+SET status              = 'resolved',
+    resolution          = ?,
+    resolved_by         = ?,
+    resolution_evidence = ?,
+    resolved_at         = ` + ts + `
+WHERE id = ?`
+	_, err := q.db.ExecContext(ctx, stmt,
+		arg.Resolution, arg.ResolvedBy, arg.ResolutionEvidence, arg.ID,
+	)
+	return err
+}
+
+// ExpirePendingMarkets auto-cancels markets that have been in pending_review for
+// more than 14 days. Uses an INTERVAL expression on PostgreSQL.
+func (q *Queries) ExpirePendingMarkets(ctx context.Context) error {
+	var stmt string
+	if q.isPG() {
+		stmt = `UPDATE markets SET status = 'cancelled'
+WHERE status = 'pending_review' AND created_at < NOW() - INTERVAL '14 days'`
+	} else {
+		stmt = `UPDATE markets SET status = 'cancelled'
+WHERE status = 'pending_review'
+  AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-14 days')`
+	}
+	_, err := q.db.ExecContext(ctx, stmt)
+	return err
+}
+
+// ExpireOverdueActiveMarkets moves active markets past their deadline into
+// deadline_passed state.
+func (q *Queries) ExpireOverdueActiveMarkets(ctx context.Context) error {
+	var stmt string
+	if q.isPG() {
+		stmt = `UPDATE markets SET status = 'deadline_passed'
+WHERE status = 'active' AND resolution_deadline < NOW()`
+	} else {
+		stmt = `UPDATE markets SET status = 'deadline_passed'
+WHERE status = 'active'
+  AND resolution_deadline < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`
+	}
+	_, err := q.db.ExecContext(ctx, stmt)
+	return err
+}
+
+// InsertPatchParams mirrors the struct sqlc would have generated.
+type InsertPatchParams struct {
+	Title        string `json:"title"`
+	PatchVersion string `json:"patch_version"`
+	ThreadUrl    string `json:"thread_url"`
+}
+
+// InsertPatch inserts a new detected patch, ignoring duplicates (keyed on
+// thread_url UNIQUE constraint). Uses INSERT OR IGNORE on SQLite and
+// ON CONFLICT DO NOTHING on PostgreSQL.
+func (q *Queries) InsertPatch(ctx context.Context, arg InsertPatchParams) error {
+	var stmt string
+	if q.isPG() {
+		stmt = `INSERT INTO detected_patches (title, patch_version, thread_url)
+VALUES (?, ?, ?) ON CONFLICT DO NOTHING`
+	} else {
+		stmt = `INSERT OR IGNORE INTO detected_patches (title, patch_version, thread_url)
+VALUES (?, ?, ?)`
+	}
+	_, err := q.db.ExecContext(ctx, stmt, arg.Title, arg.PatchVersion, arg.ThreadUrl)
+	return err
 }
 
 // ─── Weekly payout ────────────────────────────────────────────────────────────
