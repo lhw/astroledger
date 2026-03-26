@@ -1,11 +1,13 @@
 -- name: GetUserBySub :one
-SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at
+SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
+       rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified
 FROM users
 WHERE scid_sub = ?
 LIMIT 1;
 
 -- name: GetUserByID :one
-SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at
+SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
+       rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified
 FROM users
 WHERE id = ?
 LIMIT 1;
@@ -13,13 +15,20 @@ LIMIT 1;
 -- name: CreateUser :one
 INSERT INTO users (scid_sub, display_name, email)
 VALUES (?, ?, ?)
-RETURNING id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at;
+RETURNING id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
+          rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified;
 
 -- name: UpdateUserLastLogin :exec
 UPDATE users
-SET last_login_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-    display_name  = ?,
-    email         = ?
+SET last_login_at      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+    display_name       = ?,
+    email              = ?,
+    rsi_handle         = ?,
+    rsi_verified_at    = ?,
+    rsi_enlisted       = ?,
+    rsi_citizen_record = ?,
+    avatar_url         = ?,
+    is_rsi_verified    = ?
 WHERE id = ?;
 
 -- name: UpdateUserBalance :exec

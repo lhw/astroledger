@@ -95,7 +95,14 @@ func (s *MarketService) ApproveMarket(ctx context.Context, marketID, modID int64
 	}); err != nil {
 		return fmt.Errorf("update market status: %w", err)
 	}
-	slog.Info("market approved", "market_id", marketID, "mod_id", modID)
+	// Award a 50 bUEC creator bonus when the market goes live.
+	if err := s.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{
+		Balance: 50,
+		ID:      market.CreatedBy,
+	}); err != nil {
+		slog.Warn("creator bonus failed (non-fatal)", "market_id", marketID, "creator_id", market.CreatedBy, "err", err)
+	}
+	slog.Info("market approved", "market_id", marketID, "mod_id", modID, "creator_id", market.CreatedBy)
 	return nil
 }
 
@@ -123,9 +130,10 @@ func (s *MarketService) RejectMarket(ctx context.Context, marketID, modID int64)
 
 // ResolveInput is the input for resolving a market.
 type ResolveInput struct {
-	MarketID   int64
-	Resolution string // "yes" or "no"
-	ModID      int64
+	MarketID     int64
+	Resolution   string // "yes" or "no"
+	ModID        int64
+	EvidenceLink *string
 }
 
 // ResolveMarket resolves a market and pays out winners within a transaction.
@@ -154,9 +162,10 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 	}
 
 	if err := qTx.ResolveMarket(ctx, db.ResolveMarketParams{
-		Resolution: &inp.Resolution,
-		ResolvedBy: &inp.ModID,
-		ID:         inp.MarketID,
+		Resolution:         &inp.Resolution,
+		ResolvedBy:         &inp.ModID,
+		ResolutionEvidence: inp.EvidenceLink,
+		ID:                 inp.MarketID,
 	}); err != nil {
 		return fmt.Errorf("resolve market: %w", err)
 	}

@@ -20,7 +20,9 @@ import type {
 	ResolutionRequestMarket,
 	Badge,
 	Report,
-	PricePoint
+	PricePoint,
+	Comment,
+	DetectedPatch
 } from './types';
 
 class ApiClientError extends Error {
@@ -153,10 +155,10 @@ export async function rejectMarket(id: number): Promise<void> {
 	await request(`/api/mod/markets/${id}/reject`, { method: 'POST' });
 }
 
-export async function resolveMarket(id: number, resolution: 'yes' | 'no'): Promise<void> {
+export async function resolveMarket(id: number, resolution: 'yes' | 'no', evidenceLink?: string): Promise<void> {
 	await request(`/api/mod/markets/${id}/resolve`, {
 		method: 'POST',
-		body: JSON.stringify({ resolution })
+		body: JSON.stringify({ resolution, evidence_link: evidenceLink || undefined })
 	});
 }
 
@@ -208,6 +210,57 @@ export async function reviewReport(id: number): Promise<void> {
 
 export async function dismissReport(id: number): Promise<void> {
 	await request(`/api/mod/reports/${id}/dismiss`, { method: 'POST' });
+}
+
+// --- Comments ---
+
+export async function getComments(marketId: number): Promise<Comment[]> {
+	return request<Comment[]>(`/api/markets/${marketId}/comments`);
+}
+
+export async function postComment(marketId: number, content: string): Promise<Comment> {
+	return request<Comment>(`/api/markets/${marketId}/comments`, {
+		method: 'POST',
+		body: JSON.stringify({ content })
+	});
+}
+
+export async function deleteComment(commentId: number): Promise<void> {
+	await request(`/api/comments/${commentId}`, { method: 'DELETE' });
+}
+
+// --- Admin ---
+
+export interface WeeklyPayoutResult {
+	users_paid: number;
+	credits_per_user: number;
+	message: string;
+}
+
+export async function adminTriggerWeeklyPayout(): Promise<WeeklyPayoutResult> {
+	return request<WeeklyPayoutResult>('/api/admin/weekly-payout', { method: 'POST' });
+}
+
+export async function adminAdjustBalance(
+	userId: number,
+	amount: number,
+	reason: string
+): Promise<{ new_balance: number }> {
+	return request<{ new_balance: number }>(`/api/admin/users/${userId}/balance`, {
+		method: 'POST',
+		body: JSON.stringify({ amount, reason })
+	});
+}
+
+// --- Patches ---
+
+export async function getPatches(): Promise<DetectedPatch[]> {
+	const res = await request<{ patches: DetectedPatch[] }>('/api/patches');
+	return res.patches;
+}
+
+export async function markPatchNotified(id: number): Promise<void> {
+	await request(`/api/mod/patches/${id}/notify`, { method: 'POST' });
 }
 
 export { ApiClientError };

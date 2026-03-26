@@ -10,6 +10,12 @@ export const USER_LOGGED_IN: User = {
 	balance: 1000,
 	is_moderator: false,
 	is_admin: false,
+	is_rsi_verified: false,
+	rsi_handle: null,
+	rsi_verified_at: null,
+	rsi_enlisted: null,
+	rsi_citizen_record: null,
+	avatar_url: null,
 	created_at: '2024-01-01T00:00:00Z',
 	last_login_at: '2024-01-10T00:00:00Z'
 };
@@ -37,13 +43,15 @@ export const MARKETS_RESPONSE: MarketList = {
 			created_by: 1,
 			creator_name: 'TestPilot',
 			resolved_by: null,
+			resolver_name: null,
 			created_at: '2024-06-01T00:00:00Z',
 			resolved_at: null,
 			liquidity_param: 100,
 			yes_shares: 0,
 			no_shares: 0,
 			resolution_type: 'binary',
-			resolution_threshold: null
+			resolution_threshold: null,
+			resolution_evidence: null
 		},
 		{
 			id: 2,
@@ -57,13 +65,15 @@ export const MARKETS_RESPONSE: MarketList = {
 			created_by: 1,
 			creator_name: 'TestPilot',
 			resolved_by: null,
+			resolver_name: null,
 			created_at: '2024-06-02T00:00:00Z',
 			resolved_at: null,
 			liquidity_param: 100,
 			yes_shares: 0,
 			no_shares: 0,
 			resolution_type: 'binary',
-			resolution_threshold: null
+			resolution_threshold: null,
+			resolution_evidence: null
 		}
 	]
 };

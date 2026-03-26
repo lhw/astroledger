@@ -6,11 +6,11 @@ import (
 	"time"
 )
 
-// UpdateUserGroups updates the is_moderator and is_admin flags for a user.
+// UpdateUserGroups updates the is_moderator, is_admin, and is_rsi_verified flags for a user.
 // Called after OIDC login when group membership is resolved from the id_token groups claim.
-func (q *Queries) UpdateUserGroups(ctx context.Context, id, isModerator, isAdmin int64) error {
-	const stmt = `UPDATE users SET is_moderator = ?, is_admin = ? WHERE id = ?`
-	_, err := q.db.ExecContext(ctx, stmt, isModerator, isAdmin, id)
+func (q *Queries) UpdateUserGroups(ctx context.Context, id, isModerator, isAdmin, isRsiVerified int64) error {
+	const stmt = `UPDATE users SET is_moderator = ?, is_admin = ?, is_rsi_verified = ? WHERE id = ?`
+	_, err := q.db.ExecContext(ctx, stmt, isModerator, isAdmin, isRsiVerified, id)
 	return err
 }
 

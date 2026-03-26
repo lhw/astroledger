@@ -9,19 +9,26 @@
 		denyResolutionRequest,
 		listPendingReports,
 		reviewReport,
-		dismissReport
+		dismissReport,
+		getPatches,
+		markPatchNotified
 	} from '$lib/api';
 	import { isModerator } from '$lib/stores/auth';
-	import type { Market, ResolutionRequestMarket, Report } from '$lib/types';
+	import type { Market, ResolutionRequestMarket, Report, DetectedPatch } from '$lib/types';
 
 	let pending = $state<(Market & { creator_name: string })[]>([]);
 	let resolutionRequests = $state<ResolutionRequestMarket[]>([]);
 	let reports = $state<Report[]>([]);
+	let patches = $state<DetectedPatch[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 	let actionError = $state('');
 	let actingId = $state<number | null>(null);
 	let activeTab = $state<'review' | 'resolution' | 'reports'>('review');
+	// Per-market evidence links for the resolve action.
+	let resolveEvidence = $state<Record<number, string>>({});
+
+	let unseenPatches = $derived(patches.filter((p) => p.notified === 0));
 
 	onMount(async () => {
 		await load();
@@ -31,10 +38,11 @@
 		loading = true;
 		error = '';
 		try {
-			[pending, resolutionRequests, reports] = await Promise.all([
+			[pending, resolutionRequests, reports, patches] = await Promise.all([
 				listPendingMarkets(),
 				listResolutionRequestedMarkets(),
-				listPendingReports()
+				listPendingReports(),
+				getPatches()
 			]);
 			// Auto-switch to the non-empty tab.
 			if (pending.length === 0 && resolutionRequests.length > 0) {
@@ -69,7 +77,8 @@
 	}
 
 	async function doResolve(id: number, resolution: 'yes' | 'no') {
-		await withAction(id, () => resolveMarket(id, resolution));
+		const evidence = resolveEvidence[id]?.trim() || undefined;
+		await withAction(id, () => resolveMarket(id, resolution, evidence));
 	}
 
 	async function doDenyResolution(id: number) {
@@ -82,6 +91,10 @@
 
 	async function doDismissReport(id: number) {
 		await withAction(id, () => dismissReport(id));
+	}
+
+	async function doMarkSeen(id: number) {
+		await withAction(id, () => markPatchNotified(id));
 	}
 </script>
 
@@ -108,6 +121,62 @@
 		{#if actionError}
 			<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{actionError}</div>
 		{/if}
+
+		<!-- New Patch Detections -->
+		<div class="mb-8">
+			<div class="flex items-center gap-2 mb-3">
+				<h2 class="text-sm font-bold uppercase tracking-[0.15em] text-surface-700">New Patch Detections</h2>
+				{#if unseenPatches.length > 0}
+					<span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold border border-green-200">
+						{unseenPatches.length} new
+					</span>
+				{/if}
+			</div>
+			{#if patches.length === 0}
+				<div class="sc-card p-5 text-center text-surface-400 text-sm">No patches detected yet — scraper runs every 30 minutes.</div>
+			{:else}
+				<div class="space-y-2">
+					{#each patches as patch}
+						<div class="sc-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3
+							{patch.notified === 0 ? 'border-l-4 border-l-green-400' : 'opacity-60'}">
+							<div class="flex-1 min-w-0">
+								<div class="flex items-center gap-2 flex-wrap">
+									<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-surface-100 text-surface-700 border border-surface-200 font-mono">
+										{patch.patch_version}
+									</span>
+									{#if patch.notified === 0}
+										<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">new</span>
+									{/if}
+								</div>
+								<p class="text-surface-800 text-sm font-medium mt-1">{patch.title}</p>
+								<p class="text-surface-400 text-xs mt-0.5">
+									Detected {new Date(patch.first_seen_at).toLocaleString()}
+								</p>
+							</div>
+							<div class="flex items-center gap-2 shrink-0">
+								<a
+									href={patch.thread_url}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="btn btn-sm border border-surface-300 text-surface-600 hover:border-surface-400 text-xs uppercase tracking-wider"
+								>
+									View Thread
+								</a>
+								{#if patch.notified === 0}
+									<button
+										onclick={() => doMarkSeen(patch.id)}
+										disabled={actingId === patch.id}
+										class="btn btn-sm bg-green-600 hover:bg-green-700 text-white text-xs uppercase tracking-wider"
+									>
+										Mark Seen
+									</button>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
 
 		<!-- Tabs -->
 		<div class="flex border-b border-surface-200 mb-6">
@@ -288,6 +357,12 @@
 								</div>
 
 								<div class="flex flex-col gap-2 shrink-0">
+									<input
+										type="url"
+										bind:value={resolveEvidence[rr.id]}
+										placeholder="Evidence link (optional)"
+										class="sc-input text-xs w-44"
+									/>
 									<button
 										onclick={() => doResolve(rr.id, 'yes')}
 										disabled={actingId === rr.id}

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { initAuth, currentUser, isLoggedIn, isModerator } from '$lib/stores/auth';
+	import { initAuth, currentUser, isLoggedIn, isModerator, isAdmin } from '$lib/stores/auth';
 	import { loginWithSCID, logout } from '$lib/api';
+	import UserAvatar from '$lib/components/UserAvatar.svelte';
 	import type { User } from '$lib/types';
 
 	let { children, data } = $props<{ children: unknown; data: { user: User | null } }>();
@@ -47,11 +48,18 @@
 				</a>
 			{/if}
 
+			{#if $isAdmin}
+				<a href="/admin" class="text-red-400 hover:text-red-300 text-sm tracking-wide transition-colors no-underline uppercase">
+					Admin
+				</a>
+			{/if}
+
 			{#if $isLoggedIn && $currentUser}
 				<span class="text-primary-400 text-sm font-semibold">
 					{$currentUser.balance.toLocaleString()} bUEC
 				</span>
-				<a href="/me" class="text-surface-200 hover:text-primary-400 text-sm transition-colors no-underline">
+				<a href="/me" class="flex items-center gap-2 text-surface-200 hover:text-primary-400 text-sm transition-colors no-underline">
+					<UserAvatar src={$currentUser.avatar_url} name={$currentUser.display_name} size={24} />
 					{$currentUser.display_name}
 				</a>
 				<button onclick={logout} class="border border-surface-600 text-surface-400 hover:border-primary-400 hover:text-primary-400 transition-colors rounded px-3 py-1 text-xs tracking-wider uppercase">

@@ -4,14 +4,16 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetMarketByID :one
-SELECT m.*, u.display_name AS creator_name
+SELECT m.*, u.display_name AS creator_name, ru.display_name AS resolver_name
 FROM markets m
 JOIN users u ON u.id = m.created_by
+LEFT JOIN users ru ON ru.id = m.resolved_by
 WHERE m.id = ?
 LIMIT 1;
 
 -- name: ListMarkets :many
-SELECT m.*, u.display_name AS creator_name
+SELECT m.*, u.display_name AS creator_name,
+       (SELECT COUNT(*) FROM comments c WHERE c.market_id = m.id AND c.hidden = 0) AS comment_count
 FROM markets m
 JOIN users u ON u.id = m.created_by
 WHERE m.status = ?
@@ -35,10 +37,11 @@ WHERE id = ?;
 
 -- name: ResolveMarket :exec
 UPDATE markets
-SET status      = 'resolved',
-    resolution  = ?,
-    resolved_by = ?,
-    resolved_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+SET status              = 'resolved',
+    resolution          = ?,
+    resolved_by         = ?,
+    resolution_evidence = ?,
+    resolved_at         = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 WHERE id = ?;
 
 -- name: ListPendingMarkets :many
@@ -58,3 +61,17 @@ ORDER BY created_at ASC;
 -- Returns titles of all non-archived markets for duplicate-title detection.
 SELECT title FROM markets
 WHERE status IN ('pending_review', 'active', 'resolution_requested');
+
+-- name: ExpirePendingMarkets :exec
+-- Auto-cancel markets that have been in pending_review for more than 14 days.
+UPDATE markets
+SET status = 'cancelled'
+WHERE status = 'pending_review'
+  AND created_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-14 days');
+
+-- name: ExpireOverdueActiveMarkets :exec
+-- Move active markets past their resolution deadline into deadline_passed status.
+UPDATE markets
+SET status = 'deadline_passed'
+WHERE status = 'active'
+  AND resolution_deadline < strftime('%Y-%m-%dT%H:%M:%SZ', 'now');

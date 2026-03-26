@@ -54,6 +54,9 @@ func run() error {
 	marketSvc := service.NewMarketService(queries, sqlDB, badgeSvc)
 	tradingSvc := service.NewTradingService(queries, sqlDB, badgeSvc)
 	creditsSvc := service.NewCreditsService(queries)
+	patchScraper := service.NewPatchScraper(queries)
+	modClient := service.NewModerationClient(cfg.ModerationAPIKey)
+	commentSvc := service.NewCommentService(queries, modClient)
 
 	// Handlers
 	authH, err := handler.NewAuthHandler(ctx, queries,
@@ -68,6 +71,9 @@ func run() error {
 	marketH := handler.NewMarketHandler(queries, marketSvc)
 	tradeH := handler.NewTradingHandler(tradingSvc)
 	modH := handler.NewModerationHandler(queries, badgeSvc)
+	commentH := handler.NewCommentHandler(commentSvc)
+	adminH := handler.NewAdminHandler(queries, creditsSvc)
+	patchH := handler.NewPatchHandler(queries)
 
 	r := chi.NewRouter()
 
@@ -112,13 +118,17 @@ func run() error {
 
 		r.Get("/users/{id}/badges", modH.GetUserBadges)
 
-		// Markets (read-only is public)
+		// Patches (public)
+		r.Get("/patches", patchH.List)
+
+		// Markets (read-only, public)
 		r.Get("/markets", marketH.List)
 		r.Get("/markets/{id}", marketH.Get)
 		r.Get("/markets/{id}/history", marketH.GetPriceHistory)
 		r.Get("/markets/{id}/trades", marketH.GetTrades)
+		r.Get("/markets/{id}/comments", commentH.List)
 
-		// Authenticated market creation (rate-limited)
+		// Authenticated market creation (rate-limited to 5/min)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -133,7 +143,7 @@ func run() error {
 			r.Post("/markets/{id}/request-resolution", marketH.RequestResolution)
 		})
 
-		// Trading (rate-limited)
+		// Trading (rate-limited to 30/min)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -142,7 +152,15 @@ func run() error {
 			r.Post("/trades/quote", tradeH.Quote)
 		})
 
-		// Report submission (auth required, rate-limited)
+		// Comment submission (rate-limited to 10/min)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
+			r.Use(httprate.LimitByIP(10, time.Minute))
+			r.Post("/markets/{id}/comments", commentH.Post)
+		})
+
+		// Report submission (rate-limited to 10/min)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -150,11 +168,12 @@ func run() error {
 			r.Post("/reports", modH.SubmitReport)
 		})
 
-		// Moderation routes
+		// Moderation routes (mod-only; includes comment deletion)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireMod(queries))
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
+			r.Delete("/comments/{id}", commentH.Delete)
 			r.Get("/mod/markets", marketH.ListPending)
 			r.Post("/mod/markets/{id}/approve", marketH.Approve)
 			r.Post("/mod/markets/{id}/reject", marketH.Reject)
@@ -164,9 +183,17 @@ func run() error {
 			r.Get("/mod/reports", modH.ListReports)
 			r.Post("/mod/reports/{id}/review", modH.ReviewReport)
 			r.Post("/mod/reports/{id}/dismiss", modH.DismissReport)
+			r.Post("/mod/patches/{id}/notify", patchH.MarkNotified)
+		})
+
+		// Admin routes (admin check performed inside handlers)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
+			r.Post("/admin/weekly-payout", adminH.TriggerWeeklyPayout)
+			r.Post("/admin/users/{id}/balance", adminH.AdjustUserBalance)
 		})
 	})
-
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
@@ -180,6 +207,32 @@ func run() error {
 		slog.Info("starting server", "addr", srv.Addr)
 		serverErr <- srv.ListenAndServe()
 	}()
+
+	// Background market expiry job — runs hourly; idempotent.
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		runExpiry := func() {
+			if err := queries.ExpirePendingMarkets(context.Background()); err != nil {
+				slog.Warn("expiry: pending markets", "err", err)
+			}
+			if err := queries.ExpireOverdueActiveMarkets(context.Background()); err != nil {
+				slog.Warn("expiry: overdue active markets", "err", err)
+			}
+		}
+		runExpiry()
+		for {
+			select {
+			case <-ticker.C:
+				runExpiry()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// Patch scraper goroutine — checks Spectrum forum every 30 minutes.
+	go patchScraper.Run(ctx)
 
 	// Weekly payout goroutine — checks every hour; idempotent so safe to run often.
 	go func() {

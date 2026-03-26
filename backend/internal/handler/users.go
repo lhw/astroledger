@@ -137,13 +137,19 @@ func (h *UserHandler) GetUserTrades(w http.ResponseWriter, r *http.Request) {
 // userResponse shapes a db.User into an API response (includes private fields for /me).
 func userResponse(u db.User) map[string]any {
 	return map[string]any{
-		"id":           u.ID,
-		"display_name": u.DisplayName,
-		"email":        u.Email,
-		"balance":      u.Balance,
-		"is_moderator": u.IsModerator == 1,
-		"is_admin":     u.IsAdmin == 1,
-		"created_at":   u.CreatedAt,
-		"last_login_at": u.LastLoginAt,
+		"id":                 u.ID,
+		"display_name":       u.DisplayName,
+		"email":              u.Email,
+		"balance":            u.Balance,
+		"is_moderator":       u.IsModerator == 1,
+		"is_admin":           u.IsAdmin == 1,
+		"is_rsi_verified":    u.IsRsiVerified == 1,
+		"rsi_handle":         u.RsiHandle,
+		"rsi_verified_at":    u.RsiVerifiedAt,
+		"rsi_enlisted":       u.RsiEnlisted,
+		"rsi_citizen_record": u.RsiCitizenRecord,
+		"avatar_url":         u.AvatarUrl,
+		"created_at":         u.CreatedAt,
+		"last_login_at":      u.LastLoginAt,
 	}
 }

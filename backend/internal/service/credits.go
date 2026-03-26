@@ -42,8 +42,37 @@ func (s *CreditsService) WeeklyPayout(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+// TriggerWeeklyPayout is the admin-triggered variant of WeeklyPayout.
+// It returns the count of users paid, whether the payout already ran this week,
+// the display week key (e.g. "2026-W12"), and any error.
+func (s *CreditsService) TriggerWeeklyPayout(ctx context.Context) (count int64, alreadyRan bool, weekKey string, err error) {
+	rawKey := isoWeekKey(time.Now())
+	weekKey = isoWeekKeyDisplay(time.Now())
+
+	already, err := s.queries.WeeklyPayoutAlreadyRan(ctx, rawKey)
+	if err != nil {
+		return 0, false, weekKey, fmt.Errorf("check payout log: %w", err)
+	}
+	if already {
+		return 0, true, weekKey, nil
+	}
+
+	count, err = s.queries.RunWeeklyPayout(ctx, rawKey)
+	if err != nil {
+		return 0, false, weekKey, fmt.Errorf("run weekly payout: %w", err)
+	}
+	slog.Info("admin-triggered weekly payout", "week", rawKey, "users_paid", count)
+	return count, false, weekKey, nil
+}
+
 // isoWeekKey returns a string like "2026-12" (year-weeknumber) for the given time.
 func isoWeekKey(t time.Time) string {
 	year, week := t.ISOWeek()
 	return fmt.Sprintf("%04d-%02d", year, week)
+}
+
+// isoWeekKeyDisplay returns a string like "2026-W12" for display in API responses.
+func isoWeekKeyDisplay(t time.Time) string {
+	year, week := t.ISOWeek()
+	return fmt.Sprintf("%04d-W%02d", year, week)
 }

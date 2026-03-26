@@ -17,6 +17,9 @@ export const isModerator = derived(
 	($user) => Boolean($user?.is_moderator || $user?.is_admin)
 );
 
+/** True if the current user is an admin. */
+export const isAdmin = derived(currentUser, ($user) => Boolean($user?.is_admin));
+
 /**
  * Fetch the current user from the API and populate the auth store.
  * Call this once on app initialisation.

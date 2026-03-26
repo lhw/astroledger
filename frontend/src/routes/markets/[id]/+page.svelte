@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import { getMarket, executeTrade, requestResolution, getMarketPriceHistory, submitReport, getMe } from '$lib/api';
+	import { getMarket, executeTrade, requestResolution, getMarketPriceHistory, submitReport, getMe, getComments, postComment, deleteComment } from '$lib/api';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
 	import { buyCost, sellRevenue, maxAffordable } from '$lib/amm';
 	import { renderMarkdown } from '$lib/markdown';
-	import type { MarketWithPrice, PricePoint } from '$lib/types';
+	import type { MarketWithPrice, PricePoint, Comment } from '$lib/types';
 
 	let { data } = $props<{ data: { market: MarketWithPrice | null; history: PricePoint[] } }>();
 
@@ -42,6 +42,12 @@
 	let submittingReport = $state(false);
 	let reportMsg = $state('');
 
+	// Comments
+	let comments = $state<Comment[]>([]);
+	let commentInput = $state('');
+	let postingComment = $state(false);
+	let commentError = $state('');
+
 	// Reactive cost/revenue estimates
 	let estimatedCost = $derived.by(() => {
 		if (!data_) return 0;
@@ -77,6 +83,42 @@
 	let canAfford = $derived($currentUser ? estimatedCost <= $currentUser.balance : false);
 	let canAffordBudget = $derived($currentUser ? budgetAmount <= $currentUser.balance : false);
 
+	async function loadComments() {
+		try {
+			comments = await getComments(id);
+		} catch {
+			// Non-fatal — comments are supplementary
+		}
+	}
+
+	async function doPostComment() {
+		if (commentInput.trim().length === 0) return;
+		postingComment = true;
+		commentError = '';
+		try {
+			const c = await postComment(id, commentInput.trim());
+			commentInput = '';
+			await loadComments();
+			if (c.is_own_hidden) {
+				commentError = '⚠ Your comment was flagged for review and is only visible to you until a moderator clears it.';
+			}
+		} catch (e) {
+			commentError = e instanceof Error ? e.message : 'Could not post comment.';
+		} finally {
+			postingComment = false;
+		}
+	}
+
+	async function doDeleteComment(commentId: number) {
+		if (!confirm('Delete this comment?')) return;
+		try {
+			await deleteComment(commentId);
+			comments = comments.filter((c) => c.id !== commentId);
+		} catch (e) {
+			alert(e instanceof Error ? e.message : 'Could not delete comment.');
+		}
+	}
+
 	onMount(async () => {
 		if (initialMarket) {
 			// If the market is already resolved and the user is logged in, refresh
@@ -84,6 +126,7 @@
 			if (initialMarket.market.status === 'resolved' && $isLoggedIn) {
 				getMe().then((u) => { if (u) currentUser.set(u); });
 			}
+			await loadComments();
 			return;
 		}
 		try {
@@ -91,6 +134,7 @@
 				getMarket(id),
 				getMarketPriceHistory(id).catch(() => [] as PricePoint[])
 			]);
+			await loadComments();
 			// Refresh balance if visiting a resolved market.
 			if (data_?.market.status === 'resolved' && $isLoggedIn) {
 				getMe().then((u) => { if (u) currentUser.set(u); });
@@ -195,15 +239,18 @@
 					</span>
 				{:else if market.status === 'resolution_requested'}
 					<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Awaiting Resolution</span>
+				{:else if market.status === 'deadline_passed'}
+					<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-orange-100 text-orange-700 border border-orange-200">Deadline Passed</span>
 				{:else if market.status === 'active'}
 					<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-700 border border-primary-200">Active</span>
 				{/if}
 			</div>
 			<h1 class="text-2xl font-bold text-surface-900 leading-snug">{market.title}</h1>
-			<p class="text-surface-500 text-sm mt-2">
-				Submitted by {market.creator_name} ·
-				{market.status === 'resolved' ? 'resolved' : 'closes'}
-				{new Date(market.resolution_deadline).toLocaleDateString()}
+			<p class="text-surface-500 text-sm mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+				<span>Submitted by</span>
+				<span class="font-medium text-surface-800">{market.creator_name}</span>
+				<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-primary-50 text-primary-700 border border-primary-200">Creator</span>
+				<span>· {market.status === 'resolved' ? 'resolved' : 'closes'} {new Date(market.resolution_deadline).toLocaleDateString()}</span>
 			</p>
 		</div>
 
@@ -366,6 +413,73 @@
 						{/if}
 					</div>
 				{/if}
+
+				<!-- Discussion / Comments -->
+				<div class="sc-card p-5">
+					<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-4">
+						Discussion ({comments.filter((c) => !c.hidden || c.is_own_hidden).length})
+					</h3>
+
+					{#if comments.length === 0}
+						<p class="text-surface-400 text-xs text-center py-3">No comments yet — start the conversation.</p>
+					{:else}
+						<div class="space-y-5 mb-5">
+							{#each comments as comment}
+								<div>
+									<div class="flex items-baseline gap-2 mb-1 flex-wrap">
+										<span class="font-semibold text-surface-800 text-xs">{comment.author_name}</span>
+										<span class="text-surface-400 text-[10px]">{new Date(comment.created_at).toLocaleString()}</span>
+										{#if $currentUser?.is_moderator}
+											<button
+												onclick={() => doDeleteComment(comment.id)}
+												class="text-[10px] text-red-400 hover:text-red-600 transition-colors ml-1"
+											>Delete</button>
+										{/if}
+									</div>
+									{#if comment.is_own_hidden}
+										<div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-1.5">
+											<span class="font-bold">⚠ Under review</span> — your comment is only visible to you until a moderator clears it.
+										</div>
+										<div class="text-surface-500 text-sm prose prose-sm max-w-none opacity-60">
+											{@html renderMarkdown(comment.content)}
+										</div>
+									{:else}
+										<div class="text-surface-700 text-sm prose prose-sm max-w-none">
+											{@html renderMarkdown(comment.content)}
+										</div>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					{/if}
+
+					{#if $isLoggedIn}
+						<div class="{comments.length > 0 ? 'border-t border-surface-100 pt-4' : ''}">
+							<textarea
+								bind:value={commentInput}
+								rows="3"
+								maxlength="1000"
+								placeholder="Add a comment… Markdown supported. Be excellent to each other."
+								class="sc-input text-sm resize-none w-full"
+							></textarea>
+							<div class="flex items-center justify-between mt-2">
+								<span class="text-[10px] text-surface-400">{commentInput.length}/1000 · auto-checked for abuse</span>
+								<button
+									onclick={doPostComment}
+									disabled={postingComment || commentInput.trim().length === 0}
+									class="btn btn-sm preset-filled-primary-500 text-xs uppercase tracking-wider disabled:opacity-50"
+								>{postingComment ? 'Posting…' : 'Post'}</button>
+							</div>
+							{#if commentError}
+								<p class="text-xs mt-2 {commentError.startsWith('⚠') ? 'text-amber-700' : 'text-red-600'}">{commentError}</p>
+							{/if}
+						</div>
+					{:else}
+						<p class="text-surface-400 text-xs text-center pt-3 border-t border-surface-100">
+							<a href="/auth/login" class="text-primary-600 hover:underline">Log in</a> to join the discussion.
+						</p>
+					{/if}
+				</div>
 			</div>
 
 			<!-- Trade widget + prices -->
@@ -427,10 +541,15 @@
 						<div class="text-3xl font-black {market.resolution === 'yes' ? 'text-green-700' : 'text-red-600'} mb-1">
 							{market.resolution?.toUpperCase()}
 						</div>
-						{#if market.resolved_at}
-							<p class="text-xs text-surface-500">
-								on {new Date(market.resolved_at).toLocaleDateString()}
-							</p>
+						<p class="text-xs text-surface-500">
+							{#if market.resolver_name}by <span class="font-medium text-surface-700">{market.resolver_name}</span>{/if}
+							{#if market.resolved_at} · {new Date(market.resolved_at).toLocaleDateString()}{/if}
+						</p>
+						{#if market.resolution_evidence}
+							<a href={market.resolution_evidence} target="_blank" rel="noopener noreferrer"
+							   class="text-xs text-primary-600 hover:underline mt-2 block truncate">
+								📋 Evidence: {market.resolution_evidence}
+							</a>
 						{/if}
 					</div>
 				{/if}

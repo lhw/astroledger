@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -136,21 +137,33 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse standard typed claims. These are safe well-known OIDC fields (always strings/arrays).
 	var claims struct {
-		Sub    string   `json:"sub"`
-		Name   string   `json:"name"`
-		Email  string   `json:"email"`
-		Groups []string `json:"groups"`
+		Sub     string   `json:"sub"`
+		Name    string   `json:"name"`
+		Email   string   `json:"email"`
+		Groups  []string `json:"groups"`
+		Picture string   `json:"picture"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to parse id_token claims")
 		return
 	}
 
-	// Determine mod/admin from OIDC group membership.
-	// scolymod = moderator access; admin = admin access.
+	// Parse RSI-specific claims into a raw map so we tolerate providers that
+	// return rsi_verified_at as a Unix timestamp (number) instead of a string.
+	var rawClaims map[string]interface{}
+	_ = idToken.Claims(&rawClaims) // best-effort; won't fail on type mismatches
+	rsiHandle := stringClaim(rawClaims["rsi_handle"])
+	rsiVerifiedAt := stringClaim(rawClaims["rsi_verified_at"])
+	rsiEnlisted := stringClaim(rawClaims["rsi_enlisted"])
+	rsiCitizenRecord := stringClaim(rawClaims["rsi_citizen_record"])
+
+	// Determine mod/admin/rsi_verified from OIDC group membership.
+	// scolymod = moderator access; admin = admin access; verified = RSI identity confirmed.
 	isMod := containsGroup(claims.Groups, "scolymod")
 	isAdmin := containsGroup(claims.Groups, "admin")
+	isRsiVerified := containsGroup(claims.Groups, "verified")
 
 	// Upsert user in the database.
 	user, err := h.queries.GetUserBySub(ctx, claims.Sub)
@@ -167,16 +180,26 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update display name / email and last login timestamp.
+	// Update display name / email, RSI profile data, and last login timestamp.
+	rsiVerifiedInt := int64(0)
+	if isRsiVerified {
+		rsiVerifiedInt = 1
+	}
 	if err := h.queries.UpdateUserLastLogin(ctx, db.UpdateUserLastLoginParams{
-		DisplayName: claims.Name,
-		Email:       claims.Email,
-		ID:          user.ID,
+		DisplayName:      claims.Name,
+		Email:            claims.Email,
+		RsiHandle:        nullableString(rsiHandle),
+		RsiVerifiedAt:    nullableString(rsiVerifiedAt),
+		RsiEnlisted:      nullableString(rsiEnlisted),
+		RsiCitizenRecord: nullableString(rsiCitizenRecord),
+		AvatarUrl:        nullableString(claims.Picture),
+		IsRsiVerified:    rsiVerifiedInt,
+		ID:               user.ID,
 	}); err != nil {
 		slog.Warn("failed to update last_login", "err", err)
 	}
 
-	// Sync group-derived mod/admin flags to the DB so /api/me reflects current membership.
+	// Sync group-derived mod/admin/rsi_verified flags to the DB so /api/me reflects current membership.
 	modInt := int64(0)
 	if isMod {
 		modInt = 1
@@ -185,7 +208,7 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	if isAdmin {
 		adminInt = 1
 	}
-	if err := h.queries.UpdateUserGroups(ctx, user.ID, modInt, adminInt); err != nil {
+	if err := h.queries.UpdateUserGroups(ctx, user.ID, modInt, adminInt, rsiVerifiedInt); err != nil {
 		slog.Warn("failed to update user groups", "err", err)
 	}
 
@@ -251,4 +274,30 @@ func setShortCookie(w http.ResponseWriter, name, value string, secure bool) {
 
 func clearShortCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, MaxAge: -1, Path: "/"})
+}
+
+// nullableString returns a *string pointer for non-empty strings, nil otherwise.
+// Used to convert empty OIDC claim strings into NULL for optional DB columns.
+func nullableString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// stringClaim converts a raw JSON claim value (which may be a string or a number)
+// into a string. Returns "" if the value is nil or an unsupported type.
+func stringClaim(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		// JSON numbers unmarshal as float64; format integers without decimals.
+		return strconv.FormatInt(int64(t), 10)
+	default:
+		return fmt.Sprintf("%v", t)
+	}
 }

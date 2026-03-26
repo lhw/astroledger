@@ -133,7 +133,7 @@
 						</div>
 						<div class="text-surface-800 font-medium text-sm">{market.title}</div>
 						<div class="text-surface-500 text-xs mt-1">
-							{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
+								{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}{#if (market.comment_count ?? 0) > 0} · 💬 {market.comment_count}{/if}
 						</div>
 						<!-- Probability bar -->
 						{#if market.status === 'active'}

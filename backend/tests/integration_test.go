@@ -54,7 +54,7 @@ func createTestUser(t *testing.T, ctx context.Context, q *db.Queries, sub, name 
 	})
 	must(t, err, "create user "+name)
 	if isMod {
-		must(t, q.UpdateUserGroups(ctx, user.ID, 1, 0), "grant mod to "+name)
+		must(t, q.UpdateUserGroups(ctx, user.ID, 1, 0, 0), "grant mod to "+name)
 		// Re-fetch to get updated flags.
 		user, err = q.GetUserByID(ctx, user.ID)
 		must(t, err, "re-fetch mod user")

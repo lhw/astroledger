@@ -6,6 +6,12 @@ export interface User {
 	balance: number;
 	is_moderator: boolean;
 	is_admin: boolean;
+	is_rsi_verified: boolean;
+	rsi_handle: string | null;
+	rsi_verified_at: string | null;
+	rsi_enlisted: string | null;
+	rsi_citizen_record: string | null;
+	avatar_url: string | null;
 	created_at: string;
 	last_login_at: string;
 }
@@ -27,7 +33,7 @@ export interface LeaderboardRow {
 }
 
 /** Market status values */
-export type MarketStatus = 'pending_review' | 'active' | 'resolved' | 'cancelled' | 'resolution_requested';
+export type MarketStatus = 'pending_review' | 'active' | 'resolved' | 'cancelled' | 'resolution_requested' | 'deadline_passed';
 
 /** Market resolution */
 export type Resolution = 'yes' | 'no' | null;
@@ -56,6 +62,7 @@ export interface Market {
 	created_by: number;
 	creator_name: string;
 	resolved_by: number | null;
+	resolver_name: string | null;
 	created_at: string;
 	resolved_at: string | null;
 	liquidity_param: number;
@@ -65,6 +72,10 @@ export interface Market {
 	resolution_type: MarketResolutionType;
 	/** For date markets: ISO date string. For numeric: stringified number (e.g. "200" for $200). */
 	resolution_threshold: string | null;
+	/** Mod-provided evidence link stored when a market is resolved. */
+	resolution_evidence: string | null;
+	/** Comment count (included in list view only). */
+	comment_count?: number;
 }
 
 /** Market with current prices */
@@ -175,6 +186,22 @@ export interface ApiError {
 	error: string;
 }
 
+/** A user comment on a market. */
+export interface Comment {
+	id: number;
+	market_id: number;
+	user_id: number;
+	author_name: string;
+	content: string;
+	/**
+	 * True only when this is the viewer's own shadow-hidden comment.
+	 * Other viewers never receive hidden comments in their response at all.
+	 */
+	hidden: boolean;
+	is_own_hidden: boolean;
+	created_at: string;
+}
+
 /** Badge awarded to a user */
 export interface Badge {
 	badge_key: string;
@@ -200,4 +227,14 @@ export interface PricePoint {
 	price_at_trade: number; // 0.0 – 1.0 YES probability
 	side: string;           // 'yes' | 'no'
 	created_at: string;
+}
+
+/** A detected LIVE patch from the RSI Spectrum forum */
+export interface DetectedPatch {
+	id: number;
+	title: string;
+	patch_version: string;
+	thread_url: string;
+	first_seen_at: string;
+	notified: number; // 0 = unseen, 1 = seen by mod
 }

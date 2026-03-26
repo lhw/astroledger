@@ -8,12 +8,41 @@ import (
 	"time"
 )
 
+type AdminBalanceAdjustment struct {
+	ID        int64     `json:"id"`
+	AdminID   int64     `json:"admin_id"`
+	UserID    int64     `json:"user_id"`
+	Amount    int64     `json:"amount"`
+	Reason    string    `json:"reason"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type AutofilterRule struct {
 	ID        int64     `json:"id"`
 	RuleType  string    `json:"rule_type"`
 	Value     string    `json:"value"`
 	Enabled   int64     `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type Comment struct {
+	ID              int64     `json:"id"`
+	MarketID        int64     `json:"market_id"`
+	UserID          int64     `json:"user_id"`
+	Content         string    `json:"content"`
+	Hidden          int64     `json:"hidden"`
+	ToxicityScore   *float64  `json:"toxicity_score"`
+	ModerationFlags *string   `json:"moderation_flags"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type DetectedPatch struct {
+	ID           int64     `json:"id"`
+	Title        string    `json:"title"`
+	PatchVersion string    `json:"patch_version"`
+	ThreadUrl    string    `json:"thread_url"`
+	FirstSeenAt  time.Time `json:"first_seen_at"`
+	Notified     int64     `json:"notified"`
 }
 
 type Market struct {
@@ -34,6 +63,7 @@ type Market struct {
 	NoShares            float64    `json:"no_shares"`
 	ResolutionType      string     `json:"resolution_type"`
 	ResolutionThreshold *string    `json:"resolution_threshold"`
+	ResolutionEvidence  *string    `json:"resolution_evidence"`
 }
 
 type ModerationAction struct {
@@ -82,15 +112,21 @@ type Trade struct {
 }
 
 type User struct {
-	ID          int64     `json:"id"`
-	ScidSub     string    `json:"scid_sub"`
-	DisplayName string    `json:"display_name"`
-	Email       string    `json:"email"`
-	Balance     int64     `json:"balance"`
-	IsModerator int64     `json:"is_moderator"`
-	IsAdmin     int64     `json:"is_admin"`
-	CreatedAt   time.Time `json:"created_at"`
-	LastLoginAt time.Time `json:"last_login_at"`
+	ID               int64     `json:"id"`
+	ScidSub          string    `json:"scid_sub"`
+	DisplayName      string    `json:"display_name"`
+	Email            string    `json:"email"`
+	Balance          int64     `json:"balance"`
+	IsModerator      int64     `json:"is_moderator"`
+	IsAdmin          int64     `json:"is_admin"`
+	CreatedAt        time.Time `json:"created_at"`
+	LastLoginAt      time.Time `json:"last_login_at"`
+	RsiHandle        *string   `json:"rsi_handle"`
+	RsiVerifiedAt    *string   `json:"rsi_verified_at"`
+	RsiEnlisted      *string   `json:"rsi_enlisted"`
+	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
+	AvatarUrl        *string   `json:"avatar_url"`
+	IsRsiVerified    int64     `json:"is_rsi_verified"`
 }
 
 type UserBadge struct {

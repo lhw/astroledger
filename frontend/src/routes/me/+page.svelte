@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { getMe, getMyPositions, getMyTrades, getMyBadges, logout } from '$lib/api';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
+	import UserAvatar from '$lib/components/UserAvatar.svelte';
 	import type { Position, TradeWithMarket, Badge } from '$lib/types';
 
 	let positions = $state<Position[]>([]);
@@ -40,17 +41,20 @@
 		<!-- Profile header -->
 		{#if user}
 			<div class="flex items-start justify-between mb-8 pb-6 border-b border-surface-200">
-				<div>
-					<p class="text-xs font-bold uppercase tracking-[0.15em] text-primary-600 mb-1">Profile</p>
-					<h1 class="text-2xl font-bold text-surface-900">{user.display_name}</h1>
-					<p class="text-surface-500 text-sm mt-1">
-						Joined {new Date(user.created_at).toLocaleDateString()}
-					</p>
-					{#if user.is_moderator || user.is_admin}
-						<span class="sc-tag mt-2 inline-flex">
-							{user.is_admin ? 'Admin' : 'Moderator'}
-						</span>
-					{/if}
+				<div class="flex items-start gap-4">
+					<UserAvatar src={user.avatar_url} name={user.display_name} size={56} />
+					<div>
+						<p class="text-xs font-bold uppercase tracking-[0.15em] text-primary-600 mb-1">Profile</p>
+						<h1 class="text-2xl font-bold text-surface-900">{user.display_name}</h1>
+						<p class="text-surface-500 text-sm mt-1">
+							Joined {new Date(user.created_at).toLocaleDateString()}
+						</p>
+						{#if user.is_moderator || user.is_admin}
+							<span class="sc-tag mt-2 inline-flex">
+								{user.is_admin ? 'Admin' : 'Moderator'}
+							</span>
+						{/if}
+					</div>
 				</div>
 				<div class="text-right">
 					<div class="text-3xl font-bold text-primary-600">{user.balance.toLocaleString()}</div>
@@ -60,6 +64,45 @@
 					</button>
 				</div>
 			</div>
+
+			<!-- RSI Identity -->
+			{#if user.rsi_handle || user.is_rsi_verified}
+				<section class="mb-8">
+					<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600 mb-4">RSI Identity</h2>
+					<div class="sc-card px-4 py-4 flex flex-wrap gap-6 items-center">
+						{#if user.rsi_handle}
+							<div>
+								<p class="text-[10px] uppercase tracking-widest text-surface-400 font-semibold mb-0.5">Handle</p>
+								<a
+									href="https://robertsspaceindustries.com/citizens/{user.rsi_handle}"
+									target="_blank"
+									rel="noopener noreferrer"
+									class="text-primary-600 font-semibold hover:underline"
+								>
+									{user.rsi_handle}
+								</a>
+							</div>
+						{/if}
+						{#if user.rsi_citizen_record}
+							<div>
+								<p class="text-[10px] uppercase tracking-widest text-surface-400 font-semibold mb-0.5">Citizen Record</p>
+								<p class="text-surface-800 font-medium">#{user.rsi_citizen_record}</p>
+							</div>
+						{/if}
+						{#if user.rsi_enlisted}
+							<div>
+								<p class="text-[10px] uppercase tracking-widest text-surface-400 font-semibold mb-0.5">Enlisted</p>
+								<p class="text-surface-800 font-medium">{user.rsi_enlisted}</p>
+							</div>
+						{/if}
+						{#if user.is_rsi_verified}
+							<div class="ml-auto">
+								<span class="sc-tag text-green-700 bg-green-50 border-green-200">✓ RSI Verified</span>
+							</div>
+						{/if}
+					</div>
+				</section>
+			{/if}
 		{/if}
 
 		{#if error}

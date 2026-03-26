@@ -267,7 +267,8 @@ func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Resolution string `json:"resolution"`
+		Resolution   string  `json:"resolution"`
+		EvidenceLink *string `json:"evidence_link"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
@@ -275,9 +276,10 @@ func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.ResolveMarket(r.Context(), service.ResolveInput{
-		MarketID:   id,
-		Resolution: body.Resolution,
-		ModID:      claims.UserID,
+		MarketID:     id,
+		Resolution:   body.Resolution,
+		ModID:        claims.UserID,
+		EvidenceLink: body.EvidenceLink,
 	}); errors.Is(err, service.ErrNotFound) {
 		respondError(w, http.StatusNotFound, "market not found")
 		return

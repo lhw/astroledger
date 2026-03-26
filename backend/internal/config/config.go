@@ -23,6 +23,9 @@ type Config struct {
 	CORSAllowedOrigins []string
 	LogLevel           string
 	CookieSecure       bool
+	// ModerationAPIKey is the OpenAI API key used for comment abuse detection.
+	// Optional — when empty, automated moderation is disabled and all comments pass.
+	ModerationAPIKey string
 }
 
 // Load reads configuration from the environment (and an optional .env file).
@@ -41,6 +44,7 @@ func Load() (*Config, error) {
 		SessionSecret:    os.Getenv("SESSION_SECRET"),
 		LogLevel:         env("LOG_LEVEL", "info"),
 		CookieSecure:     cookieSecureDefault(),
+		ModerationAPIKey: os.Getenv("OPENAI_API_KEY"),
 	}
 
 	origins := envWithAliases([]string{"CORS_ALLOWED_ORIGINS", "ALLOWED_ORIGINS"}, "")

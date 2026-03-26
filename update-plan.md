@@ -12,28 +12,33 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - **Market resolution types**: Added `binary` (yes/no), `date` (resolves YES if an event occurs before a target date), and `numeric` (resolves YES if a value reaches a threshold). The creation form has a Market Type selector, and the market detail page shows the type context.
 - **Market stats on detail page**: The sidebar now shows total volume (bUEC), unique trader count, and total trade count.
 - **Probability bar on market list**: Each active market card now shows the LMSR-derived YES probability as a percentage label and a green-over-red bar, similar to Polymarket.
+- **Comments / Discussion**: Users can post and read comments on each market page. Comments support Markdown (rendered with DOMPurify-sanitized HTML). Mods can hard-delete comments. Comment count shown on market list cards.
+- **Automated abuse detection (OpenAI Moderation API)**: Comment submissions are scored by the OpenAI Moderation API (`omni-moderation-latest`). Comments that exceed per-category score thresholds (tuned for a gaming community) or are flagged by OpenAI are shadow-hidden — invisible to other users but still visible to the author with an `⚠ Under review` notice. Configured via `OPENAI_API_KEY` env var; graceful no-op when key is absent. *(Replaced Perspective API, which is being shut down.)*
+- **Market Creator Recognition**: A `Creator` badge is shown next to the submitter's name on the market detail page. When a mod approves a market, the creator automatically receives a 50 bUEC bonus.
+- **Expiring Pending Markets**: A background goroutine (runs hourly at startup) auto-cancels markets stuck in `pending_review` for more than 14 days, and moves active markets past their resolution deadline to `deadline_passed` status. New DB indexes added for both queries.
+- **Better Resolution Flow**: When resolving a market in the mod queue, mods can now attach an optional evidence link (issue tracker URL, patch notes, etc.) that is stored in the DB and displayed on the resolved market's detail page. The resolver's display name and resolution date are now shown on the detail page. Evidence link input added to the mod queue resolution form.
 
 ---
 
 ## High Priority
 
-### Comments / Discussion
-- Allow users to post short comments on each market page.
-- Show comment count on market list cards.
-- Comments should support markdown (sanitized with DOMPurify).
-- Mods can delete comments.
+### ~~Comments / Discussion~~ ✅ Done
+- ~~Allow users to post short comments on each market page.~~
+- ~~Show comment count on market list cards.~~
+- ~~Comments should support markdown (sanitized with DOMPurify).~~
+- ~~Mods can delete comments.~~
 
-### Market Creator Recognition
-- Show a "Creator" badge next to the submitter's name on the market detail page.
-- Optionally award a small bUEC bonus (e.g., 50 bUEC) when a creator's market goes live.
+### ~~Market Creator Recognition~~ ✅ Done
+- ~~Show a "Creator" badge next to the submitter's name on the market detail page.~~
+- ~~Optionally award a small bUEC bonus (e.g., 50 bUEC) when a creator's market goes live.~~
 
-### Expiring Pending Markets
-- Markets that stay in `pending_review` for longer than a configurable threshold (e.g., 14 days) should auto-cancel with a nightly background job.
-- Similarly, active markets past their deadline without a resolution request should move to a `deadline_passed` status so mods are prompted.
+### ~~Expiring Pending Markets~~ ✅ Done
+- ~~Markets that stay in `pending_review` for longer than a configurable threshold (e.g., 14 days) should auto-cancel with a nightly background job.~~
+- ~~Similarly, active markets past their deadline without a resolution request should move to a `deadline_passed` status so mods are prompted.~~
 
-### Better Resolution Flow
-- When resolving, mods should be able to attach an evidence link (issue tracker URL, patch notes link, etc.) that is stored and displayed on the market detail page.
-- Show who resolved the market and when (the `resolved_by` / `resolved_at` columns exist already but aren't surfaced on the detail page yet beyond a label).
+### ~~Better Resolution Flow~~ ✅ Done
+- ~~When resolving, mods should be able to attach an evidence link (issue tracker URL, patch notes link, etc.) that is stored and displayed on the market detail page.~~
+- ~~Show who resolved the market and when (the `resolved_by` / `resolved_at` columns exist already but aren't surfaced on the detail page yet beyond a label).~~
 
 ---
 
@@ -57,9 +62,12 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - Show resolved markets with payout received.
 - Badges section already exists; add a description tooltip for each badge.
 
-### RSI Handle Verification
-- The profile page should show whether the user's RSI handle has been verified (if SCID provides it).
-- If the RSI handle is verified, show a small checkmark icon on their profile and market submissions.
+### ~~RSI Handle Verification~~ ✅ Done
+- Stores `rsi_handle`, `rsi_verified_at`, `rsi_enlisted`, `rsi_citizen_record` from SCID OIDC claims into the `users` table on every login (migration 009).
+- The `verified` OIDC group is mirrored as `is_rsi_verified` in the DB and surfaced in `/api/me`.
+- Profile page shows an RSI Identity card with the handle (linked to RSI profile), citizen record number, enlistment date, and a "RSI Verified" badge for confirmed accounts.
+- `picture` claim from the OIDC token is stored as `avatar_url` when present; a deterministic colour-initial avatar is shown as fallback.
+- `UserAvatar` component displays a circular photo or initials badge wherever user names appear; navbar now shows the avatar next to the display name.
 
 ### Admin / Mod Panel Improvements
 - Add a bulk-action UI for mod queue (approve/reject multiple at once).
@@ -113,3 +121,5 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - **`cancelled` status filter on market list**: The filter exists in the UI but the backend `ListMarkets` query may need to explicitly handle `cancelled` status if it differs from how inactive markets are stored. Verify with a cancelled market in the DB.
 - **Resolution type display on resolved markets**: The "Resolved" card on the detail page shows YES/NO but doesn't yet contextualize it for `date` or `numeric` markets (e.g., "The event DID occur before [date]" vs just "YES").
 - **Price history on resolved markets**: The chart shows trades up to resolution; it would be cleaner to mark the resolution point on the chart with a vertical line.
+- **`deadline_passed` not a filter option in market list**: The new `deadline_passed` status exists in the DB and TypeScript types but isn't yet a selectable filter in the market list UI. Mods need a way to surface these markets.
+- **`deadline_passed` not shown in mod queue**: The mod queue currently shows `pending_review` and `resolution_requested` markets but not `deadline_passed`. Mods should be able to see and action expired markets.

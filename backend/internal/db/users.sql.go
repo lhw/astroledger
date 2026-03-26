@@ -12,7 +12,8 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (scid_sub, display_name, email)
 VALUES (?, ?, ?)
-RETURNING id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at
+RETURNING id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
+          rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified
 `
 
 type CreateUserParams struct {
@@ -34,6 +35,12 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.LastLoginAt,
+		&i.RsiHandle,
+		&i.RsiVerifiedAt,
+		&i.RsiEnlisted,
+		&i.RsiCitizenRecord,
+		&i.AvatarUrl,
+		&i.IsRsiVerified,
 	)
 	return i, err
 }
@@ -93,7 +100,8 @@ func (q *Queries) GetLeaderboard(ctx context.Context, limit int64) ([]GetLeaderb
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at
+SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
+       rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified
 FROM users
 WHERE id = ?
 LIMIT 1
@@ -112,12 +120,19 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.LastLoginAt,
+		&i.RsiHandle,
+		&i.RsiVerifiedAt,
+		&i.RsiEnlisted,
+		&i.RsiCitizenRecord,
+		&i.AvatarUrl,
+		&i.IsRsiVerified,
 	)
 	return i, err
 }
 
 const getUserBySub = `-- name: GetUserBySub :one
-SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at
+SELECT id, scid_sub, display_name, email, balance, is_moderator, is_admin, created_at, last_login_at,
+       rsi_handle, rsi_verified_at, rsi_enlisted, rsi_citizen_record, avatar_url, is_rsi_verified
 FROM users
 WHERE scid_sub = ?
 LIMIT 1
@@ -136,6 +151,12 @@ func (q *Queries) GetUserBySub(ctx context.Context, scidSub string) (User, error
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.LastLoginAt,
+		&i.RsiHandle,
+		&i.RsiVerifiedAt,
+		&i.RsiEnlisted,
+		&i.RsiCitizenRecord,
+		&i.AvatarUrl,
+		&i.IsRsiVerified,
 	)
 	return i, err
 }
@@ -158,19 +179,41 @@ func (q *Queries) UpdateUserBalance(ctx context.Context, arg UpdateUserBalancePa
 
 const updateUserLastLogin = `-- name: UpdateUserLastLogin :exec
 UPDATE users
-SET last_login_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-    display_name  = ?,
-    email         = ?
+SET last_login_at      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+    display_name       = ?,
+    email              = ?,
+    rsi_handle         = ?,
+    rsi_verified_at    = ?,
+    rsi_enlisted       = ?,
+    rsi_citizen_record = ?,
+    avatar_url         = ?,
+    is_rsi_verified    = ?
 WHERE id = ?
 `
 
 type UpdateUserLastLoginParams struct {
-	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
-	ID          int64  `json:"id"`
+	DisplayName      string  `json:"display_name"`
+	Email            string  `json:"email"`
+	RsiHandle        *string `json:"rsi_handle"`
+	RsiVerifiedAt    *string `json:"rsi_verified_at"`
+	RsiEnlisted      *string `json:"rsi_enlisted"`
+	RsiCitizenRecord *string `json:"rsi_citizen_record"`
+	AvatarUrl        *string `json:"avatar_url"`
+	IsRsiVerified    int64   `json:"is_rsi_verified"`
+	ID               int64   `json:"id"`
 }
 
 func (q *Queries) UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error {
-	_, err := q.db.ExecContext(ctx, updateUserLastLogin, arg.DisplayName, arg.Email, arg.ID)
+	_, err := q.db.ExecContext(ctx, updateUserLastLogin,
+		arg.DisplayName,
+		arg.Email,
+		arg.RsiHandle,
+		arg.RsiVerifiedAt,
+		arg.RsiEnlisted,
+		arg.RsiCitizenRecord,
+		arg.AvatarUrl,
+		arg.IsRsiVerified,
+		arg.ID,
+	)
 	return err
 }
