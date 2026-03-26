@@ -9,9 +9,10 @@ import { env } from '$env/dynamic/private';
  */
 export const load: LayoutServerLoad = async ({ cookies }) => {
 	const sessionCookie = cookies.get('session');
-	if (!sessionCookie) return { user: null };
 
 	const BACKEND = env.BACKEND_URL ?? 'http://localhost:8080';
+
+	if (!sessionCookie) return { user: null };
 
 	try {
 		const res = await fetch(`${BACKEND}/api/me`, {

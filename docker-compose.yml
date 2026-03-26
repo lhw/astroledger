@@ -27,6 +27,20 @@ services:
     networks:
       - internal
 
+  goatcounter:
+    image: ghcr.io/arp242/goatcounter:latest
+    restart: unless-stopped
+    # After first deploy, run: task gc:init
+    command:
+      - serve
+      - -listen=:8081
+      - -db=${GC_DB:-sqlite+/data/goatcounter.db}
+      - -tls=none
+    volumes:
+      - goatcounter-data:/data
+    networks:
+      - internal
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -43,11 +57,13 @@ services:
     depends_on:
       - backend
       - frontend
+      - goatcounter
 
 networks:
   internal:
 
 volumes:
   db-data:
+  goatcounter-data:
   caddy-data:
   caddy-config:

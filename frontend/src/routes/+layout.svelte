@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { initAuth, currentUser, isLoggedIn, isModerator, isAdmin } from '$lib/stores/auth';
 	import { loginWithSCID, logout } from '$lib/api';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
@@ -11,7 +12,7 @@
 	// Initialise auth store from server-provided data immediately (no flash).
 	// $effect keeps the store in sync when the layout re-runs on navigation.
 	$effect(() => {
-		currentUser.set(data.user);
+		if (browser) currentUser.set(data.user);
 	});
 
 	onMount(async () => {

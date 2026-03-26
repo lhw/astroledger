@@ -237,3 +237,40 @@ export interface DetectedPatch {
 	first_seen_at: string;
 	notified: number; // 0 = unseen, 1 = seen by mod
 }
+
+// ── Analytics (GoatCounter proxy) ────────────────────────────────────────
+
+export interface AnalyticsDayStat {
+	date: string;
+	views: number;
+	unique: number;
+}
+
+export interface AnalyticsPage {
+	path: string;
+	title: string;
+	views: number;
+	unique: number;
+}
+
+export interface AnalyticsRef {
+	name: string;
+	views: number;
+}
+
+export interface AnalyticsStats {
+	configured: boolean;
+	period: string;
+	total_views: number;
+	total_unique: number;
+	daily: AnalyticsDayStat[];
+	top_pages: AnalyticsPage[];
+	top_refs: AnalyticsRef[];
+}
+
+export interface UserSearchResult {
+	id: number;
+	display_name: string;
+	rsi_handle: string | null;
+	balance: number;
+}

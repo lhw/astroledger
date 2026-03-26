@@ -22,7 +22,9 @@ import type {
 	Report,
 	PricePoint,
 	Comment,
-	DetectedPatch
+	DetectedPatch,
+	AnalyticsStats,
+	UserSearchResult
 } from './types';
 
 class ApiClientError extends Error {
@@ -250,6 +252,14 @@ export async function adminAdjustBalance(
 		method: 'POST',
 		body: JSON.stringify({ amount, reason })
 	});
+}
+
+export async function adminGetAnalytics(period: '7d' | '30d'): Promise<AnalyticsStats> {
+	return request<AnalyticsStats>(`/api/admin/analytics?period=${period}`);
+}
+
+export async function adminSearchUsers(q: string): Promise<UserSearchResult[]> {
+	return request<UserSearchResult[]>(`/api/admin/users/search?q=${encodeURIComponent(q)}`);
 }
 
 // --- Patches ---

@@ -30,6 +30,14 @@ type Config struct {
 	// ModerationAPIKey is the OpenAI API key used for comment abuse detection.
 	// Optional — when empty, automated moderation is disabled and all comments pass.
 	ModerationAPIKey string
+
+	// GoatCounterURL is the internal base URL of the GoatCounter analytics service.
+	// Defaults to the Docker internal service name. Override for non-Docker setups.
+	GoatCounterURL string
+	// GoatCounterAPIKey is a GoatCounter API Bearer token created in the
+	// GoatCounter settings (Settings → API tokens). Required for the
+	// /api/admin/analytics endpoint to return data. Leave empty to disable.
+	GoatCounterAPIKey string
 }
 
 // UsePostgres returns true when a PostgreSQL DATABASE_URL is configured.
@@ -43,18 +51,20 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		Environment:      env("ENVIRONMENT", "development"),
-		Port:             env("PORT", "8080"),
-		DBPath:           envWithAliases([]string{"DB_PATH", "DATABASE_PATH"}, "./scolymarket.db"),
-		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		SCIDIssuer:       os.Getenv("SCID_ISSUER"),
-		SCIDClientID:     os.Getenv("SCID_CLIENT_ID"),
-		SCIDClientSecret: os.Getenv("SCID_CLIENT_SECRET"),
-		SCIDRedirectURL:  os.Getenv("SCID_REDIRECT_URL"),
-		SessionSecret:    os.Getenv("SESSION_SECRET"),
-		LogLevel:         env("LOG_LEVEL", "info"),
-		CookieSecure:     cookieSecureDefault(),
-		ModerationAPIKey: os.Getenv("OPENAI_API_KEY"),
+		Environment:       env("ENVIRONMENT", "development"),
+		Port:              env("PORT", "8080"),
+		DBPath:            envWithAliases([]string{"DB_PATH", "DATABASE_PATH"}, "./scolymarket.db"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		SCIDIssuer:        os.Getenv("SCID_ISSUER"),
+		SCIDClientID:      os.Getenv("SCID_CLIENT_ID"),
+		SCIDClientSecret:  os.Getenv("SCID_CLIENT_SECRET"),
+		SCIDRedirectURL:   os.Getenv("SCID_REDIRECT_URL"),
+		SessionSecret:     os.Getenv("SESSION_SECRET"),
+		LogLevel:          env("LOG_LEVEL", "info"),
+		CookieSecure:      cookieSecureDefault(),
+		ModerationAPIKey:  os.Getenv("OPENAI_API_KEY"),
+		GoatCounterURL:    env("GOATCOUNTER_URL", "http://goatcounter:8081"),
+		GoatCounterAPIKey: os.Getenv("GOATCOUNTER_API_KEY"),
 	}
 
 	origins := envWithAliases([]string{"CORS_ALLOWED_ORIGINS", "ALLOWED_ORIGINS"}, "")

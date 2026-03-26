@@ -84,7 +84,7 @@ func run() error {
 	tradeH := handler.NewTradingHandler(tradingSvc)
 	modH := handler.NewModerationHandler(queries, badgeSvc)
 	commentH := handler.NewCommentHandler(commentSvc)
-	adminH := handler.NewAdminHandler(queries, creditsSvc)
+	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
 	patchH := handler.NewPatchHandler(queries)
 
 	r := chi.NewRouter()
@@ -202,7 +202,9 @@ func run() error {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Post("/admin/weekly-payout", adminH.TriggerWeeklyPayout)
+			r.Get("/admin/users/search", adminH.SearchUsers)
 			r.Post("/admin/users/{id}/balance", adminH.AdjustUserBalance)
+			r.Get("/admin/analytics", adminH.AnalyticsProxy)
 		})
 	})
 	srv := &http.Server{

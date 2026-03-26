@@ -23,6 +23,14 @@ UPDATE users
 SET balance = balance + ?
 WHERE id = ?;
 
+-- name: SearchUsers :many
+SELECT id, display_name, rsi_handle, balance
+FROM users
+WHERE display_name LIKE sqlc.arg(pattern)
+   OR (rsi_handle IS NOT NULL AND rsi_handle LIKE sqlc.arg(pattern))
+ORDER BY display_name
+LIMIT 10;
+
 -- name: GetLeaderboard :many
 SELECT u.id, u.display_name, u.balance,
        COALESCE(SUM(

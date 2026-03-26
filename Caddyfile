@@ -9,7 +9,8 @@ scolymarket.example.com {
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
         X-Frame-Options "DENY"
-        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'"
+        # script-src and connect-src include stats.scolymarket.example.com for GoatCounter
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://stats.scolymarket.example.com; connect-src 'self' https://stats.scolymarket.example.com"
     }
 
     # Backend API and auth endpoints
@@ -18,4 +19,11 @@ scolymarket.example.com {
 
     # Everything else goes to the SvelteKit frontend
     reverse_proxy frontend:3000
+}
+
+# GoatCounter analytics dashboard — cookie-free, privacy-first
+# Access the admin UI at https://stats.scolymarket.example.com
+# Run `task gc:init` once after first deploy to create the admin account.
+stats.scolymarket.example.com {
+    reverse_proxy goatcounter:8081
 }

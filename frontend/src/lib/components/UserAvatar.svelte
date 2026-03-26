@@ -13,15 +13,17 @@
 	});
 
 	// Up to two initials from the display name words.
-	const initials = name
-		.split(/\s+/)
-		.map((w) => w[0])
-		.join('')
-		.slice(0, 2)
-		.toUpperCase();
+	const initials = $derived(
+		name
+			.split(/\s+/)
+			.map((w) => w[0])
+			.join('')
+			.slice(0, 2)
+			.toUpperCase()
+	);
 
 	// Deterministic hue from the name so each user gets a consistent colour.
-	const hue = [...name].reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 360;
+	const hue = $derived([...name].reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 360);
 </script>
 
 {#if src && !imgError}

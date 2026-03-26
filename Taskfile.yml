@@ -8,17 +8,20 @@ tasks:
 
   dev:
     desc: |
-      Start both dev servers concurrently:
+      Start all dev servers concurrently:
         • backend  — Go server with Air hot-reload on :8080
         • frontend — Vite dev server on :5173 (proxies /api + /auth to :8080)
+        • goatcounter — analytics on :8081 (skipped if tmp/goatcounter.db missing)
 
       Prerequisites:
         • Air: go install github.com/air-verse/air@latest
+        • GoatCounter: task gc:install && task gc:dev:init
         • Frontend deps: cd frontend && npm install
         • Backend .env with real SCID credentials (copy backend/.env.example)
     deps:
       - task: dev:backend
       - task: dev:frontend
+      - task: dev:goatcounter
 
   dev:backend:
     desc: Start Go backend (Air hot-reload)
@@ -36,6 +39,10 @@ tasks:
     dir: frontend
     env:
       BACKEND_URL: http://localhost:8080
+      # GoatCounter server-side tracking (hooks.server.ts). API key is read
+      # from your shell env — export GOATCOUNTER_API_KEY=<token> or set it
+      # in frontend/.env (gitignored). Omit to disable tracking in dev.
+      GOATCOUNTER_URL: http://localhost:8081
     cmds:
       - npm run dev
 
@@ -60,3 +67,73 @@ tasks:
         dir: backend
       - cmd: npm install
         dir: frontend
+
+  gc:init:
+    desc: |
+      Create the GoatCounter analytics site (run once after first deploy).
+      Requires: GC_EMAIL, GC_PASSWORD, and optionally GC_VHOST env vars.
+        task gc:init GC_EMAIL=admin@example.com GC_PASSWORD=secret
+    env:
+      GC_EMAIL: '{{.GC_EMAIL}}'
+      GC_PASSWORD: '{{.GC_PASSWORD}}'
+      GC_VHOST: '{{.GC_VHOST}}'
+    cmds:
+      - |
+        docker compose exec goatcounter goatcounter db create site \
+          -db "sqlite+/data/goatcounter.db" \
+          -vhost "${GC_VHOST:-stats.scolymarket.example.com}" \
+          -email "${GC_EMAIL:?GC_EMAIL is required}" \
+          -password "${GC_PASSWORD:?GC_PASSWORD is required}"
+
+  gc:install:
+    desc: Install the GoatCounter binary locally (requires Go)
+    cmds:
+      - go install zgo.at/goatcounter/v2/cmd/goatcounter@latest
+
+  gc:dev:init:
+    desc: |
+      Set up a local GoatCounter DB and register a site (run once).
+      Stores state in backend/goatcounter.db — gitignored.
+        task gc:dev:init GC_EMAIL=admin@example.com GC_PASSWORD=secret
+    env:
+      GC_EMAIL: '{{.GC_EMAIL}}'
+      GC_PASSWORD: '{{.GC_PASSWORD}}'
+    cmds:
+      - |
+        [ -n "$GC_EMAIL" ]    || { echo "error: pass GC_EMAIL=... to this task";    exit 1; }
+        [ -n "$GC_PASSWORD" ] || { echo "error: pass GC_PASSWORD=... to this task"; exit 1; }
+        # Create fresh GoatCounter schema
+        goatcounter db newdb \
+          -db "sqlite+backend/goatcounter.db" \
+          -createdb
+        # Register the site
+        goatcounter db create site \
+          -db "sqlite+backend/goatcounter.db" \
+          -vhost "gc.localhost" \
+          -email "$GC_EMAIL" \
+          -password "$GC_PASSWORD"
+      - |
+        echo ""
+        echo "Site ready. Start it with: task gc:dev"
+        echo "Then visit http://gc.localhost:8081 to generate an API key:"
+        echo "  Settings → API Keys → Create token"
+        echo "Then set in .env:  GOATCOUNTER_URL=http://localhost:8081"
+        echo "                   GOATCOUNTER_API_KEY=<token>"
+
+  gc:dev:
+    desc: |
+      Run GoatCounter locally on :8081 (no Docker needed).
+      Uses backend/goatcounter.db. Run 'task gc:dev:init' first.
+    cmds:
+      - goatcounter serve -listen :8081 -db "sqlite+backend/goatcounter.db" -tls none
+
+  dev:goatcounter:
+    desc: Start GoatCounter for dev (skipped with a hint if not initialised)
+    cmds:
+      - |
+        if [ ! -f backend/goatcounter.db ]; then
+          echo "GoatCounter: backend/goatcounter.db not found — skipping."
+          echo "  Run: task gc:dev:init GC_EMAIL=you@example.com GC_PASSWORD=secret"
+          exit 0
+        fi
+        goatcounter serve -listen :8081 -db "sqlite+backend/goatcounter.db" -tls none

@@ -41,6 +41,7 @@ type Querier interface {
 	ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsRow, error)
 	LogAdminAdjustment(ctx context.Context, arg LogAdminAdjustmentParams) error
 	MarkPatchNotified(ctx context.Context, id int64) error
+	SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error)
 	UpdateMarketAMMState(ctx context.Context, arg UpdateMarketAMMStateParams) error
 	UpdateMarketStatus(ctx context.Context, arg UpdateMarketStatusParams) error
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error

@@ -161,6 +161,50 @@ func (q *Queries) GetUserBySub(ctx context.Context, scidSub string) (User, error
 	return i, err
 }
 
+const searchUsers = `-- name: SearchUsers :many
+SELECT id, display_name, rsi_handle, balance
+FROM users
+WHERE display_name LIKE ?1
+   OR (rsi_handle IS NOT NULL AND rsi_handle LIKE ?1)
+ORDER BY display_name
+LIMIT 10
+`
+
+type SearchUsersRow struct {
+	ID          int64   `json:"id"`
+	DisplayName string  `json:"display_name"`
+	RsiHandle   *string `json:"rsi_handle"`
+	Balance     int64   `json:"balance"`
+}
+
+func (q *Queries) SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchUsers, pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchUsersRow{}
+	for rows.Next() {
+		var i SearchUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayName,
+			&i.RsiHandle,
+			&i.Balance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateUserBalance = `-- name: UpdateUserBalance :exec
 UPDATE users
 SET balance = balance + ?
