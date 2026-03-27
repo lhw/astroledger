@@ -825,3 +825,78 @@ ORDER BY m.status ASC, m.id DESC`
 	}
 	return items, rows.Err()
 }
+
+// ─── Trending ─────────────────────────────────────────────────────────────────
+
+// TrendingMarketRow is a market enriched with recent (last 24h) trading activity.
+type TrendingMarketRow struct {
+	ID                  int64      `json:"id"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description"`
+	Category            string     `json:"category"`
+	ResolutionCriteria  string     `json:"resolution_criteria"`
+	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
+	Status              string     `json:"status"`
+	ResolvedOutcomeID   *int64     `json:"resolved_outcome_id"`
+	CreatedBy           int64      `json:"created_by"`
+	ResolvedBy          *int64     `json:"resolved_by"`
+	CreatedAt           time.Time  `json:"created_at"`
+	ResolvedAt          *time.Time `json:"resolved_at"`
+	LiquidityParam      float64    `json:"liquidity_param"`
+	ResolutionType      string     `json:"resolution_type"`
+	ResolutionThreshold *string    `json:"resolution_threshold"`
+	ResolutionEvidence  *string    `json:"resolution_evidence"`
+	CreatorName         string     `json:"creator_name"`
+	RecentTradeCount    int64      `json:"recent_trade_count"`
+	RecentVolume        int64      `json:"recent_volume"`
+}
+
+// ListTrendingMarkets returns up to limit active markets ordered by trade volume
+// in the last 24 hours.
+func (q *Queries) ListTrendingMarkets(ctx context.Context, limit int64) ([]TrendingMarketRow, error) {
+	var window string
+	if q.isPG() {
+		window = "NOW() - INTERVAL '24 hours'"
+	} else {
+		window = "datetime('now', '-24 hours')"
+	}
+	query := `
+SELECT m.id, m.title, m.description, m.category,
+       m.resolution_criteria, m.resolution_deadline,
+       m.status, m.resolved_outcome_id, m.created_by, m.resolved_by,
+       m.created_at, m.resolved_at, m.liquidity_param,
+       m.resolution_type, m.resolution_threshold, m.resolution_evidence,
+       u.display_name AS creator_name,
+       COUNT(t.id)              AS recent_trade_count,
+       COALESCE(SUM(t.cost), 0) AS recent_volume
+FROM markets m
+JOIN users u ON u.id = m.created_by
+LEFT JOIN trades t ON t.market_id = m.id AND t.created_at >= ` + window + `
+WHERE m.status = 'active'
+GROUP BY m.id
+ORDER BY recent_trade_count DESC, recent_volume DESC
+LIMIT ?`
+
+	rows, err := q.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]TrendingMarketRow, 0)
+	for rows.Next() {
+		var i TrendingMarketRow
+		if err := rows.Scan(
+			&i.ID, &i.Title, &i.Description, &i.Category,
+			&i.ResolutionCriteria, &i.ResolutionDeadline,
+			&i.Status, &i.ResolvedOutcomeID, &i.CreatedBy, &i.ResolvedBy,
+			&i.CreatedAt, &i.ResolvedAt, &i.LiquidityParam,
+			&i.ResolutionType, &i.ResolutionThreshold, &i.ResolutionEvidence,
+			&i.CreatorName,
+			&i.RecentTradeCount, &i.RecentVolume,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}

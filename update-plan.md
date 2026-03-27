@@ -90,6 +90,16 @@ This document tracks remaining work, known issues, and future ideas.
 - Notification when a user's submitted market goes live or is rejected.
 - Could use a simple `notifications` table + polling, no push infrastructure needed for ~200 users.
 
+### Watchlists / Saved Markets
+- Let users bookmark markets they want to follow later, with a saved tab on the profile page and a bookmark control on market cards.
+- This pairs naturally with notifications and makes it easy to revisit long-running or niche markets.
+- Good fit because Polymarket/Kalshi both emphasize followed/saved markets as a core discovery loop.
+
+### ~~Trending / Hot Markets~~ ✅ Done
+- Add a "Trending" or "Hot" sort that ranks markets by recent volume, trader count, and/or trade velocity.
+- Surface a small trending strip on the home page so users can see what the room is moving on right now.
+- Fits the current data model well because market volume and trade count are already exposed on the detail page.
+
 ### Weekly Credit Automation
 - Currently handled by a cron/background job. Add a simple admin endpoint to manually trigger the weekly payout (useful for testing and edge cases around cron timing).
 

@@ -1,27 +1,84 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { listMarkets } from '$lib/api';
+	import { listMarkets, getTrendingMarkets } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
 	import { loginWithSCID } from '$lib/api';
-	import type { MarketList } from '$lib/types';
+	import type { MarketList, TrendingMarket } from '$lib/types';
 	import { CATEGORY_LABELS } from '$lib/categories';
 
-	let { data } = $props<{ data: { featured: MarketList | null } }>();
+	let { data } = $props<{ data: { featured: MarketList | null; trending: TrendingMarket[] | null } }>();
 
 	// untrack() signals that we intentionally want a one-time snapshot, not a reactive dependency.
-	const { featured: initialFeatured } = untrack(() => data);
+	const { featured: initialFeatured, trending: initialTrending } = untrack(() => data);
 	let featured = $state<MarketList | null>(initialFeatured ?? null);
+	let trending = $state<TrendingMarket[] | null>(initialTrending ?? null);
 	let loading = $state(initialFeatured == null);
+	let trendingLoading = $state(initialTrending == null);
+
+	// Trending strip scroll / drag state
+	let trendingEl = $state<HTMLDivElement | null>(null);
+	let isDragging = false;
+	let dragStartX = 0;
+	let scrollStartLeft = 0;
+
+	function onPointerDown(e: PointerEvent) {
+		if (!trendingEl) return;
+		isDragging = true;
+		dragStartX = e.clientX;
+		scrollStartLeft = trendingEl.scrollLeft;
+		trendingEl.setPointerCapture(e.pointerId);
+		trendingEl.style.cursor = 'grabbing';
+	}
+
+	function onPointerMove(e: PointerEvent) {
+		if (!isDragging || !trendingEl) return;
+		const dx = e.clientX - dragStartX;
+		trendingEl.scrollLeft = scrollStartLeft - dx;
+	}
+
+	function onPointerUp(e: PointerEvent) {
+		if (!trendingEl) return;
+		isDragging = false;
+		trendingEl.style.cursor = 'grab';
+		trendingEl.releasePointerCapture(e.pointerId);
+	}
+
+	function onWheel(e: WheelEvent) {
+		if (!trendingEl) return;
+		// Convert vertical wheel delta to horizontal scroll
+		if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; // let native horizontal scroll pass
+		e.preventDefault();
+		trendingEl.scrollLeft += e.deltaY;
+	}
 
 	onMount(async () => {
-		if (initialFeatured) return; // SSR already provided data
-		try {
-			featured = await listMarkets('active', '', 0);
-		} catch {
-			featured = null;
-		} finally {
-			loading = false;
+		const fetches: Promise<void>[] = [];
+		if (!initialFeatured) {
+			fetches.push(
+				listMarkets('active', '', 0)
+					.then((r) => { featured = r; })
+					.catch(() => { featured = null; })
+					.finally(() => { loading = false; })
+			);
 		}
+		if (!initialTrending) {
+			fetches.push(
+				getTrendingMarkets()
+					.then((r) => { trending = r; })
+					.catch(() => { trending = null; })
+					.finally(() => { trendingLoading = false; })
+			);
+		}
+		await Promise.all(fetches);
+	});
+
+	// Non-passive wheel listener so we can call preventDefault to redirect
+	// vertical scroll into horizontal scroll on the trending strip.
+	$effect(() => {
+		const el = trendingEl;
+		if (!el) return;
+		el.addEventListener('wheel', onWheel, { passive: false });
+		return () => el.removeEventListener('wheel', onWheel);
 	});
 </script>
 
@@ -62,6 +119,62 @@
 			<div class="text-surface-500 text-xs uppercase tracking-widest font-semibold">Starting bUEC</div>
 		</div>
 	</div>
+
+	<!-- Trending markets -->
+	{#if trendingLoading}
+		<section class="mb-10">
+			<div class="flex items-center gap-3 mb-4">
+				<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">🔥 Trending Now</h2>
+				<div class="flex-1 h-px bg-surface-200 w-16"></div>
+			</div>
+			<div class="text-surface-400 text-center py-4 text-sm">Loading…</div>
+		</section>
+	{:else if trending && trending.length > 0}
+		<section class="mb-10">
+			<div class="flex items-center justify-between mb-4">
+				<div class="flex items-center gap-3">
+					<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">🔥 Trending Now</h2>
+					<div class="flex-1 h-px bg-surface-200 w-16"></div>
+				</div>
+				<a href="/markets?sort=trending" class="text-primary-600 hover:text-primary-700 text-xs uppercase tracking-wider font-semibold no-underline transition-colors">
+					See all →
+				</a>
+			</div>
+
+			<div
+				bind:this={trendingEl}
+				role="list"
+				class="trending-strip flex gap-3 snap-x"
+				onpointerdown={onPointerDown}
+				onpointermove={onPointerMove}
+				onpointerup={onPointerUp}
+				onpointercancel={onPointerUp}
+			>
+				{#each trending as market}
+					{@const outs = market.outcomes ?? []}
+					{@const yesPct = outs.length >= 1 ? outs[0].price : 50}
+					<a
+						href="/markets/{market.id}"
+						class="trending-card snap-start flex-shrink-0 w-56 p-3 rounded-lg border no-underline flex flex-col gap-2 transition-all"
+					>
+						<div>
+							<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
+							<div class="text-surface-800 font-medium text-xs mt-1.5 leading-snug line-clamp-3">{market.title}</div>
+						</div>
+						<div class="mt-auto">
+							<div class="flex justify-between items-center mb-1">
+								<span class="text-[11px] font-bold text-green-600">YES {yesPct}%</span>
+								<span class="text-[10px] text-surface-400">{market.recent_trade_count} trades / 24h</span>
+							</div>
+							<div class="h-1.5 w-full rounded-full bg-red-100 overflow-hidden">
+								<div class="h-full rounded-full bg-green-500 transition-all" style="width: {yesPct}%"></div>
+							</div>
+						</div>
+					</a>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
 	<!-- Featured markets -->
 	<section>
@@ -107,3 +220,29 @@
 		{/if}
 	</section>
 </div>
+<style>
+	.trending-strip {
+		overflow-x: auto;
+		scrollbar-width: none; /* Firefox */
+		-ms-overflow-style: none; /* IE/Edge */
+		cursor: grab;
+		user-select: none;
+		-webkit-user-select: none;
+		padding-bottom: 2px;
+	}
+	.trending-strip::-webkit-scrollbar {
+		display: none; /* Chrome/Safari/Opera */
+	}
+	.trending-card {
+		background: var(--card-bg);
+		border-color: var(--color-surface-300);
+		box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.06);
+	}
+	.trending-card:hover {
+		border-color: var(--color-primary-300);
+		box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.14);
+	}
+	:global(:root[data-theme='dark']) .trending-card {
+		box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.35);
+	}
+</style>

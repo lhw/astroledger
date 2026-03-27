@@ -208,5 +208,7 @@
 	<!-- Footer -->
 	<footer class="site-footer text-center site-nav-muted text-xs py-5 border-t">
 		ScolyMarket — No real money. No real ships delivered.
+		<span class="mx-2 opacity-30">·</span>
+		<a href="/docs/api" class="site-nav-muted hover:text-primary-600 transition-colors no-underline">Bot API docs</a>
 	</footer>
 </div>

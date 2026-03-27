@@ -26,11 +26,13 @@ type MarketHandler struct {
 	queries *db.Queries
 	svc     *service.MarketService
 
-	cacheMu      sync.RWMutex
-	listCache    map[string]cachedMarketList
-	historyCache map[int64]cachedPriceHistory
-	listTTL      time.Duration
-	historyTTL   time.Duration
+	cacheMu       sync.RWMutex
+	listCache     map[string]cachedMarketList
+	historyCache  map[int64]cachedPriceHistory
+	trendingCache cachedTrendingList
+	listTTL       time.Duration
+	historyTTL    time.Duration
+	trendingTTL   time.Duration
 }
 
 type cachedMarketList struct {
@@ -43,6 +45,11 @@ type cachedPriceHistory struct {
 	rows      []db.GetMarketPriceHistoryRow
 }
 
+type cachedTrendingList struct {
+	expiresAt time.Time
+	payload   []any
+}
+
 // NewMarketHandler creates a MarketHandler.
 func NewMarketHandler(q *db.Queries, svc *service.MarketService) *MarketHandler {
 	return &MarketHandler{
@@ -52,6 +59,7 @@ func NewMarketHandler(q *db.Queries, svc *service.MarketService) *MarketHandler 
 		historyCache: make(map[int64]cachedPriceHistory),
 		listTTL:      5 * time.Second,
 		historyTTL:   5 * time.Second,
+		trendingTTL:  30 * time.Second,
 	}
 }
 
@@ -160,6 +168,45 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "public, max-age=5")
 	respondJSON(w, http.StatusOK, resp)
+}
+
+// Trending returns up to 5 active markets ordered by trading activity in the last 24h.
+func (h *MarketHandler) Trending(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+
+	h.cacheMu.RLock()
+	cached := h.trendingCache
+	h.cacheMu.RUnlock()
+	if cached.payload != nil && now.Before(cached.expiresAt) {
+		w.Header().Set("Cache-Control", "public, max-age=30")
+		respondJSON(w, http.StatusOK, cached.payload)
+		return
+	}
+
+	markets, err := h.queries.ListTrendingMarkets(r.Context(), 5)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	type trendingMarketResp struct {
+		db.TrendingMarketRow
+		Outcomes []outcomeResp `json:"outcomes"`
+	}
+	result := make([]any, len(markets))
+	for i, m := range markets {
+		result[i] = trendingMarketResp{
+			TrendingMarketRow: m,
+			Outcomes:          h.buildOutcomeResps(r, m.ID, m.LiquidityParam),
+		}
+	}
+
+	h.cacheMu.Lock()
+	h.trendingCache = cachedTrendingList{expiresAt: now.Add(h.trendingTTL), payload: result}
+	h.cacheMu.Unlock()
+
+	w.Header().Set("Cache-Control", "public, max-age=30")
+	respondJSON(w, http.StatusOK, result)
 }
 
 // Get returns a single market by ID with current prices and (if authenticated) the caller's position.

@@ -147,6 +147,7 @@ func run() error {
 
 		// Markets (read-only, public)
 		r.Get("/markets", marketH.List)
+		r.Get("/markets/trending", marketH.Trending)
 		r.Get("/markets/{id}", marketH.Get)
 		r.Get("/markets/{id}/history", marketH.GetPriceHistory)
 		r.Get("/markets/{id}/trades", marketH.GetTrades)

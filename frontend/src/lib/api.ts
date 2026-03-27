@@ -10,6 +10,7 @@ import type {
 	Market,
 	MarketWithPrice,
 	MarketList,
+	TrendingMarket,
 	MarketCategory,
 	TradeWithMarket,
 	TradeWithTrader,
@@ -119,6 +120,10 @@ export async function listMarkets(
 
 export async function getMarket(id: number): Promise<MarketWithPrice> {
 	return request<MarketWithPrice>(`/api/markets/${id}`);
+}
+
+export async function getTrendingMarkets(): Promise<TrendingMarket[]> {
+	return request<TrendingMarket[]>('/api/markets/trending');
 }
 
 export async function createMarket(body: CreateMarketBody): Promise<Market> {

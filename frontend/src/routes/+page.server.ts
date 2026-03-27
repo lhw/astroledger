@@ -1,15 +1,19 @@
 import type { PageServerLoad } from './$types';
 import { env } from '$env/dynamic/private';
 
-/** Pre-fetch featured active markets for the home page hero. */
+/** Pre-fetch featured active markets and trending markets for the home page hero. */
 export const load: PageServerLoad = async () => {
 	const BACKEND = env.BACKEND_URL;
-	if (!BACKEND) return { featured: null }; // Not configured — client-side onMount handles it
+	if (!BACKEND) return { featured: null, trending: null };
 	try {
-		const res = await fetch(`${BACKEND}/api/markets?status=active&limit=20`);
-		if (!res.ok) return { featured: null };
-		return { featured: await res.json() };
+		const [featuredRes, trendingRes] = await Promise.all([
+			fetch(`${BACKEND}/api/markets?status=active&limit=20`),
+			fetch(`${BACKEND}/api/markets/trending`)
+		]);
+		const featured = featuredRes.ok ? await featuredRes.json() : null;
+		const trending = trendingRes.ok ? await trendingRes.json() : null;
+		return { featured, trending };
 	} catch {
-		return { featured: null };
+		return { featured: null, trending: null };
 	}
 };

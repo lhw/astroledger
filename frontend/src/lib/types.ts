@@ -142,6 +142,13 @@ export interface MarketList {
 	offset: number;
 }
 
+/** A trending market enriched with recent (24h) trading activity */
+export interface TrendingMarket extends Market {
+	creator_name: string;
+	recent_trade_count: number;
+	recent_volume: number;
+}
+
 /** Trade record */
 export interface Trade {
 	id: number;
