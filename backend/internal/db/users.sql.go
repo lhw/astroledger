@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -22,9 +23,27 @@ type CreateUserParams struct {
 	Email       string `json:"email"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+type CreateUserRow struct {
+	ID               int64     `json:"id"`
+	ScidSub          string    `json:"scid_sub"`
+	DisplayName      string    `json:"display_name"`
+	Email            string    `json:"email"`
+	Balance          int64     `json:"balance"`
+	IsModerator      int64     `json:"is_moderator"`
+	IsAdmin          int64     `json:"is_admin"`
+	CreatedAt        time.Time `json:"created_at"`
+	LastLoginAt      time.Time `json:"last_login_at"`
+	RsiHandle        *string   `json:"rsi_handle"`
+	RsiVerifiedAt    *string   `json:"rsi_verified_at"`
+	RsiEnlisted      *string   `json:"rsi_enlisted"`
+	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
+	AvatarUrl        *string   `json:"avatar_url"`
+	IsRsiVerified    int64     `json:"is_rsi_verified"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
 	row := q.db.QueryRowContext(ctx, createUser, arg.ScidSub, arg.DisplayName, arg.Email)
-	var i User
+	var i CreateUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.ScidSub,
@@ -111,9 +130,27 @@ WHERE id = ?
 LIMIT 1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
+type GetUserByIDRow struct {
+	ID               int64     `json:"id"`
+	ScidSub          string    `json:"scid_sub"`
+	DisplayName      string    `json:"display_name"`
+	Email            string    `json:"email"`
+	Balance          int64     `json:"balance"`
+	IsModerator      int64     `json:"is_moderator"`
+	IsAdmin          int64     `json:"is_admin"`
+	CreatedAt        time.Time `json:"created_at"`
+	LastLoginAt      time.Time `json:"last_login_at"`
+	RsiHandle        *string   `json:"rsi_handle"`
+	RsiVerifiedAt    *string   `json:"rsi_verified_at"`
+	RsiEnlisted      *string   `json:"rsi_enlisted"`
+	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
+	AvatarUrl        *string   `json:"avatar_url"`
+	IsRsiVerified    int64     `json:"is_rsi_verified"`
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getUserByID, id)
-	var i User
+	var i GetUserByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.ScidSub,
@@ -142,9 +179,27 @@ WHERE scid_sub = ?
 LIMIT 1
 `
 
-func (q *Queries) GetUserBySub(ctx context.Context, scidSub string) (User, error) {
+type GetUserBySubRow struct {
+	ID               int64     `json:"id"`
+	ScidSub          string    `json:"scid_sub"`
+	DisplayName      string    `json:"display_name"`
+	Email            string    `json:"email"`
+	Balance          int64     `json:"balance"`
+	IsModerator      int64     `json:"is_moderator"`
+	IsAdmin          int64     `json:"is_admin"`
+	CreatedAt        time.Time `json:"created_at"`
+	LastLoginAt      time.Time `json:"last_login_at"`
+	RsiHandle        *string   `json:"rsi_handle"`
+	RsiVerifiedAt    *string   `json:"rsi_verified_at"`
+	RsiEnlisted      *string   `json:"rsi_enlisted"`
+	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
+	AvatarUrl        *string   `json:"avatar_url"`
+	IsRsiVerified    int64     `json:"is_rsi_verified"`
+}
+
+func (q *Queries) GetUserBySub(ctx context.Context, scidSub string) (GetUserBySubRow, error) {
 	row := q.db.QueryRowContext(ctx, getUserBySub, scidSub)
-	var i User
+	var i GetUserBySubRow
 	err := row.Scan(
 		&i.ID,
 		&i.ScidSub,

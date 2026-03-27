@@ -197,6 +197,7 @@ func run() error {
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Delete("/comments/{id}", commentH.Delete)
 			r.Get("/mod/markets", marketH.ListPending)
+			r.Get("/mod/markets/deadline-passed", marketH.ListDeadlinePassed)
 			r.Post("/mod/markets/{id}/approve", marketH.Approve)
 			r.Post("/mod/markets/{id}/reject", marketH.Reject)
 			r.Post("/mod/markets/{id}/resolve", marketH.Resolve)

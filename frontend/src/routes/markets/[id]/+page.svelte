@@ -165,6 +165,15 @@
 	// Chart UI state
 	let chartLogScale = $state(false);
 
+	function formatShares(value: number): string {
+		if (!Number.isFinite(value)) return '0';
+		if (Number.isInteger(value)) return value.toLocaleString();
+		return value.toLocaleString(undefined, {
+			minimumFractionDigits: 0,
+			maximumFractionDigits: 4
+		});
+	}
+
 	async function loadComments() {
 		try {
 			comments = await getComments(id);
@@ -242,13 +251,15 @@
 				return;
 			}
 			const result = await executeTrade(id, selectedOutcome.id, 'buy', sharesToBuy);
+			const executedShares = result.Shares;
 			currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
-			tradeSuccess = `Bought ${sharesToBuy} ${selectedOutcome.label} share${sharesToBuy !== 1 ? 's' : ''} for ${result.Cost.toLocaleString()} bUEC.`;
+			tradeSuccess = `Bought ${formatShares(executedShares)} ${selectedOutcome.label} share${executedShares !== 1 ? 's' : ''} for ${result.Cost.toLocaleString()} bUEC.`;
 			} else {
 				const result = await executeTrade(id, selectedOutcome.id, 'sell', sellShares);
+				const executedShares = result.Shares;
 				currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
 				const received = Math.abs(result.Cost);
-				tradeSuccess = `Sold ${sellShares} ${selectedOutcome.label} share${sellShares !== 1 ? 's' : ''} for ${received.toLocaleString()} bUEC.`;
+				tradeSuccess = `Sold ${formatShares(executedShares)} ${selectedOutcome.label} share${executedShares !== 1 ? 's' : ''} for ${received.toLocaleString()} bUEC.`;
 			}
 			// Refresh market data and price history.
 			[data_, priceHistory] = await Promise.all([
@@ -635,15 +646,35 @@
 					{#if market.resolution_type !== 'binary'}
 						<div class="mt-3 pt-3 border-t border-surface-100">
 							{#if market.resolution_type === 'date'}
-								<p class="text-xs text-surface-500">
-									<span class="font-semibold text-surface-700">Date prediction</span> — resolves YES if the event occurs before
-									<span class="font-semibold text-surface-700">{market.resolution_threshold ? new Date(market.resolution_threshold).toLocaleDateString() : '(unset)'}</span>
-								</p>
+								{@const dateThreshold = market.resolution_threshold ? new Date(market.resolution_threshold).toLocaleDateString() : '(unset)'}
+								{@const resolvedLabel = (market.outcomes ?? []).find((o) => o.id === market.resolved_outcome_id)?.label ?? '—'}
+								{#if market.status === 'resolved'}
+									<p class="text-xs text-surface-500">
+										<span class="font-semibold text-surface-700">Date prediction</span> — resolved
+										<span class="font-semibold text-surface-700"> {resolvedLabel}</span> against threshold
+										<span class="font-semibold text-surface-700"> {dateThreshold}</span>
+									</p>
+								{:else}
+									<p class="text-xs text-surface-500">
+										<span class="font-semibold text-surface-700">Date prediction</span> — resolves YES if the event occurs before
+										<span class="font-semibold text-surface-700"> {dateThreshold}</span>
+									</p>
+								{/if}
 							{:else if market.resolution_type === 'numeric'}
-								<p class="text-xs text-surface-500">
-									<span class="font-semibold text-surface-700">Numeric prediction</span> — resolves YES if the value reaches
-									<span class="font-semibold text-surface-700">${market.resolution_threshold ?? '?'}</span>
-								</p>
+								{@const numericThreshold = market.resolution_threshold ?? '?'}
+								{@const resolvedLabel = (market.outcomes ?? []).find((o) => o.id === market.resolved_outcome_id)?.label ?? '—'}
+								{#if market.status === 'resolved'}
+									<p class="text-xs text-surface-500">
+										<span class="font-semibold text-surface-700">Numeric prediction</span> — resolved
+										<span class="font-semibold text-surface-700"> {resolvedLabel}</span> against threshold
+										<span class="font-semibold text-surface-700"> ${numericThreshold}</span>
+									</p>
+								{:else}
+									<p class="text-xs text-surface-500">
+										<span class="font-semibold text-surface-700">Numeric prediction</span> — resolves YES if the value reaches
+										<span class="font-semibold text-surface-700"> ${numericThreshold}</span>
+									</p>
+								{/if}
 							{/if}
 						</div>
 					{/if}
@@ -695,13 +726,14 @@
 							<!-- Outcome selector -->
 							<div class="mb-4">
 								<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold block mb-2">Outcome</span>
-								<div class="flex gap-2 flex-wrap">
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
 									{#each (market.outcomes ?? []) as outcome}
 										<button
 											onclick={() => (selectedOutcomeId = outcome.id)}
-											class="flex-1 btn btn-sm {selectedOutcome?.id === outcome.id ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400 hover:text-primary-700'} transition-colors text-xs uppercase tracking-wider font-bold"
+											class="w-full min-w-0 btn btn-sm {selectedOutcome?.id === outcome.id ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400 hover:text-primary-700'} transition-colors text-[11px] sm:text-xs uppercase tracking-wider font-bold leading-tight py-2"
 										>
-											{outcome.label} <span class="opacity-70 normal-case font-normal">{outcome.price}%</span>
+											<span class="block truncate">{outcome.label}</span>
+											<span class="block opacity-70 normal-case font-normal">{outcome.price}%</span>
 										</button>
 									{/each}
 								</div>
@@ -724,7 +756,7 @@
 									<label class="block mb-1" for="trade-shares">
 										<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Shares to Buy</span>
 									</label>
-									<div class="flex items-center gap-2 mb-1">
+									<div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
 										<input
 											id="trade-shares"
 											type="number"
@@ -737,7 +769,7 @@
 										{#if $currentUser && maxShares > 0}
 											<button
 												onclick={() => (tradeShares = maxShares)}
-												class="text-xs text-primary-600 hover:underline whitespace-nowrap"
+												class="text-xs text-primary-600 hover:underline whitespace-nowrap self-start sm:self-auto"
 												title="Max shares you can afford"
 											>
 												Max ({maxShares})
@@ -757,7 +789,7 @@
 								<button
 									onclick={doTrade}
 									disabled={trading || tradeShares <= 0 || !canAfford}
-									class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
+									class="btn preset-filled-primary-500 w-full text-[11px] sm:text-xs uppercase tracking-wider whitespace-normal break-words leading-tight py-2 h-auto disabled:opacity-50"
 								>
 										{trading ? 'Buying…' : `Buy ${tradeShares} ${selectedOutcome?.label ?? ''} for ${estimatedCost.toLocaleString()} bUEC`}
 									</button>
@@ -766,7 +798,7 @@
 									<label class="block mb-1" for="trade-budget">
 										<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Budget (bUEC)</span>
 									</label>
-									<div class="flex items-center gap-2 mb-1">
+									<div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
 										<input
 											id="trade-budget"
 											type="number"
@@ -779,7 +811,7 @@
 										{#if $currentUser}
 											<button
 												onclick={() => (budgetAmount = $currentUser!.balance)}
-												class="text-xs text-primary-600 hover:underline whitespace-nowrap"
+												class="text-xs text-primary-600 hover:underline whitespace-nowrap self-start sm:self-auto"
 												title="Use entire balance"
 											>All in</button>
 										{/if}
@@ -802,7 +834,7 @@
 									<button
 										onclick={doTrade}
 										disabled={trading || floorBudgetShares <= 0 || !canAffordBudget}
-										class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
+										class="btn preset-filled-primary-500 w-full text-[11px] sm:text-xs uppercase tracking-wider whitespace-normal break-words leading-tight py-2 h-auto disabled:opacity-50"
 									>
 										{trading ? 'Buying…' : `Buy ${floorBudgetShares} ${selectedOutcome?.label ?? ''} for ${actualBudgetCost.toLocaleString()} bUEC`}
 									</button>
@@ -816,7 +848,7 @@
 								<label class="block mb-1" for="sell-shares">
 									<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Shares to Sell</span>
 								</label>
-								<div class="flex items-center gap-2 mb-1">
+								<div class="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
 									<input
 										id="sell-shares"
 										type="number"
@@ -829,7 +861,7 @@
 									{#if maxSellShares > 0}
 										<button
 											onclick={() => (sellShares = maxSellShares)}
-											class="text-xs text-primary-600 hover:underline whitespace-nowrap"
+											class="text-xs text-primary-600 hover:underline whitespace-nowrap self-start sm:self-auto"
 											title="Sell all"
 										>
 											All ({maxSellShares})
@@ -842,7 +874,7 @@
 								<button
 									onclick={doTrade}
 									disabled={trading || sellShares <= 0 || sellShares > maxSellShares}
-									class="btn w-full border border-surface-400 text-surface-700 hover:bg-surface-100 text-xs uppercase tracking-wider disabled:opacity-50"
+									class="btn w-full border border-surface-400 text-surface-700 hover:bg-surface-100 text-[11px] sm:text-xs uppercase tracking-wider whitespace-normal break-words leading-tight py-2 h-auto disabled:opacity-50"
 								>
 										{trading ? 'Selling…' : `Sell ${sellShares} ${selectedOutcome?.label ?? ''}`}
 								</button>

@@ -153,6 +153,10 @@ export async function listPendingMarkets(): Promise<(Market & { creator_name: st
 	return request('/api/mod/markets');
 }
 
+export async function listDeadlinePassedMarkets(): Promise<(Market & { creator_name: string })[]> {
+	return request('/api/mod/markets/deadline-passed');
+}
+
 export async function approveMarket(id: number): Promise<void> {
 	await request(`/api/mod/markets/${id}/approve`, { method: 'POST' });
 }

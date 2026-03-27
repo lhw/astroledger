@@ -263,6 +263,75 @@ func (q *Queries) GetOutcomesByMarketID(ctx context.Context, marketID int64) ([]
 	return items, nil
 }
 
+const listDeadlinePassedMarkets = `-- name: ListDeadlinePassedMarkets :many
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolved_outcome_id, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name
+FROM markets m
+JOIN users u ON u.id = m.created_by
+WHERE m.status = 'deadline_passed'
+ORDER BY m.resolution_deadline ASC, m.created_at ASC
+`
+
+type ListDeadlinePassedMarketsRow struct {
+	ID                  int64      `json:"id"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description"`
+	Category            string     `json:"category"`
+	ResolutionCriteria  string     `json:"resolution_criteria"`
+	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
+	Status              string     `json:"status"`
+	ResolvedOutcomeID   *int64     `json:"resolved_outcome_id"`
+	CreatedBy           int64      `json:"created_by"`
+	ResolvedBy          *int64     `json:"resolved_by"`
+	CreatedAt           time.Time  `json:"created_at"`
+	ResolvedAt          *time.Time `json:"resolved_at"`
+	LiquidityParam      float64    `json:"liquidity_param"`
+	ResolutionType      string     `json:"resolution_type"`
+	ResolutionThreshold *string    `json:"resolution_threshold"`
+	ResolutionEvidence  *string    `json:"resolution_evidence"`
+	CreatorName         string     `json:"creator_name"`
+}
+
+func (q *Queries) ListDeadlinePassedMarkets(ctx context.Context) ([]ListDeadlinePassedMarketsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDeadlinePassedMarkets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDeadlinePassedMarketsRow{}
+	for rows.Next() {
+		var i ListDeadlinePassedMarketsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Description,
+			&i.Category,
+			&i.ResolutionCriteria,
+			&i.ResolutionDeadline,
+			&i.Status,
+			&i.ResolvedOutcomeID,
+			&i.CreatedBy,
+			&i.ResolvedBy,
+			&i.CreatedAt,
+			&i.ResolvedAt,
+			&i.LiquidityParam,
+			&i.ResolutionType,
+			&i.ResolutionThreshold,
+			&i.ResolutionEvidence,
+			&i.CreatorName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMarkets = `-- name: ListMarkets :many
 SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolved_outcome_id, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name,
        (SELECT COUNT(*) FROM comments c WHERE c.market_id = m.id AND c.hidden = 0) AS comment_count

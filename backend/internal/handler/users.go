@@ -139,8 +139,8 @@ func (h *UserHandler) GetUserTrades(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, trades)
 }
 
-// userResponse shapes a db.User into an API response (includes private fields for /me).
-func userResponse(u db.User) map[string]any {
+// userResponse shapes a user row into an API response (includes private fields for /me).
+func userResponse(u db.GetUserByIDRow) map[string]any {
 	return map[string]any{
 		"id":                 u.ID,
 		"display_name":       u.DisplayName,

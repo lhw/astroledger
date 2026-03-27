@@ -252,6 +252,8 @@ Markets that pass auto-filter land in a moderator dashboard:
 | **Profile** | User's portfolio, trade history, submitted markets |
 | **Login** | "Login with SCID" button — redirects to scid.my for OIDC auth |
 
+Global navigation uses a compact fold-out menu on small screens to prevent header overflow while keeping full horizontal nav on desktop.
+
 ---
 
 ## 5. Tech Stack

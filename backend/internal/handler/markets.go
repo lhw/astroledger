@@ -308,6 +308,30 @@ func (h *MarketHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+// ListDeadlinePassed returns active-but-expired markets awaiting moderator resolution.
+func (h *MarketHandler) ListDeadlinePassed(w http.ResponseWriter, r *http.Request) {
+	markets, err := h.queries.ListDeadlinePassedMarkets(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	type deadlinePassedWithOutcomes struct {
+		db.ListDeadlinePassedMarketsRow
+		Outcomes []outcomeResp `json:"outcomes"`
+	}
+
+	result := make([]deadlinePassedWithOutcomes, len(markets))
+	for i, m := range markets {
+		result[i] = deadlinePassedWithOutcomes{
+			ListDeadlinePassedMarketsRow: m,
+			Outcomes:                     h.buildOutcomeResps(r, m.ID, m.LiquidityParam),
+		}
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
 // Approve approves a pending market.
 func (h *MarketHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)

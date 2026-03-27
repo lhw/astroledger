@@ -25,6 +25,18 @@ type AutofilterRule struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type BadgeRelease struct {
+	ID         int64   `json:"id"`
+	BadgeKey   string  `json:"badge_key"`
+	Price      int64   `json:"price"`
+	Stock      *int64  `json:"stock"`
+	ReleasedAt string  `json:"released_at"`
+	ExpiresAt  *string `json:"expires_at"`
+	Active     int64   `json:"active"`
+	Notes      *string `json:"notes"`
+	CreatedAt  string  `json:"created_at"`
+}
+
 type Comment struct {
 	ID              int64     `json:"id"`
 	MarketID        int64     `json:"market_id"`
@@ -70,6 +82,16 @@ type MarketOutcome struct {
 	Label     string  `json:"label"`
 	Shares    float64 `json:"shares"`
 	SortOrder int64   `json:"sort_order"`
+}
+
+type ModAudit struct {
+	ID         int64   `json:"id"`
+	ActionType string  `json:"action_type"`
+	TargetType string  `json:"target_type"`
+	TargetID   int64   `json:"target_id"`
+	ModUserID  int64   `json:"mod_user_id"`
+	Note       *string `json:"note"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 type ModerationAction struct {
@@ -133,13 +155,15 @@ type User struct {
 	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
 	AvatarUrl        *string   `json:"avatar_url"`
 	IsRsiVerified    int64     `json:"is_rsi_verified"`
+	ActiveBadgeKey   string    `json:"active_badge_key"`
 }
 
 type UserBadge struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	BadgeKey  string    `json:"badge_key"`
-	AwardedAt time.Time `json:"awarded_at"`
+	ID            int64     `json:"id"`
+	UserID        int64     `json:"user_id"`
+	BadgeKey      string    `json:"badge_key"`
+	AwardedAt     time.Time `json:"awarded_at"`
+	PurchasePrice int64     `json:"purchase_price"`
 }
 
 type WeeklyPayoutLog struct {

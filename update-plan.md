@@ -112,7 +112,7 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 ### Weekly Credit Automation
 - Currently handled by a cron/background job. Add a simple admin endpoint to manually trigger the weekly payout (useful for testing and edge cases around cron timing).
 
-### Star Citizen Patch Scraper
+### ~~Star Citizen Patch Scraper~~ ✅ Done
 - A background job that scrapes the SC roadmap or patch notes RSS and attempts to match market titles to recent patches.
 - Auto-creates a resolution request when a relevant patch ships, reducing mod workload.
 - Risk: false positives. Should require mod confirmation before resolving.
@@ -122,7 +122,7 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - Could be used to test AMM behavior, run simulated market scenarios, or allow community bots.
 - Must be rate-limited and not grant admin/mod access.
 
-### Mobile UX
+### ~~Mobile UX~~ ✅ Done
 - The trade widget sidebar collapses awkwardly on small screens. Consider a bottom-sheet / drawer for the trade UI on mobile.
 - Ensure the probability bar and price pill on list cards are readable on small screens.
 

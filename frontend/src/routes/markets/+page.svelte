@@ -73,6 +73,7 @@
 			class="sc-input !w-auto !py-1.5 text-sm"
 		>
 			<option value="active">Active</option>
+			<option value="deadline_passed">Deadline Passed</option>
 			<option value="resolved">Resolved</option>
 			<option value="pending_review">Pending Review</option>
 			<option value="cancelled">Cancelled</option>
@@ -133,14 +134,18 @@
 						{@const firstLabel = outs[0]?.label ?? 'YES'}
 						{@const secondLabel = outs[1]?.label ?? 'NO'}
 						{@const secondPct = outs[1]?.price ?? (100 - yesPct)}
-						<div class="mt-auto">
-							<div class="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
-								<span class="text-green-600">{firstLabel} {yesPct}%</span>
+						<div class="mt-auto space-y-1.5">
+							<div class="flex items-center justify-between gap-1.5 flex-wrap">
+								<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[11px] font-bold uppercase tracking-wider">
+									{firstLabel} {yesPct}%
+								</span>
 								{#if outs.length === 2}
-									<span class="text-red-500">{secondLabel} {secondPct}%</span>
+									<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[11px] font-bold uppercase tracking-wider">
+										{secondLabel} {secondPct}%
+									</span>
 								{/if}
 							</div>
-							<div class="h-1.5 w-full rounded-full bg-red-100 overflow-hidden">
+							<div class="h-2 sm:h-1.5 w-full rounded-full bg-red-100 overflow-hidden">
 								<div class="h-full rounded-full bg-green-500 transition-all" style="width: {yesPct}%"></div>
 							</div>
 						</div>

@@ -47,19 +47,35 @@ func assertEq[T comparable](t *testing.T, want, got T, label string) {
 // createTestUser inserts a user and optionally grants moderator rights.
 func createTestUser(t *testing.T, ctx context.Context, q *db.Queries, sub, name string, isMod bool) db.User {
 	t.Helper()
-	user, err := q.CreateUser(ctx, db.CreateUserParams{
+	created, err := q.CreateUser(ctx, db.CreateUserParams{
 		ScidSub:     sub,
 		DisplayName: name,
 		Email:       name + "@test.example",
 	})
 	must(t, err, "create user "+name)
 	if isMod {
-		must(t, q.UpdateUserGroups(ctx, user.ID, 1, 0, 0), "grant mod to "+name)
-		// Re-fetch to get updated flags.
-		user, err = q.GetUserByID(ctx, user.ID)
-		must(t, err, "re-fetch mod user")
+		must(t, q.UpdateUserGroups(ctx, created.ID, 1, 0, 0), "grant mod to "+name)
 	}
-	return user
+
+	user, err := q.GetUserByID(ctx, created.ID)
+	must(t, err, "re-fetch user")
+	return db.User{
+		ID:               user.ID,
+		ScidSub:          user.ScidSub,
+		DisplayName:      user.DisplayName,
+		Email:            user.Email,
+		Balance:          user.Balance,
+		IsModerator:      user.IsModerator,
+		IsAdmin:          user.IsAdmin,
+		CreatedAt:        user.CreatedAt,
+		LastLoginAt:      user.LastLoginAt,
+		RsiHandle:        user.RsiHandle,
+		RsiVerifiedAt:    user.RsiVerifiedAt,
+		RsiEnlisted:      user.RsiEnlisted,
+		RsiCitizenRecord: user.RsiCitizenRecord,
+		AvatarUrl:        user.AvatarUrl,
+		IsRsiVerified:    user.IsRsiVerified,
+	}
 }
 
 // newServices wires up the service layer on top of a test DB.

@@ -49,6 +49,13 @@ JOIN users u ON u.id = m.created_by
 WHERE m.status = 'pending_review'
 ORDER BY m.created_at ASC;
 
+-- name: ListDeadlinePassedMarkets :many
+SELECT m.*, u.display_name AS creator_name
+FROM markets m
+JOIN users u ON u.id = m.created_by
+WHERE m.status = 'deadline_passed'
+ORDER BY m.resolution_deadline ASC, m.created_at ASC;
+
 -- name: GetMarketPriceHistory :many
 SELECT t.price_at_trade, o.label AS outcome_label, t.created_at
 FROM trades t

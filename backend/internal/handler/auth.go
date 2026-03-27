@@ -168,11 +168,17 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	// Upsert user in the database.
 	user, err := h.queries.GetUserBySub(ctx, claims.Sub)
 	if errors.Is(err, sql.ErrNoRows) {
-		user, err = h.queries.CreateUser(ctx, db.CreateUserParams{
+		createdUser, createErr := h.queries.CreateUser(ctx, db.CreateUserParams{
 			ScidSub:     claims.Sub,
 			DisplayName: claims.Name,
 			Email:       claims.Email,
 		})
+		if createErr != nil {
+			err = createErr
+		} else {
+			user.ID = createdUser.ID
+			err = nil
+		}
 	}
 	if err != nil {
 		slog.Error("db user upsert failed", "err", err)

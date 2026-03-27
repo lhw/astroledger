@@ -263,7 +263,7 @@ func (h *AdminHandler) gcFetch(ctx context.Context, path string) ([]byte, error)
 
 // requireAdmin checks that the caller is an authenticated admin.
 // Returns the user on success, or writes an error response and returns nil.
-func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) *db.User {
+func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) *db.GetUserByIDRow {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		respondError(w, http.StatusUnauthorized, "unauthorized")
