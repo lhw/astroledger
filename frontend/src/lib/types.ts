@@ -363,3 +363,19 @@ export interface Position {
 	/** Winning outcome ID once market resolves; null while active. */
 	resolved_outcome_id: number | null;
 }
+
+/** A bot API token entry (secret value is never returned in list calls). */
+export interface BotApiToken {
+	id: number;
+	name: string;
+	token_prefix: string;
+	can_read: boolean;
+	can_trade: boolean;
+	created_at: string;
+	last_used_at: string | null;
+}
+
+/** Response when creating a bot token (includes one-time full token). */
+export interface BotApiTokenCreateResponse extends BotApiToken {
+	token: string;
+}

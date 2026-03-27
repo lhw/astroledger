@@ -17,6 +17,19 @@ type AdminBalanceAdjustment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type ApiToken struct {
+	ID          int64      `json:"id"`
+	UserID      int64      `json:"user_id"`
+	Name        string     `json:"name"`
+	TokenHash   string     `json:"token_hash"`
+	TokenPrefix string     `json:"token_prefix"`
+	CanRead     int64      `json:"can_read"`
+	CanTrade    int64      `json:"can_trade"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	RevokedAt   *time.Time `json:"revoked_at"`
+}
+
 type AutofilterRule struct {
 	ID        int64     `json:"id"`
 	RuleType  string    `json:"rule_type"`

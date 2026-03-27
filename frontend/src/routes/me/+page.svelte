@@ -1,21 +1,38 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getMyPositions, getMyTrades, getMyBadges, logout, setActiveBadge } from '$lib/api';
+	import {
+		getMyPositions,
+		getMyTrades,
+		getMyBadges,
+		logout,
+		setActiveBadge,
+		listBotTokens,
+		createBotToken,
+		revokeBotToken,
+		ApiClientError
+	} from '$lib/api';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
 	import BadgePill from '$lib/components/BadgePill.svelte';
-	import type { Position, TradeWithMarket, Badge } from '$lib/types';
+	import type { Position, TradeWithMarket, Badge, BotApiToken } from '$lib/types';
 
 	let positions = $state<Position[]>([]);
 	let trades = $state<TradeWithMarket[]>([]);
 	let badges = $state<Badge[]>([]);
+	let botTokens = $state<BotApiToken[]>([]);
 	let activeBadgeKey = $state<string>('');
 	let badgeSaving = $state(false);
 	let loading = $state(true);
 	let positionsLoading = $state(false);
 	let tradesLoading = $state(false);
 	let badgesLoading = $state(false);
+	let botLoading = $state(false);
+	let botCreateLoading = $state(false);
+	let botError = $state('');
+	let botName = $state('');
+	let botCanTrade = $state(true);
+	let createdTokenValue = $state('');
 	let error = $state('');
 
 	onMount(async () => {
@@ -31,6 +48,7 @@
 		positionsLoading = true;
 		tradesLoading = true;
 		badgesLoading = true;
+		botLoading = true;
 
 		const jobs = [
 			(async () => {
@@ -59,6 +77,15 @@
 				} finally {
 					badgesLoading = false;
 				}
+			})(),
+			(async () => {
+				try {
+					botTokens = await listBotTokens();
+				} catch (e) {
+					botError = e instanceof Error ? e.message : String(e);
+				} finally {
+					botLoading = false;
+				}
 			})()
 		];
 
@@ -79,6 +106,50 @@
 			// ignore — UI stays consistent on failure
 		} finally {
 			badgeSaving = false;
+		}
+	}
+
+	async function createToken() {
+		botError = '';
+		createdTokenValue = '';
+		const name = botName.trim();
+		if (name.length < 3 || name.length > 64) {
+			botError = 'Token name must be between 3 and 64 characters.';
+			return;
+		}
+
+		botCreateLoading = true;
+		try {
+			const created = await createBotToken({
+				name,
+				can_trade: botCanTrade
+			});
+			createdTokenValue = created.token;
+			botName = '';
+			botTokens = await listBotTokens();
+		} catch (e) {
+			botError = e instanceof ApiClientError ? e.message : e instanceof Error ? e.message : String(e);
+		} finally {
+			botCreateLoading = false;
+		}
+	}
+
+	async function removeToken(id: number) {
+		botError = '';
+		try {
+			await revokeBotToken(id);
+			botTokens = botTokens.filter((t) => t.id !== id);
+		} catch (e) {
+			botError = e instanceof ApiClientError ? e.message : e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	async function copyCreatedToken() {
+		if (!createdTokenValue) return;
+		try {
+			await navigator.clipboard.writeText(createdTokenValue);
+		} catch {
+			// Clipboard errors are non-fatal; token remains visible.
 		}
 	}
 </script>
@@ -198,6 +269,70 @@
 								<BadgePill tier={badge.tier} title={badge.title} active={isActive} showCheck={isActive} />
 							</button>
 						</Tooltip>
+					{/each}
+				</div>
+			{/if}
+		</section>
+
+		<!-- Bot API Tokens -->
+		<section class="mb-8">
+			<div class="flex items-center justify-between mb-2">
+				<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">Bot API Tokens</h2>
+			</div>
+			<p class="text-[11px] text-surface-500 mb-3">
+				Create scoped tokens for read/trade bot access. Tokens are shown once at creation.
+			</p>
+
+			<div class="sc-card p-4 mb-3 space-y-3">
+				<div>
+					<label class="block text-[10px] uppercase tracking-wider text-surface-500 mb-1" for="bot-token-name">Token Name</label>
+					<input id="bot-token-name" bind:value={botName} class="sc-input text-sm" placeholder="e.g. Backtesting Bot" maxlength="64" />
+				</div>
+
+				<label class="flex items-center gap-2 text-sm text-surface-600">
+					<input type="checkbox" bind:checked={botCanTrade} />
+					Allow trading scope
+				</label>
+
+				<div class="flex items-center gap-2">
+					<button onclick={createToken} disabled={botCreateLoading} class="btn btn-sm preset-filled-primary-500 uppercase tracking-wider text-xs">
+						{botCreateLoading ? 'Creating…' : 'Create Token'}
+					</button>
+				</div>
+
+				{#if createdTokenValue}
+					<div class="rounded border border-primary-300 bg-primary-100/40 p-3 space-y-2">
+						<p class="text-[11px] font-semibold text-primary-700 uppercase tracking-wider">Copy now - this value will not be shown again</p>
+						<div class="text-xs break-all font-mono text-surface-800">{createdTokenValue}</div>
+						<button onclick={copyCreatedToken} class="btn btn-xs preset-outlined uppercase tracking-wider text-[10px]">Copy Token</button>
+					</div>
+				{/if}
+			</div>
+
+			{#if botError}
+				<div class="p-3 rounded border border-red-500/40 bg-red-500/10 text-red-400 text-sm mb-3">{botError}</div>
+			{/if}
+
+			{#if botLoading}
+				<div class="text-surface-400 text-sm py-2">Loading tokens…</div>
+			{:else if botTokens.length === 0}
+				<div class="text-surface-400 text-sm py-2">No active bot tokens yet.</div>
+			{:else}
+				<div class="space-y-2">
+					{#each botTokens as token}
+						<div class="sc-card p-3 flex items-center justify-between gap-3">
+							<div class="min-w-0">
+								<p class="text-sm font-semibold text-surface-800 truncate">{token.name}</p>
+								<p class="text-[11px] text-surface-500 font-mono">{token.token_prefix}...</p>
+								<p class="text-[11px] text-surface-500 mt-1">
+									{token.can_trade ? 'read + trade' : 'read only'} · created {new Date(token.created_at).toLocaleDateString()}
+									{#if token.last_used_at} · used {new Date(token.last_used_at).toLocaleDateString()}{/if}
+								</p>
+							</div>
+							<button onclick={() => removeToken(token.id)} class="btn btn-xs preset-outlined text-red-500 border-red-300 hover:bg-red-50 uppercase tracking-wider text-[10px]">
+								Revoke
+							</button>
+						</div>
 					{/each}
 				</div>
 			{/if}

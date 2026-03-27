@@ -51,6 +51,7 @@
 		if (calValue?.end) {
 			const e = calValue.end;
 			cfExpiresAt = `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}T23:59`;
+			cfIndefinite = false;
 		}
 	});
 
@@ -71,12 +72,18 @@
 	let cfStock = $state('');
 	let cfReleasedAt = $state('');
 	let cfExpiresAt = $state('');
+	let cfIndefinite = $state(false);
 	let cfNotes = $state('');
 	let cfLoading = $state(false);
 	let cfError = $state<string | null>(null);
+	let badgePickerOpen = $state(false);
 
 	// Derived selected badge catalog entry for preview
 	const selectedBadge = $derived(catalog.find((e) => e.key === cfBadgeKey) ?? null);
+	const selectedBadgeLabel = $derived(selectedBadge ? `[T${selectedBadge.tier}] ${selectedBadge.title}` : 'Select badge');
+	const sortedCatalog = $derived(
+		[...catalog].sort((a, b) => (a.tier === b.tier ? a.title.localeCompare(b.title) : a.tier - b.tier))
+	);
 
 	async function createRelease() {
 		cfError = null;
@@ -86,7 +93,7 @@
 		const stock = cfStock.trim() ? parseInt(cfStock, 10) : null;
 		if (stock !== null && (!Number.isInteger(stock) || stock <= 0)) { cfError = 'Stock must be positive.'; return; }
 		const releasedAt = cfReleasedAt ? new Date(cfReleasedAt).toISOString() : new Date().toISOString();
-		const expiresAt = cfExpiresAt ? new Date(cfExpiresAt).toISOString() : null;
+		const expiresAt = cfIndefinite || !cfExpiresAt ? null : new Date(cfExpiresAt).toISOString();
 		cfLoading = true;
 		try {
 			const created = await onCreate({
@@ -103,7 +110,9 @@
 			cfStock = '';
 			cfReleasedAt = '';
 			cfExpiresAt = '';
+			cfIndefinite = false;
 			cfNotes = '';
+			badgePickerOpen = false;
 			calValue = { start: undefined, end: undefined };
 		} catch (e) {
 			cfError = e instanceof ApiClientError ? e.message : String(e);
@@ -112,8 +121,13 @@
 		}
 	}
 
+	function selectBadge(key: string) {
+		cfBadgeKey = key;
+		badgePickerOpen = false;
+	}
+
 	// ── Edit state ────────────────────────────────────────────────────────
-	type EditDraft = { price: string; stock: string; expiresAt: string; active: boolean; notes: string };
+	type EditDraft = { price: string; stock: string; expiresAt: string; indefinite: boolean; active: boolean; notes: string };
 	let editDrafts = $state<Record<number, EditDraft>>({});
 	let editSaving = $state<Record<number, boolean>>({});
 	let editError = $state<Record<number, string | null>>({});
@@ -124,6 +138,7 @@
 			price: String(rel.price),
 			stock: rel.stock != null ? String(rel.stock) : '',
 			expiresAt: rel.expires_at ? rel.expires_at.slice(0, 16) : '',
+			indefinite: rel.expires_at == null,
 			active: rel.active,
 			notes: rel.notes ?? ''
 		};
@@ -149,7 +164,7 @@
 			const updated = await onUpdate(rel.id, {
 				price,
 				stock,
-				expires_at: d.expiresAt ? new Date(d.expiresAt).toISOString() : null,
+				expires_at: d.indefinite || !d.expiresAt ? null : new Date(d.expiresAt).toISOString(),
 				active: d.active,
 				notes: d.notes.trim() || null
 			});
@@ -243,17 +258,45 @@
 
 			<!-- Badge selector -->
 			<div>
-				<label class="block text-[11px] uppercase tracking-wide text-surface-400 mb-1" for="brc-badge">Badge</label>
-				<select
-					id="brc-badge"
-					bind:value={cfBadgeKey}
-					class="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-sm text-surface-100 focus:border-primary-500 outline-none"
-				>
-					<option value="">— select a badge —</option>
-					{#each catalog as entry}
-						<option value={entry.key}>[T{entry.tier}] {entry.title}</option>
-					{/each}
-				</select>
+				<label class="block text-[11px] uppercase tracking-wide text-surface-400 mb-1" for="brc-badge-trigger">Badge</label>
+				<div class="relative">
+					<button
+						id="brc-badge-trigger"
+						type="button"
+						onclick={() => (badgePickerOpen = !badgePickerOpen)}
+						class="w-full flex items-center justify-between gap-3 bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-sm text-surface-100 focus:border-primary-500 outline-none"
+						aria-expanded={badgePickerOpen}
+						aria-label="Select badge to release"
+					>
+						{#if selectedBadge}
+							<div class="flex items-center gap-2 min-w-0">
+								<BadgePill tier={selectedBadge.tier} title={selectedBadge.title} />
+								<span class="text-[11px] text-surface-400 truncate">{selectedBadgeLabel}</span>
+							</div>
+						{:else}
+							<span class="text-surface-400">— select a badge —</span>
+						{/if}
+						<span class="text-surface-400">▾</span>
+					</button>
+
+					{#if badgePickerOpen}
+						<div class="badge-picker absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-lg border border-surface-600 shadow-xl">
+							{#each sortedCatalog as entry}
+								<button
+									type="button"
+									onclick={() => selectBadge(entry.key)}
+									class="badge-option w-full px-3 py-2 text-left transition-colors border-b border-surface-700 last:border-b-0"
+								>
+									<div class="flex items-center gap-2 mb-1">
+										<BadgePill tier={entry.tier} title={entry.title} />
+										<span class="text-[10px] text-surface-400">T{entry.tier}</span>
+									</div>
+									<p class="text-[11px] text-surface-400 leading-relaxed line-clamp-2">{entry.description}</p>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
 				{#if selectedBadge}
 					<div class="mt-2 space-y-1">
 						<BadgePill tier={selectedBadge.tier} title={selectedBadge.title} />
@@ -309,8 +352,19 @@
 						id="brc-end"
 						type="datetime-local"
 						bind:value={cfExpiresAt}
+						disabled={cfIndefinite}
 						class="w-full bg-surface-700 border border-surface-600 rounded-lg px-2 py-2 text-xs text-surface-100 focus:border-primary-500 outline-none"
 					/>
+					<label class="mt-2 inline-flex items-center gap-2 text-[11px] text-surface-400">
+						<input
+							type="checkbox"
+							bind:checked={cfIndefinite}
+							onchange={() => {
+								if (cfIndefinite) cfExpiresAt = '';
+							}}
+						/>
+						Available indefinitely
+					</label>
 				</div>
 			</div>
 
@@ -477,7 +531,18 @@
 									</label>
 									<label class="block text-[11px] text-surface-400 sm:col-span-2">Expires (blank=never)
 										<input type="datetime-local" bind:value={draft.expiresAt}
+											disabled={draft.indefinite}
 											class="mt-1 w-full bg-surface-700 border border-surface-600 rounded px-2 py-1 text-xs text-surface-100 outline-none focus:border-primary-500" />
+										<label class="mt-2 inline-flex items-center gap-2 text-[11px] text-surface-400">
+											<input
+												type="checkbox"
+												bind:checked={draft.indefinite}
+												onchange={() => {
+													if (draft.indefinite) draft.expiresAt = '';
+												}}
+											/>
+											Available indefinitely
+										</label>
 									</label>
 									<label class="block text-[11px] text-surface-400 sm:col-span-3">Notes
 										<input type="text" bind:value={draft.notes}
@@ -569,3 +634,27 @@
 		{/if}
 	</section>
 </div>
+
+<style>
+	.badge-picker {
+		background: var(--card-bg);
+		border-color: var(--color-surface-300);
+	}
+
+	.badge-option {
+		color: var(--app-text);
+	}
+
+	.badge-option:hover {
+		background: color-mix(in oklch, var(--card-bg) 82%, var(--color-primary-300) 18%);
+	}
+
+	:global(:root[data-theme='dark']) .badge-picker {
+		background: color-mix(in oklch, var(--card-bg) 92%, black 8%);
+		box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+	}
+
+	:global(:root[data-theme='dark']) .badge-option {
+		border-color: var(--color-surface-300) !important;
+	}
+</style>

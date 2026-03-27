@@ -86,6 +86,7 @@ func run() error {
 	commentH := handler.NewCommentHandler(commentSvc)
 	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
 	patchH := handler.NewPatchHandler(queries)
+	botH := handler.NewBotHandler(queries, tradingSvc)
 
 	r := chi.NewRouter()
 
@@ -98,7 +99,7 @@ func run() error {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -172,6 +173,23 @@ func run() error {
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Use(httprate.LimitByIP(30, time.Minute))
 			r.Post("/trades", tradeH.Trade)
+		})
+
+		// Bot API token management (cookie-authenticated owner actions)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
+			r.Use(httprate.LimitByIP(20, time.Minute))
+			r.Get("/bot/tokens", botH.ListTokens)
+			r.Post("/bot/tokens", botH.CreateToken)
+			r.Delete("/bot/tokens/{id}", botH.RevokeToken)
+		})
+
+		// Bot runtime endpoints (token-authenticated via Bearer)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(60, time.Minute))
+			r.Get("/bot/me", botH.Me)
+			r.Post("/bot/trades", botH.Trade)
 		})
 
 		// Comment submission (rate-limited to 10/min)

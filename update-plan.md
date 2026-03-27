@@ -1,25 +1,6 @@
 # ScolyMarket — Update Plan
 
-This document tracks remaining work, known issues, and future ideas. See `plan.md` for the original design.
-
----
-
-## Recently Completed
-
-- **Badge System Expansion**: Added ~45 total badges across three groups. Earned badges now include 6 trade-count milestones (First Blood → Galaxy Brained), 3 prediction milestones (Bug Prophet → Oracle), 3 participation-breadth milestones (Eternal Optimist → Universe Citizen), and 2 market-creation milestones (Market Founder, Serial Founder). The FOMO Store now has 22 purchasable badges including general, hull-limited (fixed global stock), and rotating (time-limited) tiers. Badge checks are triggered after every trade, market resolution, and market approval.
-- **Admiral Rank**: A `/admiral` page shows a 5-tier rank ladder (Ensign → Coin Admiral) earned by cumulative FOMO store spend (500 / 5k / 25k / 100k / 1M bUEC). Progress bar with milestone ticks, per-tier military insignia styling, and automatic rank award on purchase. Nav link: "Rank".
-- **User-Selectable Active Badge**: Users pick their displayed badge from `/me` (click to equip, click again to unequip). Stored as `active_badge_key` on the `users` table (migration 012). Comments show the user's chosen badge instead of auto-picking highest tier.
-- **Payout balance refresh**: The frontend now refreshes the user's balance when visiting a resolved market, so the updated bUEC shows immediately instead of waiting for a page reload.
-- **Resolved markets visible**: Markets are no longer hidden after resolution. The market list includes a "Resolved" filter, and resolved markets show their result badge. Cancelled markets are also now filterable.
-- **Buy by bUEC budget**: The trade widget now has a "By Shares / By Budget" toggle. In budget mode, users enter how much bUEC they want to spend, and the UI shows the estimated share count using the LMSR `maxAffordable` function.
-- **Market resolution types**: Added `binary` (yes/no), `date` (resolves YES if an event occurs before a target date), and `numeric` (resolves YES if a value reaches a threshold). The creation form has a Market Type selector, and the market detail page shows the type context.
-- **Market stats on detail page**: The sidebar now shows total volume (bUEC), unique trader count, and total trade count.
-- **Probability bar on market list**: Each active market card now shows the LMSR-derived YES probability as a percentage label and a green-over-red bar, similar to Polymarket.
-- **Comments / Discussion**: Users can post and read comments on each market page. Comments support Markdown (rendered with DOMPurify-sanitized HTML). Mods can hard-delete comments. Comment count shown on market list cards.
-- **Automated abuse detection (OpenAI Moderation API)**: Comment submissions are scored by the OpenAI Moderation API (`omni-moderation-latest`). Comments that exceed per-category score thresholds (tuned for a gaming community) or are flagged by OpenAI are shadow-hidden — invisible to other users but still visible to the author with an `⚠ Under review` notice. Configured via `OPENAI_API_KEY` env var; graceful no-op when key is absent. *(Replaced Perspective API, which is being shut down.)*
-- **Market Creator Recognition**: A `Creator` badge is shown next to the submitter's name on the market detail page. When a mod approves a market, the creator automatically receives a 50 bUEC bonus.
-- **Expiring Pending Markets**: A background goroutine (runs hourly at startup) auto-cancels markets stuck in `pending_review` for more than 14 days, and moves active markets past their resolution deadline to `deadline_passed` status. New DB indexes added for both queries.
-- **Better Resolution Flow**: When resolving a market in the mod queue, mods can now attach an optional evidence link (issue tracker URL, patch notes, etc.) that is stored in the DB and displayed on the resolved market's detail page. The resolver's display name and resolution date are now shown on the detail page. Evidence link input added to the mod queue resolution form.
+This document tracks remaining work, known issues, and future ideas.
 
 ---
 
@@ -117,7 +98,7 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - Auto-creates a resolution request when a relevant patch ships, reducing mod workload.
 - Risk: false positives. Should require mod confirmation before resolving.
 
-### Bot Trading API
+### ~~Bot Trading API~~ ✅ Done
 - A simple API token system (scoped to read/trade) that allows bots to trade on markets.
 - Could be used to test AMM behavior, run simulated market scenarios, or allow community bots.
 - Must be rate-limited and not grant admin/mod access.
@@ -130,11 +111,11 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - The current limit/offset pagination loads full pages. Add infinite scroll or a "Load more" button as an alternative.
 - Market list should show total result count even when filtered.
 
-### Performance / Caching
+### ~~Performance / Caching~~ ✅ Done
 - Market list server load function currently hits the DB every SSR request. Add short-lived (e.g., 5 s) in-memory caching for the list query.
 - Price history endpoint could be cached per market since trades are append-only.
 
-### Dark Mode
+### ~~Dark Mode~~ ✅ Done
 - Skeleton UI supports dark mode via the `dark` class. Wire it to the OS preference or a user toggle.
 - The custom gold theme needs dark-mode variant colors defined in `src/theme.ts`.
 
@@ -142,9 +123,9 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 
 ## Known Issues / Bugs
 
-- **Fractional budget shares**: Budget mode shows a float share estimate but the actual purchase is floored to an integer. The button label says "Spend X bUEC" but the actual cost may differ slightly. The receipt after trading should show the real cost.
-- **`cancelled` status filter on market list**: The filter exists in the UI but the backend `ListMarkets` query may need to explicitly handle `cancelled` status if it differs from how inactive markets are stored. Verify with a cancelled market in the DB.
-- **Resolution type display on resolved markets**: The "Resolved" card on the detail page shows YES/NO but doesn't yet contextualize it for `date` or `numeric` markets (e.g., "The event DID occur before [date]" vs just "YES").
-- **Price history on resolved markets**: The chart shows trades up to resolution; it would be cleaner to mark the resolution point on the chart with a vertical line.
-- **`deadline_passed` not a filter option in market list**: The new `deadline_passed` status exists in the DB and TypeScript types but isn't yet a selectable filter in the market list UI. Mods need a way to surface these markets.
-- **`deadline_passed` not shown in mod queue**: The mod queue currently shows `pending_review` and `resolution_requested` markets but not `deadline_passed`. Mods should be able to see and action expired markets.
+- ~~**Fractional budget shares**: Budget mode shows a float share estimate but the actual purchase is floored to an integer. The button label says "Spend X bUEC" but the actual cost may differ slightly. The receipt after trading should show the real cost.~~ ✅ Fixed
+- ~~**`cancelled` status filter on market list**: The filter exists in the UI but the backend `ListMarkets` query may need to explicitly handle `cancelled` status if it differs from how inactive markets are stored. Verify with a cancelled market in the DB.~~ ✅ Verified
+- ~~**Resolution type display on resolved markets**: The "Resolved" card on the detail page shows YES/NO but doesn't yet contextualize it for `date` or `numeric` markets (e.g., "The event DID occur before [date]" vs just "YES").~~ ✅ Fixed
+- ~~**Price history on resolved markets**: The chart shows trades up to resolution; it would be cleaner to mark the resolution point on the chart with a vertical line.~~ ✅ Fixed
+- ~~**`deadline_passed` not a filter option in market list**: The new `deadline_passed` status exists in the DB and TypeScript types but isn't yet a selectable filter in the market list UI. Mods need a way to surface these markets.~~ ✅ Fixed
+- ~~**`deadline_passed` not shown in mod queue**: The mod queue currently shows `pending_review` and `resolution_requested` markets but not `deadline_passed`. Mods should be able to see and action expired markets.~~ ✅ Fixed

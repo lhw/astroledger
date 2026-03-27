@@ -11,12 +11,14 @@ import (
 type Querier interface {
 	AdminAdjustUserBalance(ctx context.Context, arg AdminAdjustUserBalanceParams) (int64, error)
 	CountMarkets(ctx context.Context, arg CountMarketsParams) (int64, error)
+	CreateAPIToken(ctx context.Context, arg CreateAPITokenParams) (CreateAPITokenRow, error)
 	CreateComment(ctx context.Context, arg CreateCommentParams) (Comment, error)
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateOutcome(ctx context.Context, arg CreateOutcomeParams) (MarketOutcome, error)
 	CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	DeleteComment(ctx context.Context, id int64) error
+	GetAPITokenByHash(ctx context.Context, tokenHash string) (GetAPITokenByHashRow, error)
 	// Returns titles of all non-archived markets for duplicate-title detection.
 	GetActivePendingMarketTitles(ctx context.Context) ([]string, error)
 	GetCommentByID(ctx context.Context, id int64) (Comment, error)
@@ -42,9 +44,12 @@ type Querier interface {
 	ListMarkets(ctx context.Context, arg ListMarketsParams) ([]ListMarketsRow, error)
 	ListNewPatches(ctx context.Context) ([]DetectedPatch, error)
 	ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsRow, error)
+	ListUserAPITokens(ctx context.Context, userID int64) ([]ListUserAPITokensRow, error)
 	LogAdminAdjustment(ctx context.Context, arg LogAdminAdjustmentParams) error
 	MarkPatchNotified(ctx context.Context, id int64) error
+	RevokeUserAPIToken(ctx context.Context, arg RevokeUserAPITokenParams) (int64, error)
 	SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error)
+	TouchAPITokenLastUsed(ctx context.Context, id int64) error
 	UpdateMarketStatus(ctx context.Context, arg UpdateMarketStatusParams) error
 	UpdateOutcomeShares(ctx context.Context, arg UpdateOutcomeSharesParams) error
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error

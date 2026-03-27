@@ -29,6 +29,9 @@ import type {
 	UserSearchResult,
 	BadgeCatalogEntry,
 	AdminBadgeRelease
+	,
+	BotApiToken,
+	BotApiTokenCreateResponse
 } from './types';
 
 class ApiClientError extends Error {
@@ -346,6 +349,27 @@ export async function adminUpdateBadgeRelease(
 
 export async function adminArchiveBadgeRelease(id: number): Promise<void> {
 	await request(`/api/admin/badge-releases/${id}`, { method: 'DELETE' });
+}
+
+// --- Bot API Tokens ---
+
+export async function listBotTokens(): Promise<BotApiToken[]> {
+	return request<BotApiToken[]>('/api/bot/tokens');
+}
+
+export async function createBotToken(body: {
+	name: string;
+	can_read?: boolean;
+	can_trade: boolean;
+}): Promise<BotApiTokenCreateResponse> {
+	return request<BotApiTokenCreateResponse>('/api/bot/tokens', {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+}
+
+export async function revokeBotToken(id: number): Promise<void> {
+	await request(`/api/bot/tokens/${id}`, { method: 'DELETE' });
 }
 
 export { ApiClientError };

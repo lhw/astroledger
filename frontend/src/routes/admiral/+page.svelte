@@ -421,6 +421,63 @@
 	font-weight: 700;
 	white-space: nowrap;
 }
+
+/* ─── Dark mode tuning (prevents light-card inversion artifacts) ───── */
+:global(:root[data-theme='dark']) .rank-status-card {
+	background: linear-gradient(135deg, #100c08 0%, #1a1209 100%);
+	border-color: #7a5a22;
+	color: #f3dfb2;
+}
+
+:global(:root[data-theme='dark']) .rank-status-label {
+	color: #b99557;
+}
+
+:global(:root[data-theme='dark']) .rank-status-title.rank-unranked {
+	color: #8f7b57;
+}
+
+:global(:root[data-theme='dark']) .progress-track {
+	background: #241b12;
+}
+
+:global(:root[data-theme='dark']) .rank-connector {
+	background: #3a342d;
+}
+
+:global(:root[data-theme='dark']) .rank-card.tier-1.owned {
+	background: linear-gradient(90deg, #1a2233, #1b2740);
+	border-color: #486fb8;
+	color: #d6e4ff;
+}
+
+:global(:root[data-theme='dark']) .rank-card.tier-2.owned {
+	background: linear-gradient(90deg, #13281f, #173326);
+	border-color: #3c9b67;
+	color: #d8ffe8;
+}
+
+:global(:root[data-theme='dark']) .rank-card.tier-3.owned {
+	background: linear-gradient(90deg, #2a2115, #362918);
+	border-color: #ba8f3d;
+	color: #ffeac0;
+}
+
+:global(:root[data-theme='dark']) .rank-card.locked {
+	background: #151515;
+	border-color: #2d2d2d;
+}
+
+:global(:root[data-theme='dark']) .rank-card.locked .rank-tier-label,
+:global(:root[data-theme='dark']) .rank-card.locked .rank-desc,
+:global(:root[data-theme='dark']) .rank-card.locked .rank-threshold-amount,
+:global(:root[data-theme='dark']) .rank-card.locked .rank-threshold-label {
+	color: #7b7b7b;
+}
+
+:global(:root[data-theme='dark']) .rank-card.tier-1.owned .rank-tier-label { color: #9ec3ff; }
+:global(:root[data-theme='dark']) .rank-card.tier-2.owned .rank-tier-label { color: #87e0b1; }
+:global(:root[data-theme='dark']) .rank-card.tier-3.owned .rank-tier-label { color: #f3cc7e; }
 .rank-card.owned .rank-threshold-amount { color: inherit; }
 .rank-card.tier-4.owned .rank-threshold-amount { color: #fbbf24; }
 .rank-card.tier-5.owned .rank-threshold-amount { color: #ffd700; }

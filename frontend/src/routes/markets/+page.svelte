@@ -93,7 +93,7 @@
 	{#if loading}
 		<div class="text-surface-400 text-center py-16 text-sm">Loading markets…</div>
 	{:else if error}
-		<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{error}</div>
+		<div class="p-4 rounded-lg text-sm mb-4 border border-red-500/40 bg-red-500/10 text-red-400">{error}</div>
 	{:else if !markets || markets.markets.length === 0}
 		<div class="sc-card p-8 text-center">
 			<p class="text-surface-500 text-sm">No markets found.</p>
@@ -107,10 +107,8 @@
 				{@const yesPct = prob}
 				<a
 					href="/markets/{market.id}"
-					class="p-3 flex flex-col gap-2 transition-all no-underline rounded-lg border h-full
-						{owned
-							? 'bg-amber-50 border-primary-300 shadow-sm hover:border-primary-400 hover:shadow-md'
-							: 'bg-white border-surface-200 shadow-[0_1px_4px_0_rgba(0,0,0,0.06)] hover:border-primary-300 hover:shadow-md'}"
+					class="market-card p-3 flex flex-col gap-2 transition-all no-underline rounded-lg border h-full"
+					class:market-card-owned={owned}
 				>
 					<div>
 						<div class="flex items-center gap-1.5 mb-1 flex-wrap">
@@ -168,3 +166,25 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.market-card {
+		background: var(--card-bg);
+		border-color: var(--color-surface-300);
+		box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.06);
+	}
+
+	.market-card:hover {
+		border-color: var(--color-primary-300);
+		box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.14);
+	}
+
+	.market-card-owned {
+		background: color-mix(in oklch, var(--card-bg) 78%, var(--color-primary-300) 22%);
+		border-color: var(--color-primary-300);
+	}
+
+	:global(:root[data-theme='dark']) .market-card {
+		box-shadow: 0 2px 10px 0 rgba(0, 0, 0, 0.35);
+	}
+</style>

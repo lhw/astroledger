@@ -224,7 +224,7 @@
 	<title>Admin Panel — ScolyMarket</title>
 </svelte:head>
 
-<div class="max-w-4xl mx-auto px-6 py-10">
+<div class="admin-shell max-w-4xl mx-auto px-6 py-10">
 	<h1 class="text-2xl font-bold text-primary-400 tracking-widest uppercase mb-6">Admin Panel</h1>
 
 	<div class="mb-8">
@@ -549,5 +549,29 @@
 		{/if}
 	{/if}
 </div>
+
+<style>
+	:global(:root[data-theme='dark'] .admin-shell .bg-surface-800) {
+		background: var(--card-bg) !important;
+	}
+
+	:global(:root[data-theme='dark'] .admin-shell .bg-surface-700) {
+		background: color-mix(in oklch, var(--card-bg) 84%, var(--color-surface-300) 16%) !important;
+	}
+
+	:global(:root[data-theme='dark'] .admin-shell .border-surface-700),
+	:global(:root[data-theme='dark'] .admin-shell .border-surface-600) {
+		border-color: var(--color-surface-300) !important;
+	}
+
+	:global(:root[data-theme='dark'] .admin-shell .text-surface-100) {
+		color: var(--color-surface-900) !important;
+	}
+
+	:global(:root[data-theme='dark'] .admin-shell .text-surface-400),
+	:global(:root[data-theme='dark'] .admin-shell .text-surface-500) {
+		color: var(--color-surface-600) !important;
+	}
+</style>
 
 

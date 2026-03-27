@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -24,11 +25,38 @@ import (
 type MarketHandler struct {
 	queries *db.Queries
 	svc     *service.MarketService
+
+	cacheMu      sync.RWMutex
+	listCache    map[string]cachedMarketList
+	historyCache map[int64]cachedPriceHistory
+	listTTL      time.Duration
+	historyTTL   time.Duration
+}
+
+type cachedMarketList struct {
+	expiresAt time.Time
+	payload   map[string]any
+}
+
+type cachedPriceHistory struct {
+	expiresAt time.Time
+	rows      []db.GetMarketPriceHistoryRow
 }
 
 // NewMarketHandler creates a MarketHandler.
 func NewMarketHandler(q *db.Queries, svc *service.MarketService) *MarketHandler {
-	return &MarketHandler{queries: q, svc: svc}
+	return &MarketHandler{
+		queries:      q,
+		svc:          svc,
+		listCache:    make(map[string]cachedMarketList),
+		historyCache: make(map[int64]cachedPriceHistory),
+		listTTL:      5 * time.Second,
+		historyTTL:   5 * time.Second,
+	}
+}
+
+func (h *MarketHandler) listCacheKey(status, category string, offset int64) string {
+	return fmt.Sprintf("%s|%s|%d", status, category, offset)
 }
 
 // outcomeResp is the JSON shape for a market outcome with its current LMSR price.
@@ -74,6 +102,18 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 		offset = v
 	}
 
+	cacheKey := h.listCacheKey(status, category, offset)
+	now := time.Now()
+
+	h.cacheMu.RLock()
+	entry, ok := h.listCache[cacheKey]
+	h.cacheMu.RUnlock()
+	if ok && now.Before(entry.expiresAt) {
+		w.Header().Set("Cache-Control", "public, max-age=5")
+		respondJSON(w, http.StatusOK, entry.payload)
+		return
+	}
+
 	count, err := h.queries.CountMarkets(r.Context(), db.CountMarketsParams{
 		Status:   status,
 		Column2:  category,
@@ -108,11 +148,18 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respondJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"total":   count,
 		"markets": result,
 		"offset":  offset,
-	})
+	}
+
+	h.cacheMu.Lock()
+	h.listCache[cacheKey] = cachedMarketList{expiresAt: now.Add(h.listTTL), payload: resp}
+	h.cacheMu.Unlock()
+
+	w.Header().Set("Cache-Control", "public, max-age=5")
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // Get returns a single market by ID with current prices and (if authenticated) the caller's position.
@@ -241,12 +288,27 @@ func (h *MarketHandler) GetPriceHistory(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	now := time.Now()
+	h.cacheMu.RLock()
+	historyEntry, ok := h.historyCache[id]
+	h.cacheMu.RUnlock()
+	if ok && now.Before(historyEntry.expiresAt) {
+		w.Header().Set("Cache-Control", "public, max-age=5")
+		respondJSON(w, http.StatusOK, historyEntry.rows)
+		return
+	}
+
 	history, err := h.queries.GetMarketPriceHistory(r.Context(), id)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
+	h.cacheMu.Lock()
+	h.historyCache[id] = cachedPriceHistory{expiresAt: now.Add(h.historyTTL), rows: history}
+	h.cacheMu.Unlock()
+
+	w.Header().Set("Cache-Control", "public, max-age=5")
 	respondJSON(w, http.StatusOK, history)
 }
 
