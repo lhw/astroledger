@@ -28,10 +28,10 @@ func (h *TradingHandler) Trade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		MarketID int64   `json:"market_id"`
-		Side     string  `json:"side"`   // "yes" | "no"
-		Action   string  `json:"action"` // "buy" | "sell"
-		Shares   float64 `json:"shares"`
+		MarketID  int64   `json:"market_id"`
+		OutcomeID int64   `json:"outcome_id"` // FK into market_outcomes
+		Action    string  `json:"action"`     // "buy" | "sell"
+		Shares    float64 `json:"shares"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
@@ -40,6 +40,10 @@ func (h *TradingHandler) Trade(w http.ResponseWriter, r *http.Request) {
 
 	if body.MarketID <= 0 {
 		respondError(w, http.StatusBadRequest, "market_id required")
+		return
+	}
+	if body.OutcomeID <= 0 {
+		respondError(w, http.StatusBadRequest, "outcome_id required")
 		return
 	}
 	if body.Shares <= 0 {
@@ -52,11 +56,11 @@ func (h *TradingHandler) Trade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.svc.Execute(r.Context(), service.TradeInput{
-		UserID:   claims.UserID,
-		MarketID: body.MarketID,
-		Side:     body.Side,
-		Action:   body.Action,
-		Shares:   body.Shares,
+		UserID:    claims.UserID,
+		MarketID:  body.MarketID,
+		OutcomeID: body.OutcomeID,
+		Action:    body.Action,
+		Shares:    body.Shares,
 	})
 	if errors.Is(err, service.ErrNotFound) {
 		respondError(w, http.StatusNotFound, "market not found")

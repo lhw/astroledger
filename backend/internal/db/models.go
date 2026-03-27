@@ -53,17 +53,23 @@ type Market struct {
 	ResolutionCriteria  string     `json:"resolution_criteria"`
 	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
 	Status              string     `json:"status"`
-	Resolution          *string    `json:"resolution"`
+	ResolvedOutcomeID   *int64     `json:"resolved_outcome_id"`
 	CreatedBy           int64      `json:"created_by"`
 	ResolvedBy          *int64     `json:"resolved_by"`
 	CreatedAt           time.Time  `json:"created_at"`
 	ResolvedAt          *time.Time `json:"resolved_at"`
 	LiquidityParam      float64    `json:"liquidity_param"`
-	YesShares           float64    `json:"yes_shares"`
-	NoShares            float64    `json:"no_shares"`
 	ResolutionType      string     `json:"resolution_type"`
 	ResolutionThreshold *string    `json:"resolution_threshold"`
 	ResolutionEvidence  *string    `json:"resolution_evidence"`
+}
+
+type MarketOutcome struct {
+	ID        int64   `json:"id"`
+	MarketID  int64   `json:"market_id"`
+	Label     string  `json:"label"`
+	Shares    float64 `json:"shares"`
+	SortOrder int64   `json:"sort_order"`
 }
 
 type ModerationAction struct {
@@ -78,8 +84,8 @@ type ModerationAction struct {
 type Position struct {
 	UserID    int64   `json:"user_id"`
 	MarketID  int64   `json:"market_id"`
-	YesShares float64 `json:"yes_shares"`
-	NoShares  float64 `json:"no_shares"`
+	OutcomeID int64   `json:"outcome_id"`
+	Shares    float64 `json:"shares"`
 }
 
 type Report struct {
@@ -103,7 +109,7 @@ type Trade struct {
 	ID           int64     `json:"id"`
 	UserID       int64     `json:"user_id"`
 	MarketID     int64     `json:"market_id"`
-	Side         string    `json:"side"`
+	OutcomeID    int64     `json:"outcome_id"`
 	Action       string    `json:"action"`
 	Shares       float64   `json:"shares"`
 	Cost         int64     `json:"cost"`

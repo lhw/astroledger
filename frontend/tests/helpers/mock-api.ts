@@ -39,7 +39,7 @@ export const MARKETS_RESPONSE: MarketList = {
 			resolution_criteria: 'Patch notes confirm the fix.',
 			resolution_deadline: '2025-12-31T23:59:59Z',
 			status: 'active',
-			resolution: null,
+			resolved_outcome_id: null,
 			created_by: 1,
 			creator_name: 'TestPilot',
 			resolved_by: null,
@@ -47,8 +47,10 @@ export const MARKETS_RESPONSE: MarketList = {
 			created_at: '2024-06-01T00:00:00Z',
 			resolved_at: null,
 			liquidity_param: 100,
-			yes_shares: 0,
-			no_shares: 0,
+			outcomes: [
+				{ id: 1, market_id: 1, label: 'YES', shares: 0, sort_order: 0, price: 50 },
+				{ id: 2, market_id: 1, label: 'NO', shares: 0, sort_order: 1, price: 50 }
+			],
 			resolution_type: 'binary',
 			resolution_threshold: null,
 			resolution_evidence: null
@@ -61,7 +63,7 @@ export const MARKETS_RESPONSE: MarketList = {
 			resolution_criteria: 'Live build deployed before July 1.',
 			resolution_deadline: '2025-06-30T23:59:59Z',
 			status: 'active',
-			resolution: null,
+			resolved_outcome_id: null,
 			created_by: 1,
 			creator_name: 'TestPilot',
 			resolved_by: null,
@@ -69,8 +71,10 @@ export const MARKETS_RESPONSE: MarketList = {
 			created_at: '2024-06-02T00:00:00Z',
 			resolved_at: null,
 			liquidity_param: 100,
-			yes_shares: 0,
-			no_shares: 0,
+			outcomes: [
+				{ id: 3, market_id: 2, label: 'YES', shares: 0, sort_order: 0, price: 50 },
+				{ id: 4, market_id: 2, label: 'NO', shares: 0, sort_order: 1, price: 50 }
+			],
 			resolution_type: 'binary',
 			resolution_threshold: null,
 			resolution_evidence: null
@@ -128,15 +132,17 @@ export const RESOLUTION_REQUEST: ResolutionRequestMarket = {
 	resolution_criteria: 'Patch notes confirm fix.',
 	resolution_deadline: '2026-12-31T23:59:59Z',
 	status: 'resolution_requested',
-	resolution: null,
+	resolved_outcome_id: null,
 	created_by: 1,
 	creator_name: 'TestPilot',
 	resolved_by: null,
 	created_at: '2026-01-01T00:00:00Z',
 	resolved_at: null,
 	liquidity_param: 100,
-	yes_shares: 10,
-	no_shares: 5,
+	outcomes: [
+		{ id: 19, market_id: 10, label: 'YES', shares: 10, sort_order: 0, price: 67 },
+		{ id: 20, market_id: 10, label: 'NO', shares: 5, sort_order: 1, price: 33 }
+	],
 	requested_by: 1,
 	requester_name: 'TestPilot',
 	request_link: 'https://robertsspaceindustries.com/patch/4.2',

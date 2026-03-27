@@ -44,11 +44,12 @@ type CreateMarketInput struct {
 	ResolutionCriteria  string
 	Deadline            time.Time
 	CreatedBy           int64
-	ResolutionType      string  // "binary" | "date" | "numeric"
-	ResolutionThreshold *string // target date (ISO) or threshold value
+	ResolutionType      string   // "binary" | "date" | "numeric"
+	ResolutionThreshold *string  // target date (ISO) or threshold value
+	Outcomes            []string // outcome labels; if empty, defaults to ["YES", "NO"]
 }
 
-// CreateMarket validates input, runs auto-filter, and inserts a new market.
+// CreateMarket validates input, runs auto-filter, and inserts a new market with outcomes.
 func (s *MarketService) CreateMarket(ctx context.Context, inp CreateMarketInput) (*db.Market, error) {
 	if err := s.validateMarketInput(ctx, inp); err != nil {
 		return nil, err
@@ -59,7 +60,24 @@ func (s *MarketService) CreateMarket(ctx context.Context, inp CreateMarketInput)
 		resType = "binary"
 	}
 
-	market, err := s.queries.CreateMarket(ctx, db.CreateMarketParams{
+	// Default to binary YES/NO.
+	outcomes := inp.Outcomes
+	if len(outcomes) == 0 {
+		outcomes = []string{"YES", "NO"}
+	}
+	if len(outcomes) < 2 {
+		return nil, fmt.Errorf("market must have at least 2 outcomes")
+	}
+
+	tx, err := s.sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	qTx := s.queries.WithBoundTx(tx)
+
+	market, err := qTx.CreateMarket(ctx, db.CreateMarketParams{
 		Title:               inp.Title,
 		Description:         inp.Description,
 		Category:            inp.Category,
@@ -72,6 +90,21 @@ func (s *MarketService) CreateMarket(ctx context.Context, inp CreateMarketInput)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create market: %w", err)
+	}
+
+	for i, label := range outcomes {
+		_, err := qTx.CreateOutcome(ctx, db.CreateOutcomeParams{
+			MarketID:  market.ID,
+			Label:     label,
+			SortOrder: int64(i),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create outcome %q: %w", label, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return &market, nil
 }
@@ -129,16 +162,16 @@ func (s *MarketService) RejectMarket(ctx context.Context, marketID, modID int64)
 
 // ResolveInput is the input for resolving a market.
 type ResolveInput struct {
-	MarketID     int64
-	Resolution   string // "yes" or "no"
-	ModID        int64
-	EvidenceLink *string
+	MarketID         int64
+	WinningOutcomeID int64 // FK into market_outcomes
+	ModID            int64
+	EvidenceLink     *string
 }
 
-// ResolveMarket resolves a market and pays out winners within a transaction.
+// ResolveMarket resolves a market and pays out holders of the winning outcome.
 func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) error {
-	if inp.Resolution != "yes" && inp.Resolution != "no" {
-		return fmt.Errorf("resolution must be 'yes' or 'no'")
+	if inp.WinningOutcomeID <= 0 {
+		return fmt.Errorf("winning_outcome_id is required")
 	}
 
 	tx, err := s.sqlDB.BeginTx(ctx, nil)
@@ -161,7 +194,7 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 	}
 
 	if err := qTx.ResolveMarket(ctx, db.ResolveMarketParams{
-		Resolution:         &inp.Resolution,
+		ResolvedOutcomeID:  &inp.WinningOutcomeID,
 		ResolvedBy:         &inp.ModID,
 		ResolutionEvidence: inp.EvidenceLink,
 		ID:                 inp.MarketID,
@@ -169,23 +202,20 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 		return fmt.Errorf("resolve market: %w", err)
 	}
 
-	// Pay out winners (each winning share pays 100 ScollyBucks).
+	// Pay out winners: only holders of the winning outcome receive 100 per share.
 	positions, err := qTx.GetPositionsForResolution(ctx, inp.MarketID)
 	if err != nil {
 		return fmt.Errorf("get positions: %w", err)
 	}
 
 	for _, pos := range positions {
-		var winShares float64
-		if inp.Resolution == "yes" {
-			winShares = pos.YesShares
-		} else {
-			winShares = pos.NoShares
-		}
-		if winShares <= 0 {
+		if pos.OutcomeID != inp.WinningOutcomeID {
 			continue
 		}
-		payout := int64(winShares * 100)
+		if pos.Shares <= 0 {
+			continue
+		}
+		payout := int64(pos.Shares * 100)
 		if payout <= 0 {
 			continue
 		}
@@ -195,7 +225,7 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 		}); err != nil {
 			return fmt.Errorf("payout user %d: %w", pos.UserID, err)
 		}
-		slog.Info("payout", "user_id", pos.UserID, "payout", payout)
+		slog.Info("payout", "user_id", pos.UserID, "outcome_id", pos.OutcomeID, "payout", payout)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -204,9 +234,13 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 
 	// Award badges to everyone who had a position — non-blocking.
 	if s.badgeSvc != nil {
+		seen := make(map[int64]bool)
 		for _, pos := range positions {
-			userID := pos.UserID
-			go s.badgeSvc.CheckAndAward(context.Background(), userID)
+			if !seen[pos.UserID] {
+				seen[pos.UserID] = true
+				userID := pos.UserID
+				go s.badgeSvc.CheckAndAward(context.Background(), userID)
+			}
 		}
 	}
 	return nil
@@ -248,7 +282,7 @@ func (s *MarketService) RequestResolution(ctx context.Context, inp RequestResolu
 	if err != nil {
 		return fmt.Errorf("get position: %w", err)
 	}
-	if pos.YesShares == 0 && pos.NoShares == 0 {
+	if pos.Shares == 0 {
 		return ErrForbidden
 	}
 	if err := validateResolutionRequestMetadata(inp.Link, inp.Note); err != nil {

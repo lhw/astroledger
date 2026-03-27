@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { listMarkets, getMyPositions } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
-	import { yesProb } from '$lib/amm';
+	// yesProb no longer needed — prices come from outcomes array
 	import type { MarketList, MarketCategory } from '$lib/types';
 	import { CATEGORY_LABELS, CATEGORY_FILTER_OPTIONS } from '$lib/categories';
 
@@ -101,8 +101,9 @@
 		<div class="space-y-2 mb-6">
 			{#each markets.markets as market}
 				{@const owned = ownedMarketIds.has(market.id)}
-				{@const prob = yesProb(market.liquidity_param, market.yes_shares, market.no_shares)}
-				{@const yesPct = Math.round(prob * 100)}
+				{@const outs = market.outcomes ?? []}
+				{@const prob = outs.length >= 2 ? outs[0].price : 50}
+				{@const yesPct = prob}
 				<a
 					href="/markets/{market.id}"
 					class="p-4 flex items-start justify-between gap-4 transition-all no-underline block rounded-lg border
@@ -129,10 +130,15 @@
 						</div>
 						<!-- Probability bar -->
 						{#if market.status === 'active'}
-							<div class="mt-2.5">
-								<div class="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
-									<span class="text-green-600">YES {yesPct}%</span>
-									<span class="text-red-500">NO {100 - yesPct}%</span>
+						{@const firstLabel = outs[0]?.label ?? 'YES'}
+						{@const secondLabel = outs[1]?.label ?? 'NO'}
+						{@const secondPct = outs[1]?.price ?? (100 - yesPct)}
+						<div class="mt-2.5">
+							<div class="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1">
+								<span class="text-green-600">{firstLabel} {yesPct}%</span>
+								{#if outs.length === 2}
+									<span class="text-red-500">{secondLabel} {secondPct}%</span>
+								{/if}
 								</div>
 								<div class="h-1.5 w-full rounded-full bg-red-100 overflow-hidden">
 									<div class="h-full rounded-full bg-green-500 transition-all" style="width: {yesPct}%"></div>
@@ -140,11 +146,12 @@
 							</div>
 						{/if}
 					</div>
-					<!-- Right: YES price pill -->
-					{#if market.status === 'active'}
-						<div class="flex-shrink-0 flex flex-col items-center justify-center min-w-[52px]">
-							<div class="text-xl font-black leading-none {yesPct >= 50 ? 'text-green-600' : 'text-red-500'}">{yesPct}%</div>
-							<div class="text-[10px] text-surface-400 font-semibold uppercase tracking-wider mt-0.5">YES</div>
+				<!-- Right: first outcome price pill -->
+				{#if market.status === 'active'}
+					{@const firstLabel = outs[0]?.label ?? 'YES'}
+					<div class="flex-shrink-0 flex flex-col items-center justify-center min-w-[52px]">
+						<div class="text-xl font-black leading-none {yesPct >= 50 ? 'text-green-600' : 'text-red-500'}">{yesPct}%</div>
+						<div class="text-[10px] text-surface-400 font-semibold uppercase tracking-wider mt-0.5">{firstLabel}</div>
 						</div>
 					{/if}
 				</a>

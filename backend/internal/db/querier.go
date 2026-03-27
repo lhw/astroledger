@@ -13,6 +13,7 @@ type Querier interface {
 	CountMarkets(ctx context.Context, arg CountMarketsParams) (int64, error)
 	CreateComment(ctx context.Context, arg CreateCommentParams) (Comment, error)
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
+	CreateOutcome(ctx context.Context, arg CreateOutcomeParams) (MarketOutcome, error)
 	CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteComment(ctx context.Context, id int64) error
@@ -29,6 +30,7 @@ type Querier interface {
 	// Returns aggregate trade statistics for a single market.
 	GetMarketStats(ctx context.Context, marketID int64) (GetMarketStatsRow, error)
 	GetMarketTrades(ctx context.Context, arg GetMarketTradesParams) ([]GetMarketTradesRow, error)
+	GetOutcomesByMarketID(ctx context.Context, marketID int64) ([]MarketOutcome, error)
 	GetPositionsForResolution(ctx context.Context, marketID int64) ([]GetPositionsForResolutionRow, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserBySub(ctx context.Context, scidSub string) (User, error)
@@ -42,8 +44,8 @@ type Querier interface {
 	LogAdminAdjustment(ctx context.Context, arg LogAdminAdjustmentParams) error
 	MarkPatchNotified(ctx context.Context, id int64) error
 	SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error)
-	UpdateMarketAMMState(ctx context.Context, arg UpdateMarketAMMStateParams) error
 	UpdateMarketStatus(ctx context.Context, arg UpdateMarketStatusParams) error
+	UpdateOutcomeShares(ctx context.Context, arg UpdateOutcomeSharesParams) error
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
 	UpsertPosition(ctx context.Context, arg UpsertPositionParams) error
 }

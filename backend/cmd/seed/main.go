@@ -93,6 +93,7 @@ func cleanData(ctx context.Context, sqlDB *sql.DB) error {
 		"weekly_payout_log",
 		"user_badges",
 		"detected_patches",
+		"market_outcomes",
 		"markets",
 		"users",
 	}
@@ -121,105 +122,109 @@ func seed(ctx context.Context, queries *db.Queries) error {
 	}
 
 	type marketSpec struct {
-		title      string
-		category   string
-		criteria   string
-		deadline   time.Time
-		status     string
-		resolution *string
-		liquidity  float64
+		title          string
+		category       string
+		criteria       string
+		deadline       time.Time
+		status         string
+		resolveOutcome int // 0=none, 1=YES/first, 2=NO/second
+		liquidity      float64
+		outcomes       []string // if nil, defaults to ["YES","NO"]
 	}
 
-	yes := "yes"
-	no := "no"
 	now := time.Now().UTC()
 
 	specs := []marketSpec{
 		// Active
 		{"Will the multi-cargo elevator desync be fixed in patch 4.1?", "bug_fixes",
 			"Resolves YES if the elevator desync appears fixed in 4.1 patch notes.",
-			now.AddDate(0, 3, 0), "active", nil, 150},
+			now.AddDate(0, 3, 0), "active", 0, 150, nil},
 		{"Will the Stanton-Pyro jump point be stable at 4.1 launch?", "feature_delivery",
 			"Resolves YES if 4.1 ships without a Known Issue for jump point instability.",
-			now.AddDate(0, 2, 0), "active", nil, 120},
+			now.AddDate(0, 2, 0), "active", 0, 120, nil},
 		{"Will patch 4.1 ship to live before 30 April 2026?", "patch_timing",
 			"Resolves YES if 4.1 is live on or before 30 April 2026 (UTC).",
-			time.Date(2026, 4, 30, 23, 59, 59, 0, time.UTC), "active", nil, 200},
+			time.Date(2026, 4, 30, 23, 59, 59, 0, time.UTC), "active", 0, 200, nil},
 		{"Will the Hull C be flyable before the end of 2026?", "feature_delivery",
 			"Resolves YES if a flyable Hull C appears in any official build before 31 Dec 2026.",
-			time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC), "active", nil, 100},
+			time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC), "active", 0, 100, nil},
 		{"Will IAE 2026 be held in November as usual?", "community_events",
 			"Resolves YES if CIG runs an IAE event during November 2026.",
-			time.Date(2026, 11, 30, 23, 59, 59, 0, time.UTC), "active", nil, 80},
+			time.Date(2026, 11, 30, 23, 59, 59, 0, time.UTC), "active", 0, 80, nil},
 		{"Will the inventory item duplication exploit be patched before 4.2?", "bug_fixes",
 			"Resolves YES if any patch between now and 4.2 explicitly addresses the dupe exploit.",
-			now.AddDate(0, 6, 0), "active", nil, 100},
+			now.AddDate(0, 6, 0), "active", 0, 100, nil},
 		{"Will SQ42 ship in 2026?", "feature_delivery",
 			"Resolves YES if Squadron 42 is commercially released before 31 Dec 2026.",
-			time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC), "active", nil, 250},
+			time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC), "active", 0, 250, nil},
 		{"Will server frame rate hold above 20 fps average in Q2 2026?", "meta",
 			"Resolves YES if community-aggregated server FPS shows a Q2 average above 20 fps.",
-			time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC), "active", nil, 90},
+			time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC), "active", 0, 90, nil},
+		// Multi-outcome example
+		{"Which patch will fix server desync: 4.1, 4.2, or never?", "bug_fixes",
+			"Resolves to whichever patch first ships server desync fix, or Never.",
+			time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), "active", 0, 120,
+			[]string{"4.1", "4.2", "4.3+", "Never"}},
 		// Pending review
 		{"Will server meshing support 4 shards by end of 2026?", "feature_delivery",
 			"Resolves YES if CIG demonstrates 4-shard live meshing before 31 Dec 2026.",
-			time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC), "pending_review", nil, 100},
+			time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC), "pending_review", 0, 100, nil},
 		{"Will the Reclaimer tractor beam stop launching salvage into orbit?", "bug_fixes",
 			"Resolves YES if the bug is absent from 4.1 Known Issues.",
-			now.AddDate(0, 5, 0), "pending_review", nil, 120},
+			now.AddDate(0, 5, 0), "pending_review", 0, 120, nil},
 		{"Will there be a Free Fly event in Q3 2026?", "community_events",
 			"Resolves YES if CIG runs any free-fly event Jul-Sep 2026.",
-			time.Date(2026, 9, 30, 23, 59, 59, 0, time.UTC), "pending_review", nil, 80},
+			time.Date(2026, 9, 30, 23, 59, 59, 0, time.UTC), "pending_review", 0, 80, nil},
 		{"Will the Carrack medical bay be fully functional in 4.1?", "bug_fixes",
 			"Resolves YES if the Carrack medical bay operates without server restart in 4.1.",
-			now.AddDate(0, 3, 0), "pending_review", nil, 70},
+			now.AddDate(0, 3, 0), "pending_review", 0, 70, nil},
 		{"Will CIG release a new flyable multi-crew ship in H1 2026?", "feature_delivery",
 			"Resolves YES if a new 3+ crew ship is added as flyable in any build Jan-Jun 2026.",
-			time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC), "pending_review", nil, 110},
+			time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC), "pending_review", 0, 110, nil},
 		// Resolution requested
 		{"Will the GI banding artefact be patched by end of Q1 2026?", "bug_fixes",
 			"Resolves YES if Q1 2026 patch notes include a Lumen banding fix.",
-			time.Date(2026, 3, 31, 23, 59, 59, 0, time.UTC), "resolution_requested", nil, 90},
+			time.Date(2026, 3, 31, 23, 59, 59, 0, time.UTC), "resolution_requested", 0, 90, nil},
 		{"Will the 4.0.1 hotfix release before Christmas 2025?", "patch_timing",
 			"Resolves YES if a 4.0.1 build appears on RSI Comm-Link before 25 Dec 2025.",
-			time.Date(2025, 12, 25, 23, 59, 59, 0, time.UTC), "resolution_requested", nil, 180},
+			time.Date(2025, 12, 25, 23, 59, 59, 0, time.UTC), "resolution_requested", 0, 180, nil},
 		// Deadline passed
 		{"Will patch 4.0 ship before December 2025?", "patch_timing",
 			"Resolves YES if patch 4.0 is live before 30 Nov 2025.",
-			time.Date(2025, 11, 30, 23, 59, 59, 0, time.UTC), "deadline_passed", nil, 200},
+			time.Date(2025, 11, 30, 23, 59, 59, 0, time.UTC), "deadline_passed", 0, 200, nil},
 		{"Will the Lorville cargo elevator be fixed before IAE 2025?", "bug_fixes",
 			"Resolves YES if the elevator operates without desync for a full week before IAE 2025.",
-			time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC), "deadline_passed", nil, 90},
-		// Resolved YES
+			time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC), "deadline_passed", 0, 90, nil},
+		// Resolved YES (outcome index 1 = first outcome = YES)
 		{"Will the Pyro system ship in any form in 2025?", "feature_delivery",
 			"Resolves YES if Pyro becomes accessible in any official build during 2025.",
-			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", &yes, 300},
+			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", 1, 300, nil},
 		{"Will CIG hold a CitizenCon in 2025?", "community_events",
 			"Resolves YES if CIG hosts a CitizenCon during 2025.",
-			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", &yes, 100},
+			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", 1, 100, nil},
 		{"Will dynamic cargo launch before 4.0?", "feature_delivery",
 			"Resolves YES if dynamic cargo ships in any live patch numbered below 4.0.",
-			time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), "resolved", &yes, 150},
+			time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), "resolved", 1, 150, nil},
 		{"Will the Mirai Fury MX be added as a flyable ship in 3.23?", "feature_delivery",
 			"Resolves YES if the Fury MX appears as flyable in 3.23 live.",
-			time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", &yes, 80},
-		// Resolved NO
+			time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", 1, 80, nil},
+		// Resolved NO (outcome index 2 = second outcome = NO)
 		{"Will Star Citizen hit 1.0 before the end of 2025?", "meta",
 			"Resolves YES if CIG officially ships Star Citizen 1.0 before 31 Dec 2025.",
-			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", &no, 500},
+			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", 2, 500, nil},
 		{"Will base building ship before Q3 2025?", "feature_delivery",
 			"Resolves YES if base building is playable in any live build before 1 Oct 2025.",
-			time.Date(2025, 9, 30, 23, 59, 59, 0, time.UTC), "resolved", &no, 120},
+			time.Date(2025, 9, 30, 23, 59, 59, 0, time.UTC), "resolved", 2, 120, nil},
 		{"Will there be a server wipe in 4.0?", "meta",
 			"Resolves NO if player items and aUEC carry over from 3.x to 4.0 live.",
-			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", &no, 160},
+			time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC), "resolved", 2, 160, nil},
 		// Cancelled
 		{"Will the Kraken be made player purchasable in 2024?", "feature_delivery",
 			"Resolves YES if the Kraken is listed for purchase on the RSI ship page during 2024.",
-			time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC), "cancelled", nil, 60},
+			time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC), "cancelled", 0, 60, nil},
 		{"Will Orison get a full city ground level before 4.0?", "feature_delivery",
 			"Resolves YES if Orison receives a walk-able ground-level city in any patch before 4.0.",
-			time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC), "cancelled", nil, 70},
+			time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC), "cancelled", 0, 70, nil},
 	}
 
 	for _, s := range specs {
@@ -237,6 +242,21 @@ func seed(ctx context.Context, queries *db.Queries) error {
 			return fmt.Errorf("create market %q: %w", s.title, err)
 		}
 
+		// Create outcomes.
+		outcomeLabels := s.outcomes
+		if len(outcomeLabels) == 0 {
+			outcomeLabels = []string{"YES", "NO"}
+		}
+		for i, label := range outcomeLabels {
+			if _, err := queries.CreateOutcome(ctx, db.CreateOutcomeParams{
+				MarketID:  m.ID,
+				Label:     label,
+				SortOrder: int64(i),
+			}); err != nil {
+				return fmt.Errorf("create outcome %q for %q: %w", label, s.title, err)
+			}
+		}
+
 		if s.status != "pending_review" {
 			if err := queries.UpdateMarketStatus(ctx, db.UpdateMarketStatusParams{
 				Status: s.status,
@@ -246,11 +266,17 @@ func seed(ctx context.Context, queries *db.Queries) error {
 			}
 		}
 
-		if s.resolution != nil {
+		if s.resolveOutcome > 0 {
+			// Look up the outcome by position (1-indexed).
+			outcomes, err := queries.GetOutcomesByMarketID(ctx, m.ID)
+			if err != nil || len(outcomes) < s.resolveOutcome {
+				return fmt.Errorf("get outcomes for %q: %w", s.title, err)
+			}
+			winID := outcomes[s.resolveOutcome-1].ID
 			if err := queries.ResolveMarket(ctx, db.ResolveMarketParams{
-				Resolution: s.resolution,
-				ResolvedBy: &bot.ID,
-				ID:         m.ID,
+				ResolvedOutcomeID: &winID,
+				ResolvedBy:        &bot.ID,
+				ID:                m.ID,
 			}); err != nil {
 				return fmt.Errorf("resolve market %q: %w", s.title, err)
 			}

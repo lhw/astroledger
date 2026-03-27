@@ -2,16 +2,30 @@ package service
 
 import "math"
 
-// YESPrice returns the current YES probability in the range (0, 1) given LMSR state.
-// b is the liquidity parameter; qYes and qNo are total outstanding shares.
-func YESPrice(b, qYes, qNo float64) float64 {
-	// Numerically stable: 1 / (1 + exp((qNo - qYes) / b))
-	return 1.0 / (1.0 + math.Exp((qNo-qYes)/b))
+// OutcomeProb returns the normalized probability of one outcome given all
+// outcomes' share pools. Uses the LMSR formula: p_i = exp(q_i/b) / Σ exp(q_j/b).
+// allShares must include the share count for the target outcome at position idx.
+func OutcomeProb(b float64, allShares []float64, idx int) float64 {
+	// Log-sum-exp trick for numerical stability.
+	if len(allShares) == 0 {
+		return 0
+	}
+	maxVal := allShares[0] / b
+	for _, q := range allShares[1:] {
+		if v := q / b; v > maxVal {
+			maxVal = v
+		}
+	}
+	sum := 0.0
+	for _, q := range allShares {
+		sum += math.Exp(q/b - maxVal)
+	}
+	return math.Exp(allShares[idx]/b-maxVal) / sum
 }
 
-// PriceCents returns the YES price in whole ScollyBucks cents (1-99).
-func PriceCents(b, qYes, qNo float64) int64 {
-	p := YESPrice(b, qYes, qNo)
+// OutcomeProbCents returns the probability in whole bUEC-per-share cents (1–99).
+func OutcomeProbCents(b float64, allShares []float64, idx int) int64 {
+	p := OutcomeProb(b, allShares, idx)
 	v := int64(math.Round(p * 100))
 	if v < 1 {
 		v = 1
@@ -22,65 +36,95 @@ func PriceCents(b, qYes, qNo float64) int64 {
 	return v
 }
 
-// lmsr computes the LMSR cost function C(qYes, qNo) = b * log(exp(qYes/b) + exp(qNo/b)).
-// Uses the log-sum-exp trick for numerical stability.
-func lmsr(b, qYes, qNo float64) float64 {
-	a := qYes / b
-	c := qNo / b
-	m := math.Max(a, c)
-	return b * (m + math.Log(math.Exp(a-m)+math.Exp(c-m)))
+// lmsrMulti computes the multi-outcome LMSR cost function using independent
+// pools: C = b * log(Σ exp(q_i/b)).
+func lmsrMulti(b float64, shares []float64) float64 {
+	// Log-sum-exp.
+	maxVal := shares[0] / b
+	for _, q := range shares[1:] {
+		if v := q / b; v > maxVal {
+			maxVal = v
+		}
+	}
+	sum := 0.0
+	for _, q := range shares {
+		sum += math.Exp(q/b - maxVal)
+	}
+	return b * (maxVal + math.Log(sum))
 }
 
-// BuyCost returns the integer ScollyBucks cost to buy deltaShares of the given side.
-// sideYes=true means buying YES shares, false means NO.
-// Returns cost rounded up to protect the AMM.
-func BuyCost(b, qYes, qNo, deltaShares float64, sideYes bool) int64 {
-	var before, after float64
-	before = lmsr(b, qYes, qNo)
-	if sideYes {
-		after = lmsr(b, qYes+deltaShares, qNo)
-	} else {
-		after = lmsr(b, qYes, qNo+deltaShares)
-	}
-	diff := after - before
-	// Scale by payoutPerShare (100) so that per-share cost in bUEC matches the
-	// displayed probability percentage. Round up to protect the market maker.
+// BuyCost returns the integer ScollyBucks cost to buy deltaShares of outcome outcomeIdx.
+// Rounds up to protect the AMM.
+func BuyCost(b float64, shares []float64, outcomeIdx int, deltaShares float64) int64 {
+	before := lmsrMulti(b, shares)
+	after := make([]float64, len(shares))
+	copy(after, shares)
+	after[outcomeIdx] += deltaShares
+	diff := lmsrMulti(b, after) - before
+	// Scale by payoutPerShare (100) so per-share cost in bUEC ≈ probability%.
 	return int64(math.Ceil(diff * 100))
 }
 
 // SellRevenue returns the integer ScollyBucks received for selling deltaShares.
-// Returns revenue rounded down to protect the AMM.
-func SellRevenue(b, qYes, qNo, deltaShares float64, sideYes bool) int64 {
-	var before, after float64
-	before = lmsr(b, qYes, qNo)
-	if sideYes {
-		after = lmsr(b, qYes-deltaShares, qNo)
-	} else {
-		after = lmsr(b, qYes, qNo-deltaShares)
-	}
-	diff := before - after // positive: revenue from selling
-	// Scale by payoutPerShare (100) — mirror of BuyCost. Round down to protect the AMM.
+// Rounds down to protect the AMM.
+func SellRevenue(b float64, shares []float64, outcomeIdx int, deltaShares float64) int64 {
+	before := lmsrMulti(b, shares)
+	after := make([]float64, len(shares))
+	copy(after, shares)
+	after[outcomeIdx] -= deltaShares
+	diff := before - lmsrMulti(b, after)
 	return int64(math.Floor(diff * 100))
 }
 
-// MaxAffordableShares binary-searches for the max shares a user can buy with budget ScollyBucks.
-// Returns 0 if even 1 share is too expensive.
-func MaxAffordableShares(b, qYes, qNo float64, budget int64, sideYes bool) float64 {
+// MaxAffordableShares binary-searches for the max whole shares buyable with budget bUEC.
+func MaxAffordableShares(b float64, shares []float64, outcomeIdx int, budget int64) float64 {
 	if budget <= 0 {
 		return 0
 	}
-	lo, hi := 0.0, float64(budget) // can't buy more shares than budget (1 share costs >= 1)
+	lo, hi := 0.0, float64(budget)
 	for i := 0; i < 60; i++ {
 		mid := (lo + hi) / 2
-		if BuyCost(b, qYes, qNo, mid, sideYes) <= budget {
+		if BuyCost(b, shares, outcomeIdx, mid) <= budget {
 			lo = mid
 		} else {
 			hi = mid
 		}
 	}
-	// Verify final cost doesn't exceed budget (handle floating-point rounding).
-	if BuyCost(b, qYes, qNo, lo, sideYes) > budget {
+	if BuyCost(b, shares, outcomeIdx, lo) > budget {
 		return 0
 	}
 	return lo
+}
+
+// ── Legacy binary helpers (kept for tests that reference them directly) ───────
+
+// YESPrice returns the YES probability for a 2-outcome market.
+func YESPrice(b, qYes, qNo float64) float64 {
+	return OutcomeProb(b, []float64{qYes, qNo}, 0)
+}
+
+// PriceCents returns the YES price in whole ScollyBucks cents (1-99) for a binary market.
+func PriceCents(b, qYes, qNo float64) int64 {
+	return OutcomeProbCents(b, []float64{qYes, qNo}, 0)
+}
+
+// BuyCostBinary returns the cost to buy deltaShares of one side in a binary market.
+// isYes=true buys YES (index 0), false buys NO (index 1).
+// Convenience wrapper over BuyCost for callers that still use the binary 2-outcome model.
+func BuyCostBinary(b, qYes, qNo, deltaShares float64, isYes bool) int64 {
+	idx := 1
+	if isYes {
+		idx = 0
+	}
+	return BuyCost(b, []float64{qYes, qNo}, idx, deltaShares)
+}
+
+// SellRevenueBinary returns the revenue from selling deltaShares in a binary market.
+// Convenience wrapper over SellRevenue.
+func SellRevenueBinary(b, qYes, qNo, deltaShares float64, isYes bool) int64 {
+	idx := 1
+	if isYes {
+		idx = 0
+	}
+	return SellRevenue(b, []float64{qYes, qNo}, idx, deltaShares)
 }

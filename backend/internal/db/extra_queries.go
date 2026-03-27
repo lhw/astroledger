@@ -24,14 +24,12 @@ type ResolutionRequestRow struct {
 	ResolutionCriteria string     `json:"resolution_criteria"`
 	ResolutionDeadline time.Time  `json:"resolution_deadline"`
 	Status             string     `json:"status"`
-	Resolution         *string    `json:"resolution"`
+	ResolvedOutcomeID  *int64     `json:"resolved_outcome_id"`
 	CreatedBy          int64      `json:"created_by"`
 	ResolvedBy         *int64     `json:"resolved_by"`
 	CreatedAt          time.Time  `json:"created_at"`
 	ResolvedAt         *time.Time `json:"resolved_at"`
 	LiquidityParam     float64    `json:"liquidity_param"`
-	YesShares          float64    `json:"yes_shares"`
-	NoShares           float64    `json:"no_shares"`
 	CreatorName        string     `json:"creator_name"`
 	// Resolution-request specific fields (from resolution_request_details).
 	RequestedBy   int64     `json:"requested_by"`
@@ -51,9 +49,8 @@ func (q *Queries) ListResolutionRequestedMarkets(ctx context.Context) ([]Resolut
 		query = `
 SELECT m.id, m.title, m.description, m.category,
        m.resolution_criteria, m.resolution_deadline,
-       m.status, m.resolution, m.created_by, m.resolved_by,
+       m.status, m.resolved_outcome_id, m.created_by, m.resolved_by,
        m.created_at, m.resolved_at, m.liquidity_param,
-       m.yes_shares, m.no_shares,
        creator.display_name AS creator_name,
        COALESCE(rrd.requested_by, m.created_by) AS requested_by,
        COALESCE(requester.display_name, creator.display_name) AS requester_name,
@@ -69,9 +66,8 @@ ORDER BY requested_at ASC`
 		query = `
 SELECT m.id, m.title, m.description, m.category,
        m.resolution_criteria, m.resolution_deadline,
-       m.status, m.resolution, m.created_by, m.resolved_by,
+       m.status, m.resolved_outcome_id, m.created_by, m.resolved_by,
        m.created_at, m.resolved_at, m.liquidity_param,
-       m.yes_shares, m.no_shares,
        creator.display_name AS creator_name,
        COALESCE(rrd.requested_by, m.created_by) AS requested_by,
        COALESCE(requester.display_name, creator.display_name) AS requester_name,
@@ -98,9 +94,9 @@ ORDER BY requested_at ASC`
 			if err := rows.Scan(
 				&i.ID, &i.Title, &i.Description, &i.Category,
 				&i.ResolutionCriteria, &i.ResolutionDeadline,
-				&i.Status, &i.Resolution, &i.CreatedBy, &i.ResolvedBy,
+				&i.Status, &i.ResolvedOutcomeID, &i.CreatedBy, &i.ResolvedBy,
 				&i.CreatedAt, &i.ResolvedAt, &i.LiquidityParam,
-				&i.YesShares, &i.NoShares, &i.CreatorName,
+				&i.CreatorName,
 				&i.RequestedBy, &i.RequesterName, &i.RequestLink, &i.RequestNote,
 				&i.RequestedAt,
 			); err != nil {
@@ -112,9 +108,9 @@ ORDER BY requested_at ASC`
 			if err := rows.Scan(
 				&i.ID, &i.Title, &i.Description, &i.Category,
 				&i.ResolutionCriteria, &i.ResolutionDeadline,
-				&i.Status, &i.Resolution, &i.CreatedBy, &i.ResolvedBy,
+				&i.Status, &i.ResolvedOutcomeID, &i.CreatedBy, &i.ResolvedBy,
 				&i.CreatedAt, &i.ResolvedAt, &i.LiquidityParam,
-				&i.YesShares, &i.NoShares, &i.CreatorName,
+				&i.CreatorName,
 				&i.RequestedBy, &i.RequesterName, &i.RequestLink, &i.RequestNote,
 				&requestedAtStr,
 			); err != nil {
@@ -154,13 +150,20 @@ func (q *Queries) DeleteResolutionRequestDetails(ctx context.Context, marketID i
 	return err
 }
 
-// GetUserPositionOrZero returns the user's position in a market, or zeros if none exists.
+// GetUserPositionOrZero returns the user's position in a market for a specific outcome,
+// or a zero position if none exists. Uses outcome_id=0 as a sentinel "sum all" check
+// for callers that only need to know if ANY position exists.
 func (q *Queries) GetUserPositionOrZero(ctx context.Context, userID, marketID int64) (Position, error) {
-	pos, err := q.GetUserPosition(ctx, GetUserPositionParams{UserID: userID, MarketID: marketID})
+	// Return the first position found for this user+market (any outcome).
+	// Used only to check whether the user has any stake in the market.
+	const stmt = `SELECT user_id, market_id, outcome_id, shares FROM positions
+WHERE user_id = ? AND market_id = ? LIMIT 1`
+	var p Position
+	err := q.db.QueryRowContext(ctx, stmt, userID, marketID).Scan(&p.UserID, &p.MarketID, &p.OutcomeID, &p.Shares)
 	if err == sql.ErrNoRows {
 		return Position{UserID: userID, MarketID: marketID}, nil
 	}
-	return pos, err
+	return p, err
 }
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
@@ -344,7 +347,7 @@ WHERE id = ?`
 
 // ResolveMarketParams mirrors the struct sqlc would have generated.
 type ResolveMarketParams struct {
-	Resolution         *string `json:"resolution"`
+	ResolvedOutcomeID  *int64  `json:"resolved_outcome_id"`
 	ResolvedBy         *int64  `json:"resolved_by"`
 	ResolutionEvidence *string `json:"resolution_evidence"`
 	ID                 int64   `json:"id"`
@@ -359,13 +362,13 @@ func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) er
 	}
 	stmt := `UPDATE markets
 SET status              = 'resolved',
-    resolution          = ?,
+    resolved_outcome_id = ?,
     resolved_by         = ?,
     resolution_evidence = ?,
     resolved_at         = ` + ts + `
 WHERE id = ?`
 	_, err := q.db.ExecContext(ctx, stmt,
-		arg.Resolution, arg.ResolvedBy, arg.ResolutionEvidence, arg.ID,
+		arg.ResolvedOutcomeID, arg.ResolvedBy, arg.ResolutionEvidence, arg.ID,
 	)
 	return err
 }

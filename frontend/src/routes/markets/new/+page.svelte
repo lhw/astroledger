@@ -14,6 +14,8 @@
 	let patchTarget = $state('');
 	let resolutionType = $state<MarketResolutionType>('binary');
 	let resolutionThreshold = $state('');
+	let useCustomOutcomes = $state(false);
+	let customOutcomes = $state<string[]>(['YES', 'NO']);
 	let submitting = $state(false);
 	let error = $state('');
 
@@ -49,6 +51,7 @@
 				deadline = new Date(deadlineDate + 'T23:59:59Z').toISOString();
 			}
 
+			const validOutcomes = customOutcomes.map((o) => o.trim()).filter(Boolean);
 			const market = await createMarket({
 				title: title.trim(),
 				description: description.trim(),
@@ -56,7 +59,8 @@
 				category,
 				deadline,
 				resolution_type: resolutionType,
-				resolution_threshold: resolutionType !== 'binary' ? resolutionThreshold.trim() : undefined
+				resolution_threshold: resolutionType !== 'binary' ? resolutionThreshold.trim() : undefined,
+				outcomes: useCustomOutcomes && validOutcomes.length >= 2 ? validOutcomes : undefined
 			});
 			goto(`/markets/${market.id}`);
 		} catch (e) {
@@ -137,6 +141,46 @@
 				</div>
 				{#if resolutionType === 'binary'}
 					<p class="text-surface-400 text-xs">Standard yes/no question. Resolves YES or NO based on your criteria.</p>
+
+					<!-- Custom outcomes toggle -->
+					<label class="flex items-center gap-2 mt-3 cursor-pointer">
+						<input type="checkbox" bind:checked={useCustomOutcomes} class="rounded" />
+						<span class="text-surface-600 text-xs font-semibold uppercase tracking-wider">Use custom outcome labels</span>
+					</label>
+
+					{#if useCustomOutcomes}
+						<div class="mt-3 space-y-2">
+							{#each customOutcomes as _, i}
+								<div class="flex items-center gap-2">
+									<span class="text-surface-400 text-xs font-mono w-5 text-right">{i + 1}.</span>
+									<input
+										type="text"
+										bind:value={customOutcomes[i]}
+										maxlength="80"
+										placeholder="Outcome label…"
+										class="sc-input flex-1"
+									/>
+									{#if customOutcomes.length > 2}
+										<button
+											type="button"
+											onclick={() => { customOutcomes = customOutcomes.filter((_, j) => j !== i); }}
+											class="text-red-500 hover:text-red-700 text-xs px-1"
+											aria-label="Remove outcome"
+										>✕</button>
+									{/if}
+								</div>
+							{/each}
+							{#if customOutcomes.length < 8}
+								<button
+									type="button"
+									onclick={() => { customOutcomes = [...customOutcomes, '']; }}
+									class="btn btn-sm border border-surface-300 text-surface-600 hover:border-surface-400 text-xs uppercase tracking-wider mt-1"
+								>
+									+ Add Outcome
+								</button>
+							{/if}
+						</div>
+					{/if}
 				{:else if resolutionType === 'date'}
 					<label class="block">
 						<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Will the event happen before… <span class="text-red-500">*</span></span>

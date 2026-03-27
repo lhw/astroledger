@@ -35,9 +35,6 @@ export interface LeaderboardRow {
 /** Market status values */
 export type MarketStatus = 'pending_review' | 'active' | 'resolved' | 'cancelled' | 'resolution_requested' | 'deadline_passed';
 
-/** Market resolution */
-export type Resolution = 'yes' | 'no' | null;
-
 /** Market category */
 export type MarketCategory =
 	| 'bug_fixes'
@@ -49,6 +46,24 @@ export type MarketCategory =
 /** Market resolution type */
 export type MarketResolutionType = 'binary' | 'date' | 'numeric';
 
+/** One outcome of a market (e.g. YES / NO / specific patch version) */
+export interface MarketOutcome {
+	id: number;
+	market_id: number;
+	label: string;
+	shares: number;
+	sort_order: number;
+	/** Current probability-based price (1–99 cents per share) */
+	price: number;
+}
+
+/** A user's position in a single outcome */
+export interface UserOutcomePosition {
+	outcome_id: number;
+	label: string;
+	shares: number;
+}
+
 /** Market as returned by the API */
 export interface Market {
 	id: number;
@@ -58,7 +73,7 @@ export interface Market {
 	resolution_criteria: string;
 	resolution_deadline: string;
 	status: MarketStatus;
-	resolution: Resolution;
+	resolved_outcome_id: number | null;
 	created_by: number;
 	creator_name: string;
 	resolved_by: number | null;
@@ -66,8 +81,6 @@ export interface Market {
 	created_at: string;
 	resolved_at: string | null;
 	liquidity_param: number;
-	yes_shares: number;
-	no_shares: number;
 	/** Market subtype: binary yes/no, date prediction, or numeric/price prediction */
 	resolution_type: MarketResolutionType;
 	/** For date markets: ISO date string. For numeric: stringified number (e.g. "200" for $200). */
@@ -76,14 +89,16 @@ export interface Market {
 	resolution_evidence: string | null;
 	/** Comment count (included in list view only). */
 	comment_count?: number;
+	/** All outcomes for this market */
+	outcomes: MarketOutcome[];
 }
 
 /** Market with current prices */
 export interface MarketWithPrice {
 	market: Market;
-	yes_price: number; // 1-99 cents
-	no_price: number;  // 1-99 cents
-	my_position?: { yes_shares: number; no_shares: number };
+	/** outcomes with current per-outcome prices (same as market.outcomes, convenience alias) */
+	outcomes: MarketOutcome[];
+	my_positions: UserOutcomePosition[];
 	/** Total bUEC traded in this market across all time */
 	total_volume: number;
 	/** Number of unique users who have traded */
@@ -101,15 +116,14 @@ export interface ResolutionRequestMarket {
 	resolution_criteria: string;
 	resolution_deadline: string;
 	status: MarketStatus;
-	resolution: Resolution;
+	resolved_outcome_id: number | null;
 	created_by: number;
 	creator_name: string;
 	resolved_by: number | null;
 	created_at: string;
 	resolved_at: string | null;
 	liquidity_param: number;
-	yes_shares: number;
-	no_shares: number;
+	outcomes: MarketOutcome[];
 	// Resolution-request metadata
 	requested_by: number;
 	requester_name: string;
@@ -130,7 +144,8 @@ export interface Trade {
 	id: number;
 	user_id: number;
 	market_id: number;
-	side: 'yes' | 'no';
+	outcome_id: number;
+	outcome_label: string;
 	action: 'buy' | 'sell';
 	shares: number;
 	cost: number;
@@ -148,16 +163,16 @@ export interface TradeWithTrader extends Trade {
 	trader_name: string;
 }
 
-/** User position in a market */
+/** User position in a market outcome */
 export interface Position {
 	user_id: number;
 	market_id: number;
-	yes_shares: number;
-	no_shares: number;
+	outcome_id: number;
+	outcome_label: string;
+	shares: number;
 	market_title: string;
 	market_status: MarketStatus;
-	pool_yes: number;
-	pool_no: number;
+	outcomes: MarketOutcome[];
 	liquidity_param: number;
 }
 
@@ -179,6 +194,8 @@ export interface CreateMarketBody {
 	deadline: string; // RFC3339
 	resolution_type?: MarketResolutionType;
 	resolution_threshold?: string; // ISO date or numeric value string
+	/** Custom outcomes for multi-outcome markets. If omitted, defaults to YES/NO. */
+	outcomes?: string[];
 }
 
 /** API error response */
@@ -223,8 +240,8 @@ export interface Report {
 
 /** Price history data point for charting */
 export interface PricePoint {
-	price_at_trade: number; // 0.0 – 1.0 YES probability
-	side: string;           // 'yes' | 'no'
+	price_at_trade: number; // 0.0 – 1.0 probability
+	outcome_label: string;
 	created_at: string;
 }
 

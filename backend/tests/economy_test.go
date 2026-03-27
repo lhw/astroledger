@@ -72,15 +72,16 @@ func TestEconomy_SingleUser_AllYes_ResolvesYes(t *testing.T) {
 
 	before := sumBalances(t, ctx, q, mod.ID, bettor.ID)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: single YES bettor", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	const shares = 10.0
-	cost := service.BuyCost(defaultLiqB, 0, 0, shares, true)
+	cost := service.BuyCostBinary(defaultLiqB, 0, 0, shares, true)
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: bettor.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: shares,
+		UserID: bettor.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: shares,
 	})
 	must(t, err, "buy YES")
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "yes", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: yesID, ModID: mod.ID,
 	}), "resolve YES")
 
 	payout := shares * payoutPerShareE
@@ -101,13 +102,14 @@ func TestEconomy_SingleUser_AllYes_ResolvesNo(t *testing.T) {
 
 	before := sumBalances(t, ctx, q, mod.ID, bettor.ID)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: YES bettor loses", mod.ID, mod.ID)
+	yesID, noID := marketOutcomes(t, ctx, q, m.ID)
 
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: bettor.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: 5,
+		UserID: bettor.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 5,
 	})
 	must(t, err, "buy YES")
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "no", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: noID, ModID: mod.ID,
 	}), "resolve NO")
 
 	after := sumBalances(t, ctx, q, mod.ID, bettor.ID)
@@ -131,27 +133,29 @@ func TestEconomy_ThreeUsers_MixedBets_ResolveYes(t *testing.T) {
 	users := []int64{mod.ID, alice.ID, bob.ID, carol.ID}
 	before := sumBalances(t, ctx, q, users...)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: 3 users mixed", mod.ID, mod.ID)
+	yesID, noID := marketOutcomes(t, ctx, q, m.ID)
 
 	buys := []struct {
-		userID int64
-		side   string
-		shares float64
+		userID    int64
+		outcomeID int64
+		isYes     bool
+		shares    float64
 	}{
-		{alice.ID, "yes", 5},
-		{bob.ID, "no", 4},
-		{carol.ID, "yes", 3},
+		{alice.ID, yesID, true, 5},
+		{bob.ID, noID, false, 4},
+		{carol.ID, yesID, true, 3},
 	}
 
 	qYes, qNo := 0.0, 0.0
 	totalCollected := int64(0)
 	for _, buy := range buys {
-		sideYes := buy.side == "yes"
-		cost := service.BuyCost(defaultLiqB, qYes, qNo, buy.shares, sideYes)
+		sideYes := buy.isYes
+		cost := service.BuyCostBinary(defaultLiqB, qYes, qNo, buy.shares, sideYes)
 		res, err := tradingSvc.Execute(ctx, service.TradeInput{
-			UserID: buy.userID, MarketID: m.ID, Side: buy.side,
+			UserID: buy.userID, MarketID: m.ID, OutcomeID: buy.outcomeID,
 			Action: "buy", Shares: buy.shares,
 		})
-		must(t, err, fmt.Sprintf("buy %s for user %d", buy.side, buy.userID))
+		must(t, err, fmt.Sprintf("buy for user %d", buy.userID))
 		if res.Cost != cost {
 			t.Errorf("trade cost mismatch: service=%d, manual=%d", res.Cost, cost)
 		}
@@ -163,19 +167,19 @@ func TestEconomy_ThreeUsers_MixedBets_ResolveYes(t *testing.T) {
 		}
 	}
 
-	mkt, err := q.GetMarketByID(ctx, m.ID)
-	must(t, err, "get market state")
-	if math.Abs(mkt.YesShares-qYes) > 0.001 {
-		t.Errorf("AMM yes_shares: DB=%.4f, expected=%.4f", mkt.YesShares, qYes)
+	outs, err := q.GetOutcomesByMarketID(ctx, m.ID)
+	must(t, err, "get outcomes after buys")
+	if math.Abs(outs[0].Shares-qYes) > 0.001 {
+		t.Errorf("AMM YES shares: DB=%.4f, expected=%.4f", outs[0].Shares, qYes)
 	}
-	if math.Abs(mkt.NoShares-qNo) > 0.001 {
-		t.Errorf("AMM no_shares: DB=%.4f, expected=%.4f", mkt.NoShares, qNo)
+	if math.Abs(outs[1].Shares-qNo) > 0.001 {
+		t.Errorf("AMM NO shares: DB=%.4f, expected=%.4f", outs[1].Shares, qNo)
 	}
 
 	totalYesPayout := int64(buys[0].shares+buys[2].shares) * payoutPerShareE
 
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "yes", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: yesID, ModID: mod.ID,
 	}), "resolve YES")
 
 	after := sumBalances(t, ctx, q, users...)
@@ -197,24 +201,25 @@ func TestEconomy_ThreeUsers_MixedBets_ResolveNo(t *testing.T) {
 	users := []int64{mod.ID, alice.ID, bob.ID, carol.ID}
 	before := sumBalances(t, ctx, q, users...)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: 3 users resolve NO", mod.ID, mod.ID)
+	yesID, noID := marketOutcomes(t, ctx, q, m.ID)
 
 	for _, buy := range []struct {
-		id     int64
-		side   string
-		shares float64
+		id        int64
+		outcomeID int64
+		shares    float64
 	}{
-		{alice.ID, "yes", 5},
-		{bob.ID, "no", 4},
-		{carol.ID, "yes", 3},
+		{alice.ID, yesID, 5},
+		{bob.ID, noID, 4},
+		{carol.ID, yesID, 3},
 	} {
 		_, err := tradingSvc.Execute(ctx, service.TradeInput{
-			UserID: buy.id, MarketID: m.ID, Side: buy.side,
+			UserID: buy.id, MarketID: m.ID, OutcomeID: buy.outcomeID,
 			Action: "buy", Shares: buy.shares,
 		})
-		must(t, err, fmt.Sprintf("buy %s", buy.side))
+		must(t, err, fmt.Sprintf("buy for user %d", buy.id))
 	}
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "no", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: noID, ModID: mod.ID,
 	}), "resolve NO")
 	after := sumBalances(t, ctx, q, users...)
 	assertBoundedGrowth(t, before, after, 1, "three_users_mixed_resolve_no")
@@ -235,11 +240,12 @@ func TestEconomy_HeavySingleBettor_TenKShares(t *testing.T) {
 	// Take snapshot AFTER market creation so the creator bonus (+50) is in the
 	// baseline and doesn't pollute the LMSR trading-bound measurement.
 	m := createActiveMarket(t, ctx, marketSvc, "eco: whale 10k shares", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 	users := []int64{mod.ID, whale.ID}
 	before := sumBalances(t, ctx, q, users...)
 
 	const shares = 10_000.0
-	cost := service.BuyCost(defaultLiqB, 0, 0, shares, true)
+	cost := service.BuyCostBinary(defaultLiqB, 0, 0, shares, true)
 	payout := int64(shares) * payoutPerShareE
 
 	t.Logf("=== Whale buys %.0f YES shares ===", shares)
@@ -248,11 +254,11 @@ func TestEconomy_HeavySingleBettor_TenKShares(t *testing.T) {
 	t.Logf("  Net profit if wins:     %d bUEC (%.3fx)", payout-cost, float64(payout)/float64(cost))
 
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: whale.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: shares,
+		UserID: whale.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: shares,
 	})
 	must(t, err, "whale buys 10k YES")
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "yes", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: yesID, ModID: mod.ID,
 	}), "resolve YES")
 
 	after := sumBalances(t, ctx, q, users...)
@@ -270,22 +276,23 @@ func TestEconomy_SellBeforeResolution(t *testing.T) {
 	mod := createTestUser(t, ctx, q, "eco:mod6", "Mod6", true)
 	trader := createTestUser(t, ctx, q, "eco:trader6", "Trader6", false)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: buy & sell", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	users := []int64{mod.ID, trader.ID}
 	before := sumBalances(t, ctx, q, users...)
 
 	const shares = 5.0
 	buyRes, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: trader.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: shares,
+		UserID: trader.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: shares,
 	})
 	must(t, err, "buy")
 
-	mkt, err := q.GetMarketByID(ctx, m.ID)
-	must(t, err, "get market after buy")
-	sellRev := service.SellRevenue(defaultLiqB, mkt.YesShares, mkt.NoShares, shares, true)
+	outs, err := q.GetOutcomesByMarketID(ctx, m.ID)
+	must(t, err, "get outcomes after buy")
+	sellRev := service.SellRevenueBinary(defaultLiqB, outs[0].Shares, outs[1].Shares, shares, true)
 
 	sellRes, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: trader.ID, MarketID: m.ID, Side: "yes", Action: "sell", Shares: shares,
+		UserID: trader.ID, MarketID: m.ID, OutcomeID: yesID, Action: "sell", Shares: shares,
 	})
 	must(t, err, "sell")
 
@@ -319,33 +326,35 @@ func TestEconomy_MultipleMarkets_MultipleUsers(t *testing.T) {
 
 	marketA := createActiveMarket(t, ctx, marketSvc, "eco: market A 4.2 ships", mod.ID, mod.ID)
 	marketB := createActiveMarket(t, ctx, marketSvc, "eco: market B quantum fix", mod.ID, mod.ID)
+	yesA, noA := marketOutcomes(t, ctx, q, marketA.ID)
+	yesB, noB := marketOutcomes(t, ctx, q, marketB.ID)
 	before := sumBalances(t, ctx, q, allIDs...)
 
 	for _, tr := range []struct {
-		marketID int64
-		userID   int64
-		side     string
-		shares   float64
+		marketID  int64
+		userID    int64
+		outcomeID int64
+		shares    float64
 	}{
-		{marketA.ID, users[0].ID, "yes", 3},
-		{marketA.ID, users[1].ID, "no", 2},
-		{marketA.ID, users[2].ID, "yes", 2},
-		{marketB.ID, users[1].ID, "yes", 2},
-		{marketB.ID, users[2].ID, "no", 3},
-		{marketB.ID, users[3].ID, "no", 1},
-		{marketA.ID, users[3].ID, "yes", 1},
+		{marketA.ID, users[0].ID, yesA, 3},
+		{marketA.ID, users[1].ID, noA, 2},
+		{marketA.ID, users[2].ID, yesA, 2},
+		{marketB.ID, users[1].ID, yesB, 2},
+		{marketB.ID, users[2].ID, noB, 3},
+		{marketB.ID, users[3].ID, noB, 1},
+		{marketA.ID, users[3].ID, yesA, 1},
 	} {
 		_, err := tradingSvc.Execute(ctx, service.TradeInput{
-			UserID: tr.userID, MarketID: tr.marketID, Side: tr.side,
+			UserID: tr.userID, MarketID: tr.marketID, OutcomeID: tr.outcomeID,
 			Action: "buy", Shares: tr.shares,
 		})
-		must(t, err, fmt.Sprintf("trade market=%d user=%d %s %.0f", tr.marketID, tr.userID, tr.side, tr.shares))
+		must(t, err, fmt.Sprintf("trade market=%d user=%d %.0f", tr.marketID, tr.userID, tr.shares))
 	}
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: marketA.ID, Resolution: "yes", ModID: mod.ID,
+		MarketID: marketA.ID, WinningOutcomeID: yesA, ModID: mod.ID,
 	}), "resolve A YES")
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: marketB.ID, Resolution: "no", ModID: mod.ID,
+		MarketID: marketB.ID, WinningOutcomeID: noB, ModID: mod.ID,
 	}), "resolve B NO")
 	after := sumBalances(t, ctx, q, allIDs...)
 	assertBoundedGrowth(t, before, after, 2, "two_markets_four_users")
@@ -361,18 +370,21 @@ func TestEconomy_PriceMovesAfterTrade(t *testing.T) {
 	trader := createTestUser(t, ctx, q, "eco:trader8", "Trader8", false)
 	topUpBalance(t, ctx, q, trader.ID, 5_000)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: price impact", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	prevPrice := service.YESPrice(defaultLiqB, 0, 0)
 	qYes := 0.0
 	for i, lot := range []float64{2, 2, 2, 2, 2} {
 		_, err := tradingSvc.Execute(ctx, service.TradeInput{
-			UserID: trader.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: lot,
+			UserID: trader.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: lot,
 		})
 		must(t, err, fmt.Sprintf("buy lot %d", i))
 		qYes += lot
+		outs, err := q.GetOutcomesByMarketID(ctx, m.ID)
+		must(t, err, "get outcomes")
 		mkt, err := q.GetMarketByID(ctx, m.ID)
 		must(t, err, "get market")
-		newPrice := service.YESPrice(mkt.LiquidityParam, mkt.YesShares, mkt.NoShares)
+		newPrice := service.YESPrice(mkt.LiquidityParam, outs[0].Shares, outs[1].Shares)
 		t.Logf("lot %d (qYes=%.0f): YES price = %.2f%% (was %.2f%%)", i+1, qYes, newPrice*100, prevPrice*100)
 		if newPrice <= prevPrice {
 			t.Errorf("lot %d: price did not increase after buying YES (%.4f -> %.4f)", i+1, prevPrice, newPrice)
@@ -391,24 +403,27 @@ func TestEconomy_PositionAccumulation(t *testing.T) {
 	bettor := createTestUser(t, ctx, q, "eco:bettor9", "Bettor9", false)
 	topUpBalance(t, ctx, q, bettor.ID, 2000)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: position accumulate", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	totalShares := 0.0
 	for _, lot := range []float64{2, 3, 2} {
 		_, err := tradingSvc.Execute(ctx, service.TradeInput{
-			UserID: bettor.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: lot,
+			UserID: bettor.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: lot,
 		})
 		must(t, err, fmt.Sprintf("buy %.0f shares", lot))
 		totalShares += lot
 	}
-	pos, err := q.GetUserPositionOrZero(ctx, bettor.ID, m.ID)
+	pos, err := q.GetUserPosition(ctx, db.GetUserPositionParams{
+		UserID: bettor.ID, MarketID: m.ID, OutcomeID: yesID,
+	})
 	must(t, err, "get position")
-	if math.Abs(pos.YesShares-totalShares) > 0.001 {
-		t.Errorf("position YES shares: got %.4f, want %.4f", pos.YesShares, totalShares)
+	if math.Abs(pos.Shares-totalShares) > 0.001 {
+		t.Errorf("position shares: got %.4f, want %.4f", pos.Shares, totalShares)
 	}
 	bettorBefore, err := q.GetUserByID(ctx, bettor.ID)
 	must(t, err, "get bettor before resolve")
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "yes", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: yesID, ModID: mod.ID,
 	}), "resolve YES")
 	bettorAfter, err := q.GetUserByID(ctx, bettor.ID)
 	must(t, err, "get bettor after resolve")
@@ -432,22 +447,25 @@ func TestEconomy_WinnerPayoutEquality(t *testing.T) {
 	topUpBalance(t, ctx, q, early.ID, 2000)
 	topUpBalance(t, ctx, q, late.ID, 2000)
 	m := createActiveMarket(t, ctx, marketSvc, "eco: payout equality", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: early.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: 5,
+		UserID: early.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 5,
 	})
 	must(t, err, "early buy")
+	outs, err := q.GetOutcomesByMarketID(ctx, m.ID)
+	must(t, err, "get outcomes after early buy")
 	mkt, err := q.GetMarketByID(ctx, m.ID)
 	must(t, err, "get mkt")
-	lateCostPre := service.BuyCost(mkt.LiquidityParam, mkt.YesShares, mkt.NoShares, 5, true)
+	lateCostPre := service.BuyCostBinary(mkt.LiquidityParam, outs[0].Shares, outs[1].Shares, 5, true)
 	_, err = tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: late.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: 5,
+		UserID: late.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 5,
 	})
 	must(t, err, "late buy")
 	earlyBefore, _ := q.GetUserByID(ctx, early.ID)
 	lateBefore, _ := q.GetUserByID(ctx, late.ID)
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID: m.ID, Resolution: "yes", ModID: mod.ID,
+		MarketID: m.ID, WinningOutcomeID: yesID, ModID: mod.ID,
 	}), "resolve")
 	earlyAfter, _ := q.GetUserByID(ctx, early.ID)
 	lateAfter, _ := q.GetUserByID(ctx, late.ID)
@@ -468,7 +486,7 @@ func TestEconomy_PerShareCostMatchesProbability(t *testing.T) {
 	}
 	for _, tc := range cases {
 		prob := service.YESPrice(defaultLiqB, tc.qYes, tc.qNo)
-		cost := service.BuyCost(defaultLiqB, tc.qYes, tc.qNo, 1, true)
+		cost := service.BuyCostBinary(defaultLiqB, tc.qYes, tc.qNo, 1, true)
 		expected := prob * payoutPerShareE
 		if float64(cost) < expected-20 || float64(cost) > expected+20 {
 			t.Errorf("at qYes=%.0f qNo=%.0f (p=%.0f%%): BuyCost=%d bUEC, want ~%.0f bUEC",

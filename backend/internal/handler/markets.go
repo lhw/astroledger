@@ -26,6 +26,36 @@ func NewMarketHandler(q *db.Queries, svc *service.MarketService) *MarketHandler 
 	return &MarketHandler{queries: q, svc: svc}
 }
 
+// outcomeResp is the JSON shape for a market outcome with its current LMSR price.
+type outcomeResp struct {
+	ID     int64   `json:"id"`
+	Label  string  `json:"label"`
+	Price  int64   `json:"price"`
+	Shares float64 `json:"shares"`
+}
+
+// buildOutcomeResps fetches outcomes for a market and computes LMSR prices.
+func (h *MarketHandler) buildOutcomeResps(r *http.Request, marketID int64, liqParam float64) []outcomeResp {
+	outcomes, err := h.queries.GetOutcomesByMarketID(r.Context(), marketID)
+	if err != nil {
+		return []outcomeResp{}
+	}
+	allShares := make([]float64, len(outcomes))
+	for i, o := range outcomes {
+		allShares[i] = o.Shares
+	}
+	resps := make([]outcomeResp, len(outcomes))
+	for i, o := range outcomes {
+		resps[i] = outcomeResp{
+			ID:     o.ID,
+			Label:  o.Label,
+			Price:  service.OutcomeProbCents(liqParam, allShares, i),
+			Shares: o.Shares,
+		}
+	}
+	return resps
+}
+
 // List returns a paginated list of markets filtered by status and category.
 func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
@@ -61,9 +91,21 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type listMarketWithOutcomes struct {
+		db.ListMarketsRow
+		Outcomes []outcomeResp `json:"outcomes"`
+	}
+	result := make([]listMarketWithOutcomes, len(markets))
+	for i, m := range markets {
+		result[i] = listMarketWithOutcomes{
+			ListMarketsRow: m,
+			Outcomes:       h.buildOutcomeResps(r, m.ID, m.LiquidityParam),
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]any{
 		"total":   count,
-		"markets": markets,
+		"markets": result,
 		"offset":  offset,
 	})
 }
@@ -86,27 +128,49 @@ func (h *MarketHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	yesPrice := service.PriceCents(market.LiquidityParam, market.YesShares, market.NoShares)
+	outcomeResps := h.buildOutcomeResps(r, id, market.LiquidityParam)
 
 	// Fetch trade statistics (volume, trader count, trade count).
 	stats, _ := h.queries.GetMarketStats(r.Context(), id)
 
+	type marketWithOutcomes struct {
+		db.GetMarketByIDRow
+		Outcomes []outcomeResp `json:"outcomes"`
+	}
+
 	resp := map[string]any{
-		"market":       market,
-		"yes_price":    yesPrice,
-		"no_price":     100 - yesPrice,
+		"market":       marketWithOutcomes{GetMarketByIDRow: market, Outcomes: outcomeResps},
 		"total_volume": stats.TotalVolume,
 		"trader_count": stats.TraderCount,
 		"trade_count":  stats.TradeCount,
 	}
 
-	// Include the caller's position when authenticated.
+	// Include the caller's positions (one per outcome) when authenticated.
 	if claims := middleware.GetClaims(r); claims != nil {
-		pos, _ := h.queries.GetUserPositionOrZero(r.Context(), claims.UserID, id)
-		resp["my_position"] = map[string]float64{
-			"yes_shares": pos.YesShares,
-			"no_shares":  pos.NoShares,
+		type posResp struct {
+			OutcomeID int64   `json:"outcome_id"`
+			Label     string  `json:"label"`
+			Shares    float64 `json:"shares"`
 		}
+		var myPositions []posResp
+		for _, o := range outcomeResps {
+			pPos, _ := h.queries.GetUserPosition(r.Context(), db.GetUserPositionParams{
+				UserID:    claims.UserID,
+				MarketID:  id,
+				OutcomeID: o.ID,
+			})
+			if pPos.Shares > 0 {
+				myPositions = append(myPositions, posResp{
+					OutcomeID: o.ID,
+					Label:     o.Label,
+					Shares:    pPos.Shares,
+				})
+			}
+		}
+		if myPositions == nil {
+			myPositions = []posResp{}
+		}
+		resp["my_positions"] = myPositions
 	}
 
 	respondJSON(w, http.StatusOK, resp)
@@ -121,13 +185,14 @@ func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Title               string  `json:"title"`
-		Description         string  `json:"description"`
-		Category            string  `json:"category"`
-		ResolutionCriteria  string  `json:"resolution_criteria"`
-		Deadline            string  `json:"deadline"`             // RFC3339
-		ResolutionType      string  `json:"resolution_type"`      // binary|date|numeric
-		ResolutionThreshold *string `json:"resolution_threshold"` // ISO date or numeric value
+		Title               string   `json:"title"`
+		Description         string   `json:"description"`
+		Category            string   `json:"category"`
+		ResolutionCriteria  string   `json:"resolution_criteria"`
+		Deadline            string   `json:"deadline"`             // RFC3339
+		ResolutionType      string   `json:"resolution_type"`      // binary|date|numeric
+		ResolutionThreshold *string  `json:"resolution_threshold"` // ISO date or numeric value
+		Outcomes            []string `json:"outcomes"`             // optional; defaults to [YES, NO]
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
@@ -149,6 +214,7 @@ func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:           claims.UserID,
 		ResolutionType:      body.ResolutionType,
 		ResolutionThreshold: body.ResolutionThreshold,
+		Outcomes:            body.Outcomes,
 	})
 	if errors.Is(err, service.ErrRejected) {
 		respondError(w, http.StatusUnprocessableEntity, err.Error())
@@ -267,8 +333,8 @@ func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Resolution   string  `json:"resolution"`
-		EvidenceLink *string `json:"evidence_link"`
+		WinningOutcomeID int64   `json:"winning_outcome_id"`
+		EvidenceLink     *string `json:"evidence_link"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
@@ -276,10 +342,10 @@ func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.svc.ResolveMarket(r.Context(), service.ResolveInput{
-		MarketID:     id,
-		Resolution:   body.Resolution,
-		ModID:        claims.UserID,
-		EvidenceLink: body.EvidenceLink,
+		MarketID:         id,
+		WinningOutcomeID: body.WinningOutcomeID,
+		ModID:            claims.UserID,
+		EvidenceLink:     body.EvidenceLink,
 	}); errors.Is(err, service.ErrNotFound) {
 		respondError(w, http.StatusNotFound, "market not found")
 		return
@@ -334,7 +400,18 @@ func (h *MarketHandler) ListResolutionRequested(w http.ResponseWriter, r *http.R
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	respondJSON(w, http.StatusOK, markets)
+	type resolutionRequestWithOutcomes struct {
+		db.ResolutionRequestRow
+		Outcomes []outcomeResp `json:"outcomes"`
+	}
+	result := make([]resolutionRequestWithOutcomes, len(markets))
+	for i, m := range markets {
+		result[i] = resolutionRequestWithOutcomes{
+			ResolutionRequestRow: m,
+			Outcomes:             h.buildOutcomeResps(r, m.ID, m.LiquidityParam),
+		}
+	}
+	respondJSON(w, http.StatusOK, result)
 }
 
 // DenyResolution rejects a resolution request and sets the market back to active.

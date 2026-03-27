@@ -5,7 +5,7 @@
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
 	import { buyCost, sellRevenue, maxAffordable } from '$lib/amm';
 	import { renderMarkdown } from '$lib/markdown';
-	import type { MarketWithPrice, PricePoint, Comment } from '$lib/types';
+	import type { MarketWithPrice, PricePoint, Comment, MarketOutcome } from '$lib/types';
 	import { CATEGORY_LABELS } from '$lib/categories';
 
 	let { data } = $props<{ data: { market: MarketWithPrice | null; history: PricePoint[] } }>();
@@ -21,7 +21,7 @@
 
 	// Trading
 	let tradeAction = $state<'buy' | 'sell'>('buy');
-	let tradeSide = $state<'yes' | 'no'>('yes');
+	let selectedOutcomeId = $state<number | null>(null);
 	let tradeShares = $state(1);
 	let sellShares = $state(1);
 	let trading = $state(false);
@@ -30,6 +30,14 @@
 	// Budget mode — enter bUEC amount instead of share count
 	let budgetMode = $state(false);
 	let budgetAmount = $state(100);
+
+	// Derived: selected outcome object
+	let selectedOutcome = $derived.by(() => {
+		if (!data_) return null as MarketOutcome | null;
+		const outs = data_.market.outcomes ?? [];
+		if (selectedOutcomeId === null && outs.length > 0) return outs[0] as MarketOutcome;
+		return (outs.find((o) => o.id === selectedOutcomeId) ?? outs[0] ?? null) as MarketOutcome | null;
+	});
 
 	// Resolution request
 	let requestingResolution = $state(false);
@@ -50,16 +58,24 @@
 	let commentError = $state('');
 
 	// Reactive cost/revenue estimates
+	let allShares = $derived((data_?.market.outcomes ?? []).map((o) => o.shares));
+	let outcomeIdx = $derived.by(() => {
+		const outs = data_?.market.outcomes ?? [];
+		const id = selectedOutcome?.id;
+		const idx = outs.findIndex((o) => o.id === id);
+		return idx >= 0 ? idx : 0;
+	});
+
 	let estimatedCost = $derived.by(() => {
 		if (!data_) return 0;
 		const m = data_.market;
-		return buyCost(m.liquidity_param, m.yes_shares, m.no_shares, Math.max(1, tradeShares), tradeSide === 'yes');
+		return buyCost(m.liquidity_param, allShares, outcomeIdx, Math.max(1, tradeShares));
 	});
 
 	let budgetShares = $derived.by(() => {
 		if (!data_) return 0;
 		const m = data_.market;
-		return maxAffordable(m.liquidity_param, m.yes_shares, m.no_shares, Math.max(0, budgetAmount), tradeSide === 'yes');
+		return maxAffordable(m.liquidity_param, allShares, outcomeIdx, Math.max(0, budgetAmount));
 	});
 
 	// Whole shares actually purchased (backend works with integers).
@@ -70,26 +86,25 @@
 		if (!data_) return 0;
 		const m = data_.market;
 		if (floorBudgetShares <= 0) return 0;
-		return buyCost(m.liquidity_param, m.yes_shares, m.no_shares, floorBudgetShares, tradeSide === 'yes');
+		return buyCost(m.liquidity_param, allShares, outcomeIdx, floorBudgetShares);
 	});
 
 	let estimatedRevenue = $derived.by(() => {
 		if (!data_) return 0;
 		const m = data_.market;
-		return sellRevenue(m.liquidity_param, m.yes_shares, m.no_shares, Math.max(1, sellShares), tradeSide === 'yes');
+		return sellRevenue(m.liquidity_param, allShares, outcomeIdx, Math.max(1, sellShares));
 	});
 
 	let maxShares = $derived.by(() => {
 		if (!data_ || !$currentUser) return 1000;
 		const m = data_.market;
-		return Math.floor(maxAffordable(m.liquidity_param, m.yes_shares, m.no_shares, $currentUser.balance, tradeSide === 'yes'));
+		return Math.floor(maxAffordable(m.liquidity_param, allShares, outcomeIdx, $currentUser.balance));
 	});
 
 	let maxSellShares = $derived.by(() => {
-		if (!data_?.my_position) return 0;
-		return tradeSide === 'yes'
-			? Math.floor(data_.my_position.yes_shares)
-			: Math.floor(data_.my_position.no_shares);
+		if (!data_) return 0;
+		const pos = (data_.my_positions ?? []).find((p) => p.outcome_id === selectedOutcome?.id);
+		return pos ? Math.floor(pos.shares) : 0;
 	});
 
 	let canAfford = $derived($currentUser ? estimatedCost <= $currentUser.balance && tradeShares <= maxShares : false);
@@ -162,7 +177,7 @@
 	});
 
 	async function doTrade() {
-		if (!$isLoggedIn || !data_) return;
+		if (!$isLoggedIn || !data_ || !selectedOutcome) return;
 		trading = true;
 		tradeError = '';
 		tradeSuccess = '';
@@ -174,14 +189,14 @@
 				tradeError = 'Budget too low — cannot purchase any shares at this price.';
 				return;
 			}
-			const result = await executeTrade(id, tradeSide, 'buy', sharesToBuy);
+			const result = await executeTrade(id, selectedOutcome.id, 'buy', sharesToBuy);
 			currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
-			tradeSuccess = `Bought ${sharesToBuy} ${tradeSide.toUpperCase()} share${sharesToBuy !== 1 ? 's' : ''} for ${result.Cost.toLocaleString()} bUEC.`;
+			tradeSuccess = `Bought ${sharesToBuy} ${selectedOutcome.label} share${sharesToBuy !== 1 ? 's' : ''} for ${result.Cost.toLocaleString()} bUEC.`;
 			} else {
-				const result = await executeTrade(id, tradeSide, 'sell', sellShares);
+				const result = await executeTrade(id, selectedOutcome.id, 'sell', sellShares);
 				currentUser.update((u) => (u ? { ...u, balance: result.NewBalance } : u));
 				const received = Math.abs(result.Cost);
-				tradeSuccess = `Sold ${sellShares} ${tradeSide.toUpperCase()} share${sellShares !== 1 ? 's' : ''} for ${received.toLocaleString()} bUEC.`;
+				tradeSuccess = `Sold ${sellShares} ${selectedOutcome.label} share${sellShares !== 1 ? 's' : ''} for ${received.toLocaleString()} bUEC.`;
 			}
 			// Refresh market data and price history.
 			[data_, priceHistory] = await Promise.all([
@@ -237,10 +252,8 @@
 		<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{error}</div>
 	{:else if data_}
 		{@const market = data_.market}
-		{@const myPos = data_.my_position}
-		{@const hasYes = (myPos?.yes_shares ?? 0) > 0}
-		{@const hasNo = (myPos?.no_shares ?? 0) > 0}
-		{@const hasPosition = hasYes || hasNo}
+		{@const myPositions = data_.my_positions ?? []}
+		{@const hasPosition = myPositions.some((p) => p.shares > 0)}
 
 		<!-- Header -->
 		<div class="mb-8">
@@ -249,8 +262,9 @@
 				<span class="text-surface-300">/</span>
 				<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
 				{#if market.status === 'resolved'}
+					{@const winLabel = market.outcomes?.find((o) => o.id === market.resolved_outcome_id)?.label ?? 'RESOLVED'}
 					<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">
-						Resolved {market.resolution?.toUpperCase()}
+						Resolved: {winLabel}
 					</span>
 				{:else if market.status === 'resolution_requested'}
 					<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Awaiting Resolution</span>
@@ -308,32 +322,33 @@
 							: p}
 						{@const yOf = (p: number) => H - scaleP(Math.max(0.001, Math.min(0.999, p))) * H}
 						{@const xOf = (i: number) => (i / (n - 1)) * W}
-						{@const yesPts = priceHistory.map((p, i) => `${xOf(i)},${yOf(p.price_at_trade)}`).join(' ')}
-						{@const noPts  = priceHistory.map((p, i) => `${xOf(i)},${yOf(1 - p.price_at_trade)}`).join(' ')}
 						{@const lastP  = priceHistory.at(-1)!.price_at_trade}
-						{@const resolved = market.resolution !== null}
-						<div class="flex items-center gap-4 mb-2">
-							<span class="flex items-center gap-1 text-xs font-semibold text-yellow-700">
-								<span class="inline-block w-3 h-0.5 bg-yellow-500 rounded"></span>
-								YES {Math.round(lastP * 100)}%
-							</span>
-							<span class="flex items-center gap-1 text-xs font-semibold text-red-500">
-								<span class="inline-block w-3 h-0.5 bg-red-400 rounded"></span>
-								NO {Math.round((1 - lastP) * 100)}%
-							</span>
+						{@const resolved = market.resolved_outcome_id !== null}
+						{@const outcomeLabels = [...new Set(priceHistory.map((p) => p.outcome_label))]}
+						<!-- Legend -->
+						<div class="flex flex-wrap items-center gap-3 mb-2">
+							{#each outcomeLabels as label, i}
+								{@const colors = ['#D4A843','#f87171','#60a5fa','#34d399','#a78bfa']}
+								<span class="flex items-center gap-1 text-xs font-semibold text-surface-600">
+									<span class="inline-block w-3 h-0.5 rounded" style="background:{colors[i % colors.length]}"></span>
+									{label}
+								</span>
+							{/each}
 							<span class="text-surface-400 text-xs ml-auto">{priceHistory.length} trades</span>
 						</div>
 						<svg viewBox="0 0 {W} {H}" class="w-full rounded" style="height:100px;background:#fafaf8">
 							<!-- 50% reference line -->
 							<line x1="0" y1={yOf(0.5)} x2={W} y2={yOf(0.5)} stroke="#e5e7eb" stroke-width="1" stroke-dasharray="4 4"/>
-							<!-- NO price line -->
-							<polyline points={noPts} fill="none" stroke="#f87171" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="3 3" opacity="0.7"/>
-							<!-- YES price line -->
-							<polyline points={yesPts} fill="none" stroke="#D4A843" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-							<!-- Resolution marker: vertical line at rightmost point -->
+							{#each outcomeLabels as label, i}
+								{@const colors = ['#D4A843','#f87171','#60a5fa','#34d399','#a78bfa']}
+								{@const pts = priceHistory
+									.map((p, idx) => p.outcome_label === label ? `${xOf(idx)},${yOf(p.price_at_trade)}` : null)
+									.filter(Boolean).join(' ')}
+								<polyline points={pts} fill="none" stroke={colors[i % colors.length]} stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+							{/each}
+							<!-- Resolution marker -->
 							{#if resolved}
-								<line x1={W} y1="0" x2={W} y2={H} stroke="{market.resolution === 'yes' ? '#16a34a' : '#dc2626'}" stroke-width="2" stroke-dasharray="4 3" opacity="0.8"/>
-								<text x={W - 4} y="10" text-anchor="end" font-size="8" fill="{market.resolution === 'yes' ? '#16a34a' : '#dc2626'}" font-weight="bold" font-family="sans-serif">RESOLVED {market.resolution?.toUpperCase()}</text>
+								<line x1={W} y1="0" x2={W} y2={H} stroke="#16a34a" stroke-width="2" stroke-dasharray="4 3" opacity="0.8"/>
 							{/if}
 							<!-- Latest dot -->
 							<circle cx={W} cy={yOf(lastP)} r="4" fill="#D4A843"/>
@@ -356,19 +371,13 @@
 				{#if hasPosition}
 					<div class="sc-card p-5 border-l-4 border-l-primary-400 bg-amber-50/30">
 						<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-3">Your Position</h3>
-						<div class="flex gap-4">
-							{#if hasYes}
-								<div class="flex-1 text-center p-3 rounded bg-green-50 border border-green-100">
-									<div class="text-2xl font-bold text-green-700">{myPos!.yes_shares}</div>
-									<div class="text-green-600 text-xs mt-0.5 uppercase tracking-wider font-semibold">YES shares</div>
+						<div class="flex gap-3 flex-wrap">
+							{#each myPositions.filter((p) => p.shares > 0) as pos}
+								<div class="flex-1 text-center p-3 rounded bg-primary-50 border border-primary-100 min-w-20">
+									<div class="text-2xl font-bold text-primary-700">{Math.floor(pos.shares)}</div>
+									<div class="text-primary-600 text-xs mt-0.5 uppercase tracking-wider font-semibold">{pos.label}</div>
 								</div>
-							{/if}
-							{#if hasNo}
-								<div class="flex-1 text-center p-3 rounded bg-red-50 border border-red-100">
-									<div class="text-2xl font-bold text-red-600">{myPos!.no_shares}</div>
-									<div class="text-red-500 text-xs mt-0.5 uppercase tracking-wider font-semibold">NO shares</div>
-								</div>
-							{/if}
+							{/each}
 						</div>
 					</div>
 				{/if}
@@ -533,18 +542,16 @@
 
 			<!-- Trade widget + prices -->
 			<div class="space-y-4">
-				<!-- Current prices -->
+				<!-- Current prices (outcomes) -->
 				<div class="sc-card p-5">
 					<h3 class="text-xs font-bold text-surface-500 uppercase tracking-[0.12em] mb-4">Current Odds</h3>
-					<div class="grid grid-cols-2 gap-3">
-						<div class="text-center p-3 rounded bg-green-50 border border-green-100">
-							<div class="text-2xl font-bold text-green-700">{data_.yes_price}%</div>
-							<div class="text-green-600 text-xs mt-1 uppercase tracking-wider font-semibold">YES</div>
-						</div>
-						<div class="text-center p-3 rounded bg-red-50 border border-red-100">
-							<div class="text-2xl font-bold text-red-600">{data_.no_price}%</div>
-							<div class="text-red-500 text-xs mt-1 uppercase tracking-wider font-semibold">NO</div>
-						</div>
+					<div class="flex flex-wrap gap-2">
+						{#each (market.outcomes ?? []) as outcome}
+							<div class="text-center p-3 rounded bg-primary-50 border border-primary-100 flex-1 min-w-[80px]">
+								<div class="text-2xl font-bold text-primary-700">{outcome.price}%</div>
+								<div class="text-primary-600 text-xs mt-1 uppercase tracking-wider font-semibold truncate">{outcome.label}</div>
+							</div>
+						{/each}
 					</div>
 				</div>
 
@@ -585,10 +592,11 @@
 
 				<!-- Resolution result (resolved markets) -->
 				{#if market.status === 'resolved'}
-					<div class="sc-card p-5 border-2 {market.resolution === 'yes' ? 'border-green-400 bg-green-50' : 'border-red-300 bg-red-50'}">
-						<h3 class="text-xs font-bold {market.resolution === 'yes' ? 'text-green-600' : 'text-red-500'} uppercase tracking-[0.12em] mb-2">Resolved</h3>
-						<div class="text-3xl font-black {market.resolution === 'yes' ? 'text-green-700' : 'text-red-600'} mb-1">
-							{market.resolution?.toUpperCase()}
+					{@const winOutcome = (market.outcomes ?? []).find((o) => o.id === market.resolved_outcome_id)}
+					<div class="sc-card p-5 border-2 border-primary-400 bg-primary-50/30">
+						<h3 class="text-xs font-bold text-primary-600 uppercase tracking-[0.12em] mb-2">Resolved</h3>
+						<div class="text-3xl font-black text-primary-700 mb-1">
+							{winOutcome?.label ?? '—'}
 						</div>
 						<p class="text-xs text-surface-500">
 							{#if market.resolver_name}by <span class="font-medium text-surface-700">{market.resolver_name}</span>{/if}
@@ -625,22 +633,21 @@
 								</button>
 							</div>
 
-							<!-- YES / NO side selector -->
-							<div class="flex gap-2 mb-4">
-								<button
-									onclick={() => (tradeSide = 'yes')}
-									class="flex-1 btn btn-sm {tradeSide === 'yes' ? 'bg-green-600 text-white border border-green-600' : 'border border-surface-300 text-surface-600 hover:border-green-400 hover:text-green-700'} transition-colors text-xs uppercase tracking-wider font-bold"
-								>
-									YES
-								</button>
-								<button
-									onclick={() => (tradeSide = 'no')}
-									class="flex-1 btn btn-sm {tradeSide === 'no' ? 'bg-red-600 text-white border border-red-600' : 'border border-surface-300 text-surface-600 hover:border-red-400 hover:text-red-600'} transition-colors text-xs uppercase tracking-wider font-bold"
-								>
-									NO
-								</button>
+							<!-- Outcome selector -->
+							<div class="mb-4">
+								<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold block mb-2">Outcome</span>
+								<div class="flex gap-2 flex-wrap">
+									{#each (market.outcomes ?? []) as outcome}
+										<button
+											onclick={() => (selectedOutcomeId = outcome.id)}
+											class="flex-1 btn btn-sm {selectedOutcome?.id === outcome.id ? 'preset-filled-primary-500' : 'border border-surface-300 text-surface-600 hover:border-primary-400 hover:text-primary-700'} transition-colors text-xs uppercase tracking-wider font-bold"
+										>
+											{outcome.label} <span class="opacity-70 normal-case font-normal">{outcome.price}%</span>
+										</button>
+									{/each}
+								</div>
 							</div>
-
+							<!-- Buy/Sell inputs -->
 							{#if tradeAction === 'buy'}
 								<!-- Shares vs Budget toggle -->
 								<div class="flex gap-0.5 mb-3 p-0.5 bg-surface-100 rounded text-[11px]">
@@ -693,7 +700,7 @@
 									disabled={trading || tradeShares <= 0 || !canAfford}
 									class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
 								>
-									{trading ? 'Buying…' : `Buy ${tradeShares} ${tradeSide.toUpperCase()} for ${estimatedCost.toLocaleString()} bUEC`}
+										{trading ? 'Buying…' : `Buy ${tradeShares} ${selectedOutcome?.label ?? ''} for ${estimatedCost.toLocaleString()} bUEC`}
 									</button>
 								{:else}
 									<!-- Budget mode: enter how much to spend -->
@@ -720,7 +727,7 @@
 									</div>
 									<div class="mb-4 text-xs text-surface-500 space-y-0.5">
 										{#if floorBudgetShares > 0}
-											<div>You'll buy: <span class="text-surface-700 font-semibold">{floorBudgetShares} {tradeSide.toUpperCase()} share{floorBudgetShares !== 1 ? 's' : ''}</span></div>
+											<div>You'll buy: <span class="text-surface-700 font-semibold">{floorBudgetShares} {selectedOutcome?.label ?? ''} share{floorBudgetShares !== 1 ? 's' : ''}</span></div>
 											<div>Actual cost: <span class="{canAffordBudget ? 'text-surface-700 font-semibold' : 'text-red-600 font-semibold'}">{actualBudgetCost.toLocaleString()} bUEC</span>
 												{#if budgetAmount > actualBudgetCost}
 													<span class="text-surface-400"> ({(budgetAmount - actualBudgetCost).toLocaleString()} bUEC unused)</span>
@@ -738,14 +745,14 @@
 										disabled={trading || floorBudgetShares <= 0 || !canAffordBudget}
 										class="btn preset-filled-primary-500 w-full text-xs uppercase tracking-wider disabled:opacity-50"
 									>
-										{trading ? 'Buying…' : `Buy ${floorBudgetShares} ${tradeSide.toUpperCase()} for ${actualBudgetCost.toLocaleString()} bUEC`}
+										{trading ? 'Buying…' : `Buy ${floorBudgetShares} ${selectedOutcome?.label ?? ''} for ${actualBudgetCost.toLocaleString()} bUEC`}
 									</button>
 								{/if}
 							{:else}
 								<!-- Sell form -->
-								{@const holdingShares = tradeSide === 'yes' ? (myPos?.yes_shares ?? 0) : (myPos?.no_shares ?? 0)}
-								<div class="mb-3 p-2 bg-surface-50 rounded text-xs text-surface-600">
-									You hold: <span class="font-bold text-surface-800">{holdingShares}</span> {tradeSide.toUpperCase()} shares
+									{@const holdingShares = (myPositions ?? []).find((p) => p.outcome_id === selectedOutcome?.id)?.shares ?? 0}
+									<div class="mb-3 p-2 bg-surface-50 rounded text-xs text-surface-600">
+										You hold: <span class="font-bold text-surface-800">{holdingShares}</span> {selectedOutcome?.label ?? ''} shares
 								</div>
 								<label class="block mb-1" for="sell-shares">
 									<span class="text-surface-600 text-xs uppercase tracking-wider font-semibold">Shares to Sell</span>
@@ -778,7 +785,7 @@
 									disabled={trading || sellShares <= 0 || sellShares > maxSellShares}
 									class="btn w-full border border-surface-400 text-surface-700 hover:bg-surface-100 text-xs uppercase tracking-wider disabled:opacity-50"
 								>
-									{trading ? 'Selling…' : `Sell ${sellShares} ${tradeSide.toUpperCase()}`}
+										{trading ? 'Selling…' : `Sell ${sellShares} ${selectedOutcome?.label ?? ''}`}
 								</button>
 							{/if}
 

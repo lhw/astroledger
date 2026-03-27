@@ -49,16 +49,20 @@ const getLeaderboard = `-- name: GetLeaderboard :many
 SELECT u.id, u.display_name, u.balance,
        COALESCE(SUM(
            CASE
-               WHEN p.yes_shares > 0 AND m.status = 'active' THEN
-                   CAST(p.yes_shares * (1.0 / (1.0 + exp((m.no_shares - m.yes_shares) / m.liquidity_param)) * 100) AS INTEGER)
-               WHEN p.no_shares > 0 AND m.status = 'active' THEN
-                   CAST(p.no_shares * (1.0 / (1.0 + exp((m.yes_shares - m.no_shares) / m.liquidity_param)) * 100) AS INTEGER)
+               WHEN p.shares > 0 AND m.status = 'active' THEN
+                   CAST(p.shares *
+                       exp(o.shares / m.liquidity_param) /
+                       (SELECT SUM(exp(o2.shares / m.liquidity_param))
+                        FROM market_outcomes o2
+                        WHERE o2.market_id = m.id)
+                   * 100 AS INTEGER)
                ELSE 0
            END
        ), 0) AS portfolio_value
 FROM users u
 LEFT JOIN positions p ON p.user_id = u.id
 LEFT JOIN markets m ON m.id = p.market_id
+LEFT JOIN market_outcomes o ON o.id = p.outcome_id
 GROUP BY u.id
 ORDER BY (u.balance + portfolio_value) DESC
 LIMIT ?

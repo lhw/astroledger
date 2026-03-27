@@ -148,15 +148,8 @@
 							<div class="flex-1 min-w-0">
 								<p class="text-surface-800 text-sm font-medium truncate">{pos.market_title}</p>
 								<p class="text-surface-500 text-xs mt-0.5">
-									{#if pos.yes_shares > 0}
-										<span class="text-green-600 font-semibold">{pos.yes_shares} YES</span>
-									{/if}
-									{#if pos.yes_shares > 0 && pos.no_shares > 0}
-										<span class="text-surface-300 mx-1">·</span>
-									{/if}
-									{#if pos.no_shares > 0}
-										<span class="text-red-500 font-semibold">{pos.no_shares} NO</span>
-									{/if}
+								<span class="font-semibold text-primary-700">{pos.shares}</span>
+								<span class="text-surface-400 ml-1">{pos.outcome_label}</span>
 								</p>
 							</div>
 							<span class="sc-tag-status shrink-0">{pos.market_status}</span>
@@ -177,7 +170,7 @@
 						<thead>
 							<tr class="border-b border-surface-200">
 								<th class="px-4 py-3 text-left text-surface-500 font-bold text-xs uppercase tracking-wider">Market</th>
-								<th class="px-4 py-3 text-center text-surface-500 font-bold text-xs uppercase tracking-wider">Side</th>
+								<th class="px-4 py-3 text-center text-surface-500 font-bold text-xs uppercase tracking-wider">Outcome</th>
 								<th class="px-4 py-3 text-right text-surface-500 font-bold text-xs uppercase tracking-wider">Shares</th>
 								<th class="px-4 py-3 text-right text-surface-500 font-bold text-xs uppercase tracking-wider">Cost</th>
 							</tr>
@@ -194,12 +187,8 @@
 										</a>
 									</td>
 									<td class="px-4 py-3 text-center">
-										<span
-											class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider {trade.side === 'yes'
-												? 'bg-green-100 text-green-700 border border-green-200'
-												: 'bg-red-50 text-red-600 border border-red-200'}"
-										>
-											{trade.side.toUpperCase()}
+										<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-primary-100 text-primary-700 border border-primary-200">
+											{trade.outcome_label}
 										</span>
 									</td>
 									<td class="px-4 py-3 text-right text-surface-700 font-mono text-sm">{trade.shares}</td>

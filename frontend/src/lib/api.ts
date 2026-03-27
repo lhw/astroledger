@@ -133,13 +133,13 @@ export async function getMarketTrades(id: number, offset = 0): Promise<TradeWith
 
 export async function executeTrade(
 	market_id: number,
-	side: 'yes' | 'no',
+	outcome_id: number,
 	action: 'buy' | 'sell',
 	shares: number
 ): Promise<TradeResult> {
 	return request<TradeResult>('/api/trades', {
 		method: 'POST',
-		body: JSON.stringify({ market_id, side, action, shares })
+		body: JSON.stringify({ market_id, outcome_id, action, shares })
 	});
 }
 
@@ -157,10 +157,10 @@ export async function rejectMarket(id: number): Promise<void> {
 	await request(`/api/mod/markets/${id}/reject`, { method: 'POST' });
 }
 
-export async function resolveMarket(id: number, resolution: 'yes' | 'no', evidenceLink?: string): Promise<void> {
+export async function resolveMarket(id: number, winningOutcomeId: number, evidenceLink?: string): Promise<void> {
 	await request(`/api/mod/markets/${id}/resolve`, {
 		method: 'POST',
-		body: JSON.stringify({ resolution, evidence_link: evidenceLink || undefined })
+		body: JSON.stringify({ winning_outcome_id: winningOutcomeId, evidence_link: evidenceLink || undefined })
 	});
 }
 

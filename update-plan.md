@@ -44,7 +44,7 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 
 ## Medium Priority
 
-### True Multi-Outcome Markets
+### ~~True Multi-Outcome Markets~~ ✅ Done
 - The current `date` and `numeric` resolution types are still binary (YES/NO against a threshold). Consider a true multi-choice market structure for questions like "Which patch will Big Ben finally get fixed in? 4.1 / 4.2 / 4.3 / Never".
 - Requires a new DB schema (`market_outcomes` table, per-outcome share pools), a different AMM formulation (multi-dimensional LMSR or simple equal-liquidity pools), and a redesigned trade UI.
 
@@ -61,6 +61,48 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - **Resolution marker**: Resolved markets show a vertical dashed line (green=YES, red=NO) at the rightmost trade with a "RESOLVED YES/NO" label.
 - **Time-axis labels**: Five evenly-spaced date labels (0%, 25%, 50%, 75%, 100% of the trade range) replace the old start/end-only pair.
 - Legend row shows YES and NO current prices with colour swatches.
+
+### Admiral Rank Store
+- Users earn a **military rank** by making **incremental bUEC contributions** — exactly like RSI's lifetime pledge value model. You don't need to have the full amount up front; every bUEC you pay in permanently counts toward your total. Tiers in order: **High Admiral → Grand Admiral → Space Marshal → Praetorian → Legatus Navium**.
+- **Lifetime contribution thresholds** (cumulative total, not per-upgrade): 500 / 2,000 / 5,000 / 15,000 / 50,000 bUEC. e.g. a user who has contributed 3,400 bUEC total is Grand Admiral and needs 1,600 more to reach Space Marshal.
+- Contributions are permanent and non-refundable. bUEC is deducted from balance on each contribution and added to `rank_contribution` (a running total). The rank is derived from this total — never stored separately.
+- A `/store/rank` page shows the full tier ladder with thresholds, a progress bar toward the next rank, a "Contribute X bUEC" input (any amount from 1 to the user's current balance), and satirical tier descriptions (e.g., Legatus Navium: *"Spent how much on a space game? We salute you."*).
+- The user can contribute any arbitrary amount at any time — small drips or a lump sum. The rank updates automatically the moment the running total crosses a threshold.
+- A rank pip/icon is shown next to the user's display name in chat, trades/positions, and on the profile page. Users with no contributions show no pip.
+- The `users` table gains a `rank_contribution` integer column (default 0). No separate rank column — rank is always computed from this value.
+- Backend: `POST /api/store/rank/contribute` with `{ amount: int }`. Validates amount > 0 and ≤ balance, deducts atomically, increments `rank_contribution`. Returns new total and current rank.
+- Tier names, thresholds, and derived rank are defined in a shared constant (Go + TypeScript) so they never drift.
+- *(Not yet implemented — placeholder for future work.)*
+
+### Badge Store
+- A `/store/badges` page where users can spend bUEC to equip cosmetic badges shown next to their display name in comments and market activity feeds.
+- **Three availability classes:**
+  - **Generally available**: Always in stock at a fixed bUEC price. A curated set of tongue-in-cheek badges, e.g.:
+    - 🐋 *Space Whale* — "Your wallet is canon-sized."
+    - 🐛 *Professional Bug Finder* — "It's not a bug, it's a stretch goal."
+    - 📦 *Mostly Backer* — "In since 2012. Still waiting."
+    - ⚙️ *Tech Preview Survivor* — "I've seen things you wouldn't believe. Then they wiped the servers."
+    - 📋 *Connoisseur of Roadmaps* — "Holds 47 tabs of schedule promises."
+    - 🔭 *Star Gazer* — "Watched the CitizenCon stream live every year. No regrets."
+    - 🏗️ *Persistent Universe Citizen* — "Was there for server meshing. Both times."
+  - **Hull Limited** (scarce): Only a fixed number of copies (e.g., 3–10) are purchasable per week — supply resets each Monday. High bUEC price (5,000+ bUEC). Examples:
+    - 💎 *Unobtainium Tier* — "You spent HOW much?"
+    - 🚀 *Fleet Commander* — "Controls more ships than crew."
+    - 👑 *Backer Royalty* — "The original true believers."
+    - 🪐 *System Colonist* — "Reserved a plot in a star system that may never ship."
+    A live "X of N remaining this week" count is shown on the badge card.
+  - **Rotating** (limited-time): A small set of badges (3–5) that cycle in and out of the store on a fixed schedule (e.g., monthly or tied to in-game events/patch releases). Once the window closes, the badge is gone from the store (existing owners keep it). Examples:
+    - 🎉 *Alpha 4.x Optimist* — "Believed the patch notes."
+    - 🗓️ *Q4 Enjoyer* — "Adjusted expectations quarterly since 2015."
+    - 🛸 *CitizenCon Pilgrim* — "Was there / watched the stream / followed the thread."
+    Rotating badges have an `available_until` timestamp rather than a weekly cap. The store shows a countdown timer.
+- Users can equip one badge at a time (the "active badge" field on the user), or none. Equipping/unequipping a purchased badge is free.
+- The `badges` table defines available badges: `id`, `slug`, `name`, `description`, `price`, `availability` (`permanent` | `hull_limited` | `rotating`), `weekly_supply`, `available_from`, `available_until`, `image_url`.
+- The `user_badges` table tracks ownership: `user_id`, `badge_id`, `purchased_at`.
+- A weekly purchase counter column on `badges` tracks hull-limited sales; resets are handled by the existing background scheduler. Rotating badges use `available_until` — no counter needed.
+- Backend endpoints: `GET /api/store/badges` (list with stock/timer info), `POST /api/store/badges/{id}/purchase`, `POST /api/store/badges/{id}/equip`, `DELETE /api/store/badges/equip` (unequip).
+- The active badge (slug + name + emoji) is included in all user-facing API responses (`/api/me`, comment author objects, trade history entries).
+- Admin panel gets a "Manage Badges" section: create/edit/delete badge definitions (including setting rotation windows and hull-limited supply), view purchase history.
 
 ### User Portfolio Page Improvements
 - Show unrealized P&L per position (current share value at market price vs. cost basis — requires storing average cost, not currently tracked).

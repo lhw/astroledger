@@ -77,9 +77,9 @@
 		await withAction(id, () => rejectMarket(id));
 	}
 
-	async function doResolve(id: number, resolution: 'yes' | 'no') {
+	async function doResolve(id: number, outcomeId: number) {
 		const evidence = resolveEvidence[id]?.trim() || undefined;
-		await withAction(id, () => resolveMarket(id, resolution, evidence));
+		await withAction(id, () => resolveMarket(id, outcomeId, evidence));
 	}
 
 	async function doDenyResolution(id: number) {
@@ -364,20 +364,15 @@
 										placeholder="Evidence link (optional)"
 										class="sc-input text-xs w-44"
 									/>
-									<button
-										onclick={() => doResolve(rr.id, 'yes')}
-										disabled={actingId === rr.id}
-										class="btn btn-sm bg-green-600 hover:bg-green-700 text-white text-xs uppercase tracking-wider"
-									>
-										Resolve YES
-									</button>
-									<button
-										onclick={() => doResolve(rr.id, 'no')}
-										disabled={actingId === rr.id}
-										class="btn btn-sm bg-red-600 hover:bg-red-700 text-white text-xs uppercase tracking-wider"
-									>
-										Resolve NO
-									</button>
+									{#each (rr.outcomes ?? []) as outcome, oi}
+										<button
+											onclick={() => doResolve(rr.id, outcome.id)}
+											disabled={actingId === rr.id}
+											class="btn btn-sm text-white text-xs uppercase tracking-wider {oi === 0 ? 'bg-green-600 hover:bg-green-700' : oi === 1 ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}"
+										>
+											Resolve {outcome.label}
+										</button>
+									{/each}
 									<button
 										onclick={() => doDenyResolution(rr.id)}
 										disabled={actingId === rr.id}

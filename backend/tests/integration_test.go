@@ -87,6 +87,16 @@ func createActiveMarket(t *testing.T, ctx context.Context, svc *service.MarketSe
 	return m
 }
 
+// marketOutcomes loads the YES and NO outcome IDs for a binary market.
+func marketOutcomes(t *testing.T, ctx context.Context, q *db.Queries, marketID int64) (yesID, noID int64) {
+	t.Helper()
+	outs, err := q.GetOutcomesByMarketID(ctx, marketID)
+	if err != nil || len(outs) < 2 {
+		t.Fatalf("getOutcomesByMarketID(%d): err=%v len=%d", marketID, err, len(outs))
+	}
+	return outs[0].ID, outs[1].ID
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 // TestFullMarketLifecycle exercises the complete happy-path flow:
@@ -110,37 +120,38 @@ func TestFullMarketLifecycle(t *testing.T) {
 	assertEq(t, "active", got.Status, "status after approve")
 
 	// ── Buy YES shares ────────────────────────────────────────────────────────
-	// Initial state: b=100, qYes=0, qNo=0
+	// Initial state: b=100, all shares 0, p=50%
+	yesID, noID := marketOutcomes(t, ctx, q, m.ID)
 	const yesShares = 10.0
-	expectedYesCost := service.BuyCost(100.0, 0.0, 0.0, yesShares, true)
+	expectedYesCost := service.BuyCostBinary(100.0, 0.0, 0.0, yesShares, true)
 
 	yesResult, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID:   yesBettor.ID,
-		MarketID: m.ID,
-		Side:     "yes",
-		Action:   "buy",
-		Shares:   yesShares,
+		UserID:    yesBettor.ID,
+		MarketID:  m.ID,
+		OutcomeID: yesID,
+		Action:    "buy",
+		Shares:    yesShares,
 	})
 	must(t, err, "buy YES shares")
 	assertEq(t, expectedYesCost, yesResult.Cost, "YES trade cost")
 	assertEq(t, int64(1000)-expectedYesCost, yesResult.NewBalance, "YES bettor balance after buy")
 
 	// Verify position recorded correctly.
-	yesPos, err := q.GetUserPositionOrZero(ctx, yesBettor.ID, m.ID)
+	yesPos, err := q.GetUserPosition(ctx, db.GetUserPositionParams{UserID: yesBettor.ID, MarketID: m.ID, OutcomeID: yesID})
 	must(t, err, "get YES position")
-	assertEq(t, yesShares, yesPos.YesShares, "YES shares in position")
+	assertEq(t, yesShares, yesPos.Shares, "YES shares in position")
 
 	// ── Buy NO shares ─────────────────────────────────────────────────────────
 	// After YES trade: qYes=10, qNo=0.
 	const noShares = 10.0
-	expectedNoCost := service.BuyCost(100.0, yesShares, 0.0, noShares, false)
+	expectedNoCost := service.BuyCostBinary(100.0, yesShares, 0.0, noShares, false)
 
 	noResult, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID:   noBettor.ID,
-		MarketID: m.ID,
-		Side:     "no",
-		Action:   "buy",
-		Shares:   noShares,
+		UserID:    noBettor.ID,
+		MarketID:  m.ID,
+		OutcomeID: noID,
+		Action:    "buy",
+		Shares:    noShares,
 	})
 	must(t, err, "buy NO shares")
 	assertEq(t, expectedNoCost, noResult.Cost, "NO trade cost")
@@ -148,9 +159,9 @@ func TestFullMarketLifecycle(t *testing.T) {
 
 	// ── Resolve as YES ────────────────────────────────────────────────────────
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID:   m.ID,
-		Resolution: "yes",
-		ModID:      mod.ID,
+		MarketID:         m.ID,
+		WinningOutcomeID: yesID,
+		ModID:            mod.ID,
 	}), "resolve market YES")
 
 	// ── Verify payouts ────────────────────────────────────────────────────────
@@ -170,8 +181,8 @@ func TestFullMarketLifecycle(t *testing.T) {
 	finalMarket, err := q.GetMarketByID(ctx, m.ID)
 	must(t, err, "get market post-resolve")
 	assertEq(t, "resolved", finalMarket.Status, "market status after resolve")
-	if finalMarket.Resolution == nil || *finalMarket.Resolution != "yes" {
-		t.Errorf("market.Resolution: want \"yes\", got %v", finalMarket.Resolution)
+	if finalMarket.ResolvedOutcomeID == nil || *finalMarket.ResolvedOutcomeID != yesID {
+		t.Errorf("market.ResolvedOutcomeID: want %d, got %v", yesID, finalMarket.ResolvedOutcomeID)
 	}
 }
 
@@ -186,32 +197,33 @@ func TestSellShares(t *testing.T) {
 	trader := createTestUser(t, ctx, q, "test:trader", "Trader", false)
 
 	m := createActiveMarket(t, ctx, marketSvc, "Will 4.2 ship before May?", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	// Buy 8 YES (20 shares would exceed the 1000 bUEC default balance at correct prices).
 	const shares = 8.0
-	buyCost := service.BuyCost(100.0, 0.0, 0.0, shares, true)
+	buyCost := service.BuyCostBinary(100.0, 0.0, 0.0, shares, true)
 
 	buyResult, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID:   trader.ID,
-		MarketID: m.ID,
-		Side:     "yes",
-		Action:   "buy",
-		Shares:   shares,
+		UserID:    trader.ID,
+		MarketID:  m.ID,
+		OutcomeID: yesID,
+		Action:    "buy",
+		Shares:    shares,
 	})
 	must(t, err, "buy YES")
 	assertEq(t, buyCost, buyResult.Cost, "buy cost")
 
-	// Sell all 20 YES back.
-	mkt, err := q.GetMarketByID(ctx, m.ID)
-	must(t, err, "get market for sell")
-	sellRevenue := service.SellRevenue(100.0, mkt.YesShares, mkt.NoShares, shares, true)
+	// Sell all YES back — get current YES outcome shares from DB.
+	outcomes, err := q.GetOutcomesByMarketID(ctx, m.ID)
+	must(t, err, "get outcomes for sell")
+	sellRevenue := service.SellRevenueBinary(100.0, outcomes[0].Shares, outcomes[1].Shares, shares, true)
 
 	sellResult, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID:   trader.ID,
-		MarketID: m.ID,
-		Side:     "yes",
-		Action:   "sell",
-		Shares:   shares,
+		UserID:    trader.ID,
+		MarketID:  m.ID,
+		OutcomeID: yesID,
+		Action:    "sell",
+		Shares:    shares,
 	})
 	must(t, err, "sell YES")
 
@@ -240,10 +252,11 @@ func TestResolveOnResolutionRequested(t *testing.T) {
 	trader := createTestUser(t, ctx, q, "test:trader2", "Trader2", false)
 
 	m := createActiveMarket(t, ctx, marketSvc, "Will shields fix in 4.2?", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	// Trader buys YES so they can request resolution.
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: trader.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: 5,
+		UserID: trader.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 5,
 	})
 	must(t, err, "buy YES")
 
@@ -276,9 +289,9 @@ func TestResolveOnResolutionRequested(t *testing.T) {
 
 	// Mod resolves the market while it's still in resolution_requested state.
 	must(t, marketSvc.ResolveMarket(ctx, service.ResolveInput{
-		MarketID:   m.ID,
-		Resolution: "yes",
-		ModID:      mod.ID,
+		MarketID:         m.ID,
+		WinningOutcomeID: yesID,
+		ModID:            mod.ID,
 	}), "resolve resolution_requested market")
 
 	final, err := q.GetMarketByID(ctx, m.ID)
@@ -297,10 +310,11 @@ func TestListPendingReports(t *testing.T) {
 	user := createTestUser(t, ctx, q, "test:user4", "User4", false)
 
 	m := createActiveMarket(t, ctx, marketSvc, "Will crimestat persist across relog?", mod.ID, mod.ID)
+	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	// Give the user a trade so they're a participant.
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: user.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: 1,
+		UserID: user.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 1,
 	})
 	must(t, err, "buy shares")
 
@@ -352,10 +366,11 @@ func TestTradeOnResolutionRequestedStatus(t *testing.T) {
 	trader := createTestUser(t, ctx, q, "test:trader5", "Trader5", false)
 
 	m := createActiveMarket(t, ctx, marketSvc, "Will jump drives work in atmosphere?", mod.ID, mod.ID)
+	yesID, noID := marketOutcomes(t, ctx, q, m.ID)
 
 	// First buy to create a position.
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: trader.ID, MarketID: m.ID, Side: "yes", Action: "buy", Shares: 5,
+		UserID: trader.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 5,
 	})
 	must(t, err, "initial buy")
 
@@ -371,7 +386,7 @@ func TestTradeOnResolutionRequestedStatus(t *testing.T) {
 	// A second user should still be able to buy while resolution is pending.
 	trader2 := createTestUser(t, ctx, q, "test:trader5b", "Trader5b", false)
 	_, err = tradingSvc.Execute(ctx, service.TradeInput{
-		UserID: trader2.ID, MarketID: m.ID, Side: "no", Action: "buy", Shares: 3,
+		UserID: trader2.ID, MarketID: m.ID, OutcomeID: noID, Action: "buy", Shares: 3,
 	})
 	must(t, err, "buy on resolution_requested market")
 }
@@ -436,9 +451,9 @@ func TestAMMMath(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cost := service.BuyCost(b, tc.qYes, tc.qNo, tc.shares, tc.sideYes)
+			cost := service.BuyCostBinary(b, tc.qYes, tc.qNo, tc.shares, tc.sideYes)
 			if cost <= 0 {
-				t.Errorf("BuyCost should be positive, got %d", cost)
+				t.Errorf("BuyCostBinary should be positive, got %d", cost)
 			}
 
 			var newYes, newNo float64
@@ -449,9 +464,9 @@ func TestAMMMath(t *testing.T) {
 				newYes = tc.qYes
 				newNo = tc.qNo + tc.shares
 			}
-			rev := service.SellRevenue(b, newYes, newNo, tc.shares, tc.sideYes)
+			rev := service.SellRevenueBinary(b, newYes, newNo, tc.shares, tc.sideYes)
 			if rev <= 0 {
-				t.Errorf("SellRevenue should be positive, got %d", rev)
+				t.Errorf("SellRevenueBinary should be positive, got %d", rev)
 			}
 
 			spread := cost - rev

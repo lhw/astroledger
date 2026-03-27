@@ -35,7 +35,7 @@ const (
 func TestAMMPerShareCost_AtFiftyPercent(t *testing.T) {
 	b := 100.0
 	// Initial state: no shares outstanding, 50 / 50 probability.
-	costBatch := BuyCost(b, 0, 0, 10, true) // 10 shares to smooth integer ceiling
+	costBatch := BuyCostBinary(b, 0, 0, 10, true) // 10 shares to smooth integer ceiling
 	perShare := float64(costBatch) / 10.0
 
 	// At p=50%, the marginal price per share is 50 bUEC when correctly scaled.
@@ -67,7 +67,7 @@ func TestAMMPerShareCost_AtTenPercent(t *testing.T) {
 		t.Fatalf("test setup: wanted p≈0.10, got %.3f", prob)
 	}
 
-	costBatch := BuyCost(b, 0, qNo, 10, true)
+	costBatch := BuyCostBinary(b, 0, qNo, 10, true)
 	perShare := float64(costBatch) / 10.0
 
 	// At p=10%, fair price per share ≈ 10 bUEC.
@@ -102,7 +102,7 @@ func TestAMMExpectedValue(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			p := YESPrice(tc.b, tc.qYes, tc.qNo)
-			cost := float64(BuyCost(tc.b, tc.qYes, tc.qNo, tc.shares, true))
+			cost := float64(BuyCostBinary(tc.b, tc.qYes, tc.qNo, tc.shares, true))
 			ev := p * tc.shares * payoutPerShare
 
 			// cost / ev should be in the range [0.5, 2.0].
@@ -134,7 +134,7 @@ func TestAMMBoundedMarketMakerLoss(t *testing.T) {
 	for _, shares := range []float64{100, 1_000, 10_000, 100_000} {
 		shares := shares
 		t.Run(fmt.Sprintf("%.0f_shares", shares), func(t *testing.T) {
-			cost := BuyCost(b, 0, 0, shares, true)
+			cost := BuyCostBinary(b, 0, 0, shares, true)
 			payout := int64(shares) * payoutPerShare
 			platLoss := payout - cost
 
@@ -173,9 +173,9 @@ func TestAMMSellRevenueLEBuyCost(t *testing.T) {
 	for _, shares := range []float64{1, 5, 20, 100} {
 		shares := shares
 		t.Run(fmt.Sprintf("%.0f_shares", shares), func(t *testing.T) {
-			buy := BuyCost(b, 0, 0, shares, true)
+			buy := BuyCostBinary(b, 0, 0, shares, true)
 			// After buying, sell from the new state.
-			sell := SellRevenue(b, shares, 0, shares, true)
+			sell := SellRevenueBinary(b, shares, 0, shares, true)
 
 			if sell > buy {
 				t.Errorf(
@@ -193,7 +193,7 @@ func TestAMMPriceMonotonicity(t *testing.T) {
 	b := 100.0
 	prev := int64(-1)
 	for _, n := range []float64{1, 5, 10, 50, 100, 500, 1000} {
-		cost := BuyCost(b, 0, 0, n, true)
+		cost := BuyCostBinary(b, 0, 0, n, true)
 		if cost <= prev {
 			t.Errorf("cost for %.0f shares (%d) ≤ cost for fewer shares (%d): not monotone", n, cost, prev)
 		}
@@ -205,14 +205,14 @@ func TestAMMPriceMonotonicity(t *testing.T) {
 // "I buy 10,000 shares on YES (~1 bUEC/ea) and if the market is resolved I now
 // have above a million in bUEC."
 //
-// At b=100, fresh market (p=50%): BuyCost(100, 0, 0, 10000, true) returns
+// At b=100, fresh market (p=50%): BuyCostBinary(100, 0, 0, 10000, true) returns
 // 9931 bUEC (in the broken implementation). Payout = 10000 × 100 = 1,000,000.
 // Net profit = 990,069 bUEC — ~100× the investment with zero real risk.
 func TestAMMHeavySingleBettor_BugRepro(t *testing.T) {
 	b := 100.0
 	shares := 10_000.0
 
-	cost := BuyCost(b, 0, 0, shares, true)
+	cost := BuyCostBinary(b, 0, 0, shares, true)
 	payout := int64(shares) * payoutPerShare
 	netProfit := payout - cost
 	maxAllowedPlatformLoss := int64(math.Ceil(b * math.Log(2) * payoutPerShare)) // ≈ 6,931
@@ -254,12 +254,12 @@ func TestAMMMaxAffordableSharesRoundTrip(t *testing.T) {
 	for _, budget := range []int64{100, 500, 1000, 5000} {
 		budget := budget
 		t.Run(fmt.Sprintf("budget_%d", budget), func(t *testing.T) {
-			maxS := MaxAffordableShares(b, 0, 0, budget, true)
+			maxS := MaxAffordableShares(b, []float64{0, 0}, 0, budget)
 			if maxS <= 0 {
 				t.Fatalf("budget %d: MaxAffordableShares returned %.4f (≤0)", budget, maxS)
 			}
 
-			actualCost := BuyCost(b, 0, 0, maxS, true)
+			actualCost := BuyCostBinary(b, 0, 0, maxS, true)
 			if actualCost > budget {
 				t.Errorf(
 					"budget %d: MaxAffordableShares=%.4f but BuyCost=%d > budget.",
@@ -268,7 +268,7 @@ func TestAMMMaxAffordableSharesRoundTrip(t *testing.T) {
 			}
 
 			// One more share should exceed budget.
-			oneMorer := BuyCost(b, 0, 0, maxS+1, true)
+			oneMorer := BuyCostBinary(b, 0, 0, maxS+1, true)
 			if oneMorer <= budget {
 				// Not a hard failure — integer floor means this can sometimes still fit.
 				t.Logf("budget %d: MaxAffordableShares+1 still fits (%d ≤ %d) — minor floor artefact", budget, oneMorer, budget)

@@ -32,7 +32,7 @@ func (q *Queries) CountMarkets(ctx context.Context, arg CountMarketsParams) (int
 const createMarket = `-- name: CreateMarket :one
 INSERT INTO markets (title, description, category, resolution_criteria, resolution_deadline, created_by, liquidity_param, resolution_type, resolution_threshold)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, title, description, category, resolution_criteria, resolution_deadline, status, resolution, created_by, resolved_by, created_at, resolved_at, liquidity_param, yes_shares, no_shares, resolution_type, resolution_threshold, resolution_evidence
+RETURNING id, title, description, category, resolution_criteria, resolution_deadline, status, resolved_outcome_id, created_by, resolved_by, created_at, resolved_at, liquidity_param, resolution_type, resolution_threshold, resolution_evidence
 `
 
 type CreateMarketParams struct {
@@ -68,17 +68,40 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.ResolutionCriteria,
 		&i.ResolutionDeadline,
 		&i.Status,
-		&i.Resolution,
+		&i.ResolvedOutcomeID,
 		&i.CreatedBy,
 		&i.ResolvedBy,
 		&i.CreatedAt,
 		&i.ResolvedAt,
 		&i.LiquidityParam,
-		&i.YesShares,
-		&i.NoShares,
 		&i.ResolutionType,
 		&i.ResolutionThreshold,
 		&i.ResolutionEvidence,
+	)
+	return i, err
+}
+
+const createOutcome = `-- name: CreateOutcome :one
+INSERT INTO market_outcomes (market_id, label, sort_order)
+VALUES (?, ?, ?)
+RETURNING id, market_id, label, shares, sort_order
+`
+
+type CreateOutcomeParams struct {
+	MarketID  int64  `json:"market_id"`
+	Label     string `json:"label"`
+	SortOrder int64  `json:"sort_order"`
+}
+
+func (q *Queries) CreateOutcome(ctx context.Context, arg CreateOutcomeParams) (MarketOutcome, error) {
+	row := q.db.QueryRowContext(ctx, createOutcome, arg.MarketID, arg.Label, arg.SortOrder)
+	var i MarketOutcome
+	err := row.Scan(
+		&i.ID,
+		&i.MarketID,
+		&i.Label,
+		&i.Shares,
+		&i.SortOrder,
 	)
 	return i, err
 }
@@ -113,7 +136,7 @@ func (q *Queries) GetActivePendingMarketTitles(ctx context.Context) ([]string, e
 }
 
 const getMarketByID = `-- name: GetMarketByID :one
-SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name, ru.display_name AS resolver_name
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolved_outcome_id, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name, ru.display_name AS resolver_name
 FROM markets m
 JOIN users u ON u.id = m.created_by
 LEFT JOIN users ru ON ru.id = m.resolved_by
@@ -129,14 +152,12 @@ type GetMarketByIDRow struct {
 	ResolutionCriteria  string     `json:"resolution_criteria"`
 	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
 	Status              string     `json:"status"`
-	Resolution          *string    `json:"resolution"`
+	ResolvedOutcomeID   *int64     `json:"resolved_outcome_id"`
 	CreatedBy           int64      `json:"created_by"`
 	ResolvedBy          *int64     `json:"resolved_by"`
 	CreatedAt           time.Time  `json:"created_at"`
 	ResolvedAt          *time.Time `json:"resolved_at"`
 	LiquidityParam      float64    `json:"liquidity_param"`
-	YesShares           float64    `json:"yes_shares"`
-	NoShares            float64    `json:"no_shares"`
 	ResolutionType      string     `json:"resolution_type"`
 	ResolutionThreshold *string    `json:"resolution_threshold"`
 	ResolutionEvidence  *string    `json:"resolution_evidence"`
@@ -155,14 +176,12 @@ func (q *Queries) GetMarketByID(ctx context.Context, id int64) (GetMarketByIDRow
 		&i.ResolutionCriteria,
 		&i.ResolutionDeadline,
 		&i.Status,
-		&i.Resolution,
+		&i.ResolvedOutcomeID,
 		&i.CreatedBy,
 		&i.ResolvedBy,
 		&i.CreatedAt,
 		&i.ResolvedAt,
 		&i.LiquidityParam,
-		&i.YesShares,
-		&i.NoShares,
 		&i.ResolutionType,
 		&i.ResolutionThreshold,
 		&i.ResolutionEvidence,
@@ -173,15 +192,16 @@ func (q *Queries) GetMarketByID(ctx context.Context, id int64) (GetMarketByIDRow
 }
 
 const getMarketPriceHistory = `-- name: GetMarketPriceHistory :many
-SELECT price_at_trade, side, created_at
-FROM trades
-WHERE market_id = ?
-ORDER BY created_at ASC
+SELECT t.price_at_trade, o.label AS outcome_label, t.created_at
+FROM trades t
+JOIN market_outcomes o ON o.id = t.outcome_id
+WHERE t.market_id = ?
+ORDER BY t.created_at ASC
 `
 
 type GetMarketPriceHistoryRow struct {
 	PriceAtTrade float64   `json:"price_at_trade"`
-	Side         string    `json:"side"`
+	OutcomeLabel string    `json:"outcome_label"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -194,7 +214,42 @@ func (q *Queries) GetMarketPriceHistory(ctx context.Context, marketID int64) ([]
 	items := []GetMarketPriceHistoryRow{}
 	for rows.Next() {
 		var i GetMarketPriceHistoryRow
-		if err := rows.Scan(&i.PriceAtTrade, &i.Side, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.PriceAtTrade, &i.OutcomeLabel, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getOutcomesByMarketID = `-- name: GetOutcomesByMarketID :many
+SELECT id, market_id, label, shares, sort_order FROM market_outcomes
+WHERE market_id = ?
+ORDER BY sort_order ASC, id ASC
+`
+
+func (q *Queries) GetOutcomesByMarketID(ctx context.Context, marketID int64) ([]MarketOutcome, error) {
+	rows, err := q.db.QueryContext(ctx, getOutcomesByMarketID, marketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MarketOutcome{}
+	for rows.Next() {
+		var i MarketOutcome
+		if err := rows.Scan(
+			&i.ID,
+			&i.MarketID,
+			&i.Label,
+			&i.Shares,
+			&i.SortOrder,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -209,7 +264,7 @@ func (q *Queries) GetMarketPriceHistory(ctx context.Context, marketID int64) ([]
 }
 
 const listMarkets = `-- name: ListMarkets :many
-SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name,
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolved_outcome_id, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name,
        (SELECT COUNT(*) FROM comments c WHERE c.market_id = m.id AND c.hidden = 0) AS comment_count
 FROM markets m
 JOIN users u ON u.id = m.created_by
@@ -235,14 +290,12 @@ type ListMarketsRow struct {
 	ResolutionCriteria  string     `json:"resolution_criteria"`
 	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
 	Status              string     `json:"status"`
-	Resolution          *string    `json:"resolution"`
+	ResolvedOutcomeID   *int64     `json:"resolved_outcome_id"`
 	CreatedBy           int64      `json:"created_by"`
 	ResolvedBy          *int64     `json:"resolved_by"`
 	CreatedAt           time.Time  `json:"created_at"`
 	ResolvedAt          *time.Time `json:"resolved_at"`
 	LiquidityParam      float64    `json:"liquidity_param"`
-	YesShares           float64    `json:"yes_shares"`
-	NoShares            float64    `json:"no_shares"`
 	ResolutionType      string     `json:"resolution_type"`
 	ResolutionThreshold *string    `json:"resolution_threshold"`
 	ResolutionEvidence  *string    `json:"resolution_evidence"`
@@ -273,14 +326,12 @@ func (q *Queries) ListMarkets(ctx context.Context, arg ListMarketsParams) ([]Lis
 			&i.ResolutionCriteria,
 			&i.ResolutionDeadline,
 			&i.Status,
-			&i.Resolution,
+			&i.ResolvedOutcomeID,
 			&i.CreatedBy,
 			&i.ResolvedBy,
 			&i.CreatedAt,
 			&i.ResolvedAt,
 			&i.LiquidityParam,
-			&i.YesShares,
-			&i.NoShares,
 			&i.ResolutionType,
 			&i.ResolutionThreshold,
 			&i.ResolutionEvidence,
@@ -301,7 +352,7 @@ func (q *Queries) ListMarkets(ctx context.Context, arg ListMarketsParams) ([]Lis
 }
 
 const listPendingMarkets = `-- name: ListPendingMarkets :many
-SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolution, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.yes_shares, m.no_shares, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name
+SELECT m.id, m.title, m.description, m.category, m.resolution_criteria, m.resolution_deadline, m.status, m.resolved_outcome_id, m.created_by, m.resolved_by, m.created_at, m.resolved_at, m.liquidity_param, m.resolution_type, m.resolution_threshold, m.resolution_evidence, u.display_name AS creator_name
 FROM markets m
 JOIN users u ON u.id = m.created_by
 WHERE m.status = 'pending_review'
@@ -316,14 +367,12 @@ type ListPendingMarketsRow struct {
 	ResolutionCriteria  string     `json:"resolution_criteria"`
 	ResolutionDeadline  time.Time  `json:"resolution_deadline"`
 	Status              string     `json:"status"`
-	Resolution          *string    `json:"resolution"`
+	ResolvedOutcomeID   *int64     `json:"resolved_outcome_id"`
 	CreatedBy           int64      `json:"created_by"`
 	ResolvedBy          *int64     `json:"resolved_by"`
 	CreatedAt           time.Time  `json:"created_at"`
 	ResolvedAt          *time.Time `json:"resolved_at"`
 	LiquidityParam      float64    `json:"liquidity_param"`
-	YesShares           float64    `json:"yes_shares"`
-	NoShares            float64    `json:"no_shares"`
 	ResolutionType      string     `json:"resolution_type"`
 	ResolutionThreshold *string    `json:"resolution_threshold"`
 	ResolutionEvidence  *string    `json:"resolution_evidence"`
@@ -347,14 +396,12 @@ func (q *Queries) ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsR
 			&i.ResolutionCriteria,
 			&i.ResolutionDeadline,
 			&i.Status,
-			&i.Resolution,
+			&i.ResolvedOutcomeID,
 			&i.CreatedBy,
 			&i.ResolvedBy,
 			&i.CreatedAt,
 			&i.ResolvedAt,
 			&i.LiquidityParam,
-			&i.YesShares,
-			&i.NoShares,
 			&i.ResolutionType,
 			&i.ResolutionThreshold,
 			&i.ResolutionEvidence,
@@ -373,24 +420,6 @@ func (q *Queries) ListPendingMarkets(ctx context.Context) ([]ListPendingMarketsR
 	return items, nil
 }
 
-const updateMarketAMMState = `-- name: UpdateMarketAMMState :exec
-UPDATE markets
-SET yes_shares = ?,
-    no_shares  = ?
-WHERE id = ?
-`
-
-type UpdateMarketAMMStateParams struct {
-	YesShares float64 `json:"yes_shares"`
-	NoShares  float64 `json:"no_shares"`
-	ID        int64   `json:"id"`
-}
-
-func (q *Queries) UpdateMarketAMMState(ctx context.Context, arg UpdateMarketAMMStateParams) error {
-	_, err := q.db.ExecContext(ctx, updateMarketAMMState, arg.YesShares, arg.NoShares, arg.ID)
-	return err
-}
-
 const updateMarketStatus = `-- name: UpdateMarketStatus :exec
 UPDATE markets SET status = ? WHERE id = ?
 `
@@ -402,5 +431,19 @@ type UpdateMarketStatusParams struct {
 
 func (q *Queries) UpdateMarketStatus(ctx context.Context, arg UpdateMarketStatusParams) error {
 	_, err := q.db.ExecContext(ctx, updateMarketStatus, arg.Status, arg.ID)
+	return err
+}
+
+const updateOutcomeShares = `-- name: UpdateOutcomeShares :exec
+UPDATE market_outcomes SET shares = ? WHERE id = ?
+`
+
+type UpdateOutcomeSharesParams struct {
+	Shares float64 `json:"shares"`
+	ID     int64   `json:"id"`
+}
+
+func (q *Queries) UpdateOutcomeShares(ctx context.Context, arg UpdateOutcomeSharesParams) error {
+	_, err := q.db.ExecContext(ctx, updateOutcomeShares, arg.Shares, arg.ID)
 	return err
 }

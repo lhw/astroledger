@@ -11,15 +11,15 @@ import (
 )
 
 const createTrade = `-- name: CreateTrade :one
-INSERT INTO trades (user_id, market_id, side, action, shares, cost, price_at_trade)
+INSERT INTO trades (user_id, market_id, outcome_id, action, shares, cost, price_at_trade)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, user_id, market_id, side, "action", shares, cost, price_at_trade, created_at
+RETURNING id, user_id, market_id, outcome_id, "action", shares, cost, price_at_trade, created_at
 `
 
 type CreateTradeParams struct {
 	UserID       int64   `json:"user_id"`
 	MarketID     int64   `json:"market_id"`
-	Side         string  `json:"side"`
+	OutcomeID    int64   `json:"outcome_id"`
 	Action       string  `json:"action"`
 	Shares       float64 `json:"shares"`
 	Cost         int64   `json:"cost"`
@@ -30,7 +30,7 @@ func (q *Queries) CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade
 	row := q.db.QueryRowContext(ctx, createTrade,
 		arg.UserID,
 		arg.MarketID,
-		arg.Side,
+		arg.OutcomeID,
 		arg.Action,
 		arg.Shares,
 		arg.Cost,
@@ -41,7 +41,7 @@ func (q *Queries) CreateTrade(ctx context.Context, arg CreateTradeParams) (Trade
 		&i.ID,
 		&i.UserID,
 		&i.MarketID,
-		&i.Side,
+		&i.OutcomeID,
 		&i.Action,
 		&i.Shares,
 		&i.Cost,
@@ -75,9 +75,10 @@ func (q *Queries) GetMarketStats(ctx context.Context, marketID int64) (GetMarket
 }
 
 const getMarketTrades = `-- name: GetMarketTrades :many
-SELECT t.id, t.user_id, t.market_id, t.side, t."action", t.shares, t.cost, t.price_at_trade, t.created_at, u.display_name AS trader_name
+SELECT t.id, t.user_id, t.market_id, t.outcome_id, t."action", t.shares, t.cost, t.price_at_trade, t.created_at, u.display_name AS trader_name, o.label AS outcome_label
 FROM trades t
 JOIN users u ON u.id = t.user_id
+JOIN market_outcomes o ON o.id = t.outcome_id
 WHERE t.market_id = ?
 ORDER BY t.created_at DESC
 LIMIT ? OFFSET ?
@@ -93,13 +94,14 @@ type GetMarketTradesRow struct {
 	ID           int64     `json:"id"`
 	UserID       int64     `json:"user_id"`
 	MarketID     int64     `json:"market_id"`
-	Side         string    `json:"side"`
+	OutcomeID    int64     `json:"outcome_id"`
 	Action       string    `json:"action"`
 	Shares       float64   `json:"shares"`
 	Cost         int64     `json:"cost"`
 	PriceAtTrade float64   `json:"price_at_trade"`
 	CreatedAt    time.Time `json:"created_at"`
 	TraderName   string    `json:"trader_name"`
+	OutcomeLabel string    `json:"outcome_label"`
 }
 
 func (q *Queries) GetMarketTrades(ctx context.Context, arg GetMarketTradesParams) ([]GetMarketTradesRow, error) {
@@ -115,13 +117,14 @@ func (q *Queries) GetMarketTrades(ctx context.Context, arg GetMarketTradesParams
 			&i.ID,
 			&i.UserID,
 			&i.MarketID,
-			&i.Side,
+			&i.OutcomeID,
 			&i.Action,
 			&i.Shares,
 			&i.Cost,
 			&i.PriceAtTrade,
 			&i.CreatedAt,
 			&i.TraderName,
+			&i.OutcomeLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -137,16 +140,16 @@ func (q *Queries) GetMarketTrades(ctx context.Context, arg GetMarketTradesParams
 }
 
 const getPositionsForResolution = `-- name: GetPositionsForResolution :many
-SELECT user_id, yes_shares, no_shares
-FROM positions
-WHERE market_id = ?
-  AND (yes_shares > 0 OR no_shares > 0)
+SELECT p.user_id, p.outcome_id, p.shares
+FROM positions p
+WHERE p.market_id = ?
+  AND p.shares > 0
 `
 
 type GetPositionsForResolutionRow struct {
 	UserID    int64   `json:"user_id"`
-	YesShares float64 `json:"yes_shares"`
-	NoShares  float64 `json:"no_shares"`
+	OutcomeID int64   `json:"outcome_id"`
+	Shares    float64 `json:"shares"`
 }
 
 func (q *Queries) GetPositionsForResolution(ctx context.Context, marketID int64) ([]GetPositionsForResolutionRow, error) {
@@ -158,7 +161,7 @@ func (q *Queries) GetPositionsForResolution(ctx context.Context, marketID int64)
 	items := []GetPositionsForResolutionRow{}
 	for rows.Next() {
 		var i GetPositionsForResolutionRow
-		if err := rows.Scan(&i.UserID, &i.YesShares, &i.NoShares); err != nil {
+		if err := rows.Scan(&i.UserID, &i.OutcomeID, &i.Shares); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -173,48 +176,49 @@ func (q *Queries) GetPositionsForResolution(ctx context.Context, marketID int64)
 }
 
 const getUserPosition = `-- name: GetUserPosition :one
-SELECT user_id, market_id, yes_shares, no_shares
+SELECT user_id, market_id, outcome_id, shares
 FROM positions
-WHERE user_id = ? AND market_id = ?
+WHERE user_id = ? AND market_id = ? AND outcome_id = ?
 LIMIT 1
 `
 
 type GetUserPositionParams struct {
-	UserID   int64 `json:"user_id"`
-	MarketID int64 `json:"market_id"`
+	UserID    int64 `json:"user_id"`
+	MarketID  int64 `json:"market_id"`
+	OutcomeID int64 `json:"outcome_id"`
 }
 
 func (q *Queries) GetUserPosition(ctx context.Context, arg GetUserPositionParams) (Position, error) {
-	row := q.db.QueryRowContext(ctx, getUserPosition, arg.UserID, arg.MarketID)
+	row := q.db.QueryRowContext(ctx, getUserPosition, arg.UserID, arg.MarketID, arg.OutcomeID)
 	var i Position
 	err := row.Scan(
 		&i.UserID,
 		&i.MarketID,
-		&i.YesShares,
-		&i.NoShares,
+		&i.OutcomeID,
+		&i.Shares,
 	)
 	return i, err
 }
 
 const getUserPositions = `-- name: GetUserPositions :many
-SELECT p.user_id, p.market_id, p.yes_shares, p.no_shares, m.title AS market_title, m.status AS market_status,
-       m.yes_shares AS pool_yes, m.no_shares AS pool_no, m.liquidity_param
+SELECT p.user_id, p.market_id, p.outcome_id, p.shares, m.title AS market_title, m.status AS market_status,
+       m.liquidity_param, o.label AS outcome_label
 FROM positions p
 JOIN markets m ON m.id = p.market_id
+JOIN market_outcomes o ON o.id = p.outcome_id
 WHERE p.user_id = ?
-  AND (p.yes_shares > 0 OR p.no_shares > 0)
+  AND p.shares > 0
 `
 
 type GetUserPositionsRow struct {
 	UserID         int64   `json:"user_id"`
 	MarketID       int64   `json:"market_id"`
-	YesShares      float64 `json:"yes_shares"`
-	NoShares       float64 `json:"no_shares"`
+	OutcomeID      int64   `json:"outcome_id"`
+	Shares         float64 `json:"shares"`
 	MarketTitle    string  `json:"market_title"`
 	MarketStatus   string  `json:"market_status"`
-	PoolYes        float64 `json:"pool_yes"`
-	PoolNo         float64 `json:"pool_no"`
 	LiquidityParam float64 `json:"liquidity_param"`
+	OutcomeLabel   string  `json:"outcome_label"`
 }
 
 func (q *Queries) GetUserPositions(ctx context.Context, userID int64) ([]GetUserPositionsRow, error) {
@@ -229,13 +233,12 @@ func (q *Queries) GetUserPositions(ctx context.Context, userID int64) ([]GetUser
 		if err := rows.Scan(
 			&i.UserID,
 			&i.MarketID,
-			&i.YesShares,
-			&i.NoShares,
+			&i.OutcomeID,
+			&i.Shares,
 			&i.MarketTitle,
 			&i.MarketStatus,
-			&i.PoolYes,
-			&i.PoolNo,
 			&i.LiquidityParam,
+			&i.OutcomeLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -251,9 +254,10 @@ func (q *Queries) GetUserPositions(ctx context.Context, userID int64) ([]GetUser
 }
 
 const getUserTrades = `-- name: GetUserTrades :many
-SELECT t.id, t.user_id, t.market_id, t.side, t."action", t.shares, t.cost, t.price_at_trade, t.created_at, m.title AS market_title
+SELECT t.id, t.user_id, t.market_id, t.outcome_id, t."action", t.shares, t.cost, t.price_at_trade, t.created_at, m.title AS market_title, o.label AS outcome_label
 FROM trades t
 JOIN markets m ON m.id = t.market_id
+JOIN market_outcomes o ON o.id = t.outcome_id
 WHERE t.user_id = ?
 ORDER BY t.created_at DESC
 LIMIT ? OFFSET ?
@@ -269,13 +273,14 @@ type GetUserTradesRow struct {
 	ID           int64     `json:"id"`
 	UserID       int64     `json:"user_id"`
 	MarketID     int64     `json:"market_id"`
-	Side         string    `json:"side"`
+	OutcomeID    int64     `json:"outcome_id"`
 	Action       string    `json:"action"`
 	Shares       float64   `json:"shares"`
 	Cost         int64     `json:"cost"`
 	PriceAtTrade float64   `json:"price_at_trade"`
 	CreatedAt    time.Time `json:"created_at"`
 	MarketTitle  string    `json:"market_title"`
+	OutcomeLabel string    `json:"outcome_label"`
 }
 
 func (q *Queries) GetUserTrades(ctx context.Context, arg GetUserTradesParams) ([]GetUserTradesRow, error) {
@@ -291,13 +296,14 @@ func (q *Queries) GetUserTrades(ctx context.Context, arg GetUserTradesParams) ([
 			&i.ID,
 			&i.UserID,
 			&i.MarketID,
-			&i.Side,
+			&i.OutcomeID,
 			&i.Action,
 			&i.Shares,
 			&i.Cost,
 			&i.PriceAtTrade,
 			&i.CreatedAt,
 			&i.MarketTitle,
+			&i.OutcomeLabel,
 		); err != nil {
 			return nil, err
 		}
@@ -313,26 +319,25 @@ func (q *Queries) GetUserTrades(ctx context.Context, arg GetUserTradesParams) ([
 }
 
 const upsertPosition = `-- name: UpsertPosition :exec
-INSERT INTO positions (user_id, market_id, yes_shares, no_shares)
+INSERT INTO positions (user_id, market_id, outcome_id, shares)
 VALUES (?, ?, ?, ?)
-ON CONFLICT (user_id, market_id) DO UPDATE SET
-    yes_shares = positions.yes_shares + excluded.yes_shares,
-    no_shares  = positions.no_shares  + excluded.no_shares
+ON CONFLICT (user_id, market_id, outcome_id) DO UPDATE SET
+    shares = positions.shares + excluded.shares
 `
 
 type UpsertPositionParams struct {
 	UserID    int64   `json:"user_id"`
 	MarketID  int64   `json:"market_id"`
-	YesShares float64 `json:"yes_shares"`
-	NoShares  float64 `json:"no_shares"`
+	OutcomeID int64   `json:"outcome_id"`
+	Shares    float64 `json:"shares"`
 }
 
 func (q *Queries) UpsertPosition(ctx context.Context, arg UpsertPositionParams) error {
 	_, err := q.db.ExecContext(ctx, upsertPosition,
 		arg.UserID,
 		arg.MarketID,
-		arg.YesShares,
-		arg.NoShares,
+		arg.OutcomeID,
+		arg.Shares,
 	)
 	return err
 }
