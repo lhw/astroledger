@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/net/html"
 
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 const spectrumPatchForumURL = "https://robertsspaceindustries.com/spectrum/community/SC/forum/190048"
@@ -50,7 +50,7 @@ func (s *PatchScraper) Scrape(ctx context.Context) ([]db.InsertPatchParams, erro
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ScolyMarket/1.0; patch-watcher)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AstroLedger/1.0; patch-watcher)")
 
 	resp, err := s.client.Do(req)
 	if err != nil {

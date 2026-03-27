@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 type contextKey string

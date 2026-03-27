@@ -1,4 +1,4 @@
-// cmd/seed populates a ScolyMarket database with sample markets in every
+// cmd/seed populates a AstroLedger database with sample markets in every
 // lifecycle state so developers can work against realistic data.
 //
 // Usage:
@@ -8,7 +8,7 @@
 //	go run ./cmd/seed -clean-only  # delete all data, do NOT re-seed
 //
 // Database selection mirrors the server: set DATABASE_URL for PostgreSQL,
-// otherwise DB_PATH (or the default scolymarket.db) for SQLite.
+// otherwise DB_PATH (or the default astroledger.db) for SQLite.
 package main
 
 import (
@@ -20,9 +20,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/lhw/scolymarket/internal/config"
-	"github.com/lhw/scolymarket/internal/database"
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/config"
+	"github.com/lhw/astroledger/internal/database"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 func main() {

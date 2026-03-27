@@ -16,8 +16,8 @@ import (
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
-	"github.com/lhw/scolymarket/internal/db"
-	"github.com/lhw/scolymarket/internal/middleware"
+	"github.com/lhw/astroledger/internal/db"
+	"github.com/lhw/astroledger/internal/middleware"
 )
 
 // AuthHandler handles OIDC login, callback, and logout.

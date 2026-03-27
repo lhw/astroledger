@@ -1,4 +1,4 @@
-# ScolyMarket — Plan
+# AstroLedger — Plan
 
 > A satirical prediction market for Star Citizen bug fixing and general events.
 > No real money. Just vibes, credits, and the collective delusion that 3.x will be stable.
@@ -7,7 +7,7 @@
 
 ## 1. Concept
 
-ScolyMarket is a tongue-in-cheek prediction market (à la Polymarket/Manifold) where players bet fake credits on whether Star Citizen bugs will be fixed, features will ship, and other community events will happen. The tone is irreverent and self-aware — this is a joke about the state of the game, not a serious forecasting tool.
+AstroLedger is a tongue-in-cheek prediction market (à la Polymarket/Manifold) where players bet fake credits on whether Star Citizen bugs will be fixed, features will ship, and other community events will happen. The tone is irreverent and self-aware — this is a joke about the state of the game, not a serious forecasting tool.
 
 ### How Prediction Markets Work (simplified)
 
@@ -46,20 +46,20 @@ ScolyMarket is a tongue-in-cheek prediction market (à la Polymarket/Manifold) w
 
 All user authentication is delegated to **SCID** (https://scid.my), a community-run OpenID Connect (OIDC) identity provider built on [Pocket ID](https://github.com/pocket-id/pocket-id). SCID verifies users' RSI (Roberts Space Industries) accounts by having them place a short token in their public RSI profile bio — no RSI passwords are shared. Once verified, SCID provides standard OIDC claims including the user's verified RSI handle and org memberships.
 
-ScolyMarket has **no local password storage, no registration form, and no email verification**. Users click "Login with SCID", authenticate via passkey on scid.my, and are redirected back. This dramatically simplifies our auth surface and eliminates password-related security concerns entirely.
+AstroLedger has **no local password storage, no registration form, and no email verification**. Users click "Login with SCID", authenticate via passkey on scid.my, and are redirected back. This dramatically simplifies our auth surface and eliminates password-related security concerns entirely.
 
 ### Client Type: Confidential Client (Authorization Code Flow + PKCE)
 
 **Why confidential, not public:**
 
-Since ScolyMarket has a Go backend server, we use a **confidential client**. This is the correct and most secure choice because:
+Since AstroLedger has a Go backend server, we use a **confidential client**. This is the correct and most secure choice because:
 
 1. **The backend can securely store the client secret** — it never reaches the browser or client-side code.
 2. **Authorization Code Flow** is the most secure standard OIDC flow. The authorization code is exchanged for tokens server-side, so tokens are never exposed in browser URLs or JavaScript.
 3. **PKCE (Proof Key for Code Exchange)** is added as defense-in-depth against code interception attacks, even though the confidential client already mitigates this. PKCE is a best practice for all OAuth2 flows per current security recommendations (RFC 9126, OAuth 2.1 draft).
 4. A **public client** would only be appropriate for a pure single-page app with no backend. Since we have a server, there is no reason to weaken security by omitting the client secret.
 
-A public client (e.g., PKCE-only SPA flow) is designed for applications that cannot keep a secret — mobile apps, browser-only SPAs. ScolyMarket's Go backend is a trusted server that can and should hold the secret.
+A public client (e.g., PKCE-only SPA flow) is designed for applications that cannot keep a secret — mobile apps, browser-only SPAs. AstroLedger's Go backend is a trusted server that can and should hold the secret.
 
 ### OIDC Flow (step by step)
 
@@ -98,12 +98,12 @@ A public client (e.g., PKCE-only SPA flow) is designed for applications that can
 
 ### SCID Configuration Required
 
-Register ScolyMarket as an OIDC client on scid.my with:
+Register AstroLedger as an OIDC client on scid.my with:
 
 | Setting | Value |
 |---|---|
 | **Client Type** | Confidential |
-| **Client Name** | ScolyMarket |
+| **Client Name** | AstroLedger |
 | **Redirect URI** | `https://<domain>/auth/callback` |
 | **Scopes** | `openid email profile` |
 | **Grant Type** | Authorization Code |
@@ -339,7 +339,7 @@ Global navigation uses a compact fold-out menu on small screens to prevent heade
 
 ### Design Philosophy
 
-The visual identity draws inspiration from **luxury spacecraft showrooms and high-end touring vessels** — think sleek, refined, premium materials. The aesthetic is "private yacht captain's lounge" rather than "industrial dockworker." Clean lines, generous whitespace, warm gold accents on deep dark surfaces. The vibe of a company that would describe a dogfighter as "a flowing work of technical art and mankind's most perfect killing machine" — sophistication with a hint of absurdity, which fits the satirical tone of ScolyMarket perfectly.
+The visual identity draws inspiration from **luxury spacecraft showrooms and high-end touring vessels** — think sleek, refined, premium materials. The aesthetic is "private yacht captain's lounge" rather than "industrial dockworker." Clean lines, generous whitespace, warm gold accents on deep dark surfaces. The vibe of a company that would describe a dogfighter as "a flowing work of technical art and mankind's most perfect killing machine" — sophistication with a hint of absurdity, which fits the satirical tone of AstroLedger perfectly.
 
 Design cues: BMW's visual language, luxury watch branding, premium automotive configurators, high-end hotel booking sites. Smooth, aerodynamic, designed — "thousands of hours went into the development of every individual element."
 
@@ -399,7 +399,7 @@ Skeleton UI uses a custom theme format. The theme is defined as a TypeScript obj
 ## 7. Project Structure
 
 ```
-scolymarket/
+astroledger/
 ├── backend/
 │   ├── go.mod                          # Go module definition
 │   ├── go.sum

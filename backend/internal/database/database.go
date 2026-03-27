@@ -8,8 +8,8 @@ import (
 	"log/slog"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver ("pgx")
-	"github.com/lhw/scolymarket/migrations"
-	pgmigrations "github.com/lhw/scolymarket/migrations/postgres"
+	"github.com/lhw/astroledger/migrations"
+	pgmigrations "github.com/lhw/astroledger/migrations/postgres"
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // SQLite driver ("sqlite")
 )

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 // CreditsService manages ScollyBucks™ balances.

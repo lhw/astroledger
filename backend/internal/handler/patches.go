@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/lhw/scolymarket/internal/db"
-	"github.com/lhw/scolymarket/internal/middleware"
+	"github.com/lhw/astroledger/internal/db"
+	"github.com/lhw/astroledger/internal/middleware"
 )
 
 // PatchHandler serves patch detection endpoints.

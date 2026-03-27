@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 // Comment is the service-layer comment type returned to API callers.

@@ -13,8 +13,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/lhw/scolymarket/internal/db"
-	"github.com/lhw/scolymarket/internal/service"
+	"github.com/lhw/astroledger/internal/db"
+	"github.com/lhw/astroledger/internal/service"
 )
 
 const (

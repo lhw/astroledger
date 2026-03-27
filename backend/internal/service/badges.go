@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 // BadgeDefinition describes a badge and when it should be awarded.

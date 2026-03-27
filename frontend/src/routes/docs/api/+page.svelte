@@ -1,5 +1,5 @@
 <svelte:head>
-	<title>Bot API Docs — ScolyMarket</title>
+	<title>Bot API Docs — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-3xl py-12">
@@ -7,7 +7,7 @@
 	<h1 class="text-3xl font-bold text-surface-900 tracking-tight mb-2">Bot API</h1>
 	<div class="w-10 h-px bg-primary-400 mb-6"></div>
 	<p class="text-surface-600 mb-10 max-w-xl">
-		ScolyMarket exposes a small HTTP API so you can read market data and place trades
+		AstroLedger exposes a small HTTP API so you can read market data and place trades
 		programmatically. All bot endpoints live under <code>/api/bot/</code> and are
 		authenticated with a Bearer token you generate on your <a href="/me" class="text-primary-600 hover:underline">profile page</a>.
 	</p>
@@ -163,10 +163,10 @@
 		<h2 class="doc-heading">Quick example</h2>
 		<p class="doc-body mb-4">Buy 5 YES shares on market 42, outcome 1, using <code>curl</code>:</p>
 		<pre class="doc-code">{`# 1. Check current price
-curl https://scolymarket.example.com/api/markets/42
+curl https://astroledger.example.com/api/markets/42
 
 # 2. Buy shares
-curl -X POST https://scolymarket.example.com/api/bot/trades \\
+curl -X POST https://astroledger.example.com/api/bot/trades \\
   -H "Authorization: Bearer smt_YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"market_id":42,"outcome_id":1,"action":"buy","shares":5}'`}</pre>

@@ -1,8 +1,8 @@
 version: '3'
 
 vars:
-  BINARY: bin/scolymarket
-  DB_PATH: '{{.DB_PATH | default "./scolymarket.db"}}'
+  BINARY: bin/astroledger
+  DB_PATH: '{{.DB_PATH | default "./astroledger.db"}}'
 
 tasks:
   default:

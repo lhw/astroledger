@@ -7,7 +7,7 @@ services:
     env_file: .env
     environment:
       # Override DB_PATH to write into the mounted volume
-      DB_PATH: /data/scolymarket.db
+      DB_PATH: /data/astroledger.db
       COOKIE_SECURE: "true"
     volumes:
       - db-data:/data

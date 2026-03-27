@@ -3,7 +3,7 @@ import { writable } from 'svelte/store';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 
-const STORAGE_KEY = 'scolymarket.theme';
+const STORAGE_KEY = 'astroledger.theme';
 
 export const themeMode = writable<ThemeMode>('system');
 

@@ -27,7 +27,7 @@ COPY --from=builder /app/package.json .
 EXPOSE 3000
 
 # ORIGIN must be set at runtime: the external HTTPS URL of the site
-# e.g. ORIGIN=https://scolymarket.example.com
+# e.g. ORIGIN=https://astroledger.example.com
 ENV NODE_ENV=production
 
 CMD ["node", "build/index.js"]

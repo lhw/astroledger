@@ -81,7 +81,7 @@ tasks:
       - |
         docker compose exec goatcounter goatcounter db create site \
           -db "sqlite+/data/goatcounter.db" \
-          -vhost "${GC_VHOST:-stats.scolymarket.example.com}" \
+          -vhost "${GC_VHOST:-stats.astroledger.example.com}" \
           -email "${GC_EMAIL:?GC_EMAIL is required}" \
           -password "${GC_PASSWORD:?GC_PASSWORD is required}"
 

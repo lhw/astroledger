@@ -53,7 +53,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Environment:       env("ENVIRONMENT", "development"),
 		Port:              env("PORT", "8080"),
-		DBPath:            envWithAliases([]string{"DB_PATH", "DATABASE_PATH"}, "./scolymarket.db"),
+		DBPath:            envWithAliases([]string{"DB_PATH", "DATABASE_PATH"}, "./astroledger.db"),
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		SCIDIssuer:        os.Getenv("SCID_ISSUER"),
 		SCIDClientID:      os.Getenv("SCID_CLIENT_ID"),

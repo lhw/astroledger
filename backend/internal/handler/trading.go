@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/lhw/scolymarket/internal/middleware"
-	"github.com/lhw/scolymarket/internal/service"
+	"github.com/lhw/astroledger/internal/middleware"
+	"github.com/lhw/astroledger/internal/service"
 )
 
 // TradingHandler handles buy/sell endpoints.

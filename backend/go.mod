@@ -1,4 +1,4 @@
-module github.com/lhw/scolymarket
+module github.com/lhw/astroledger
 
 go 1.26
 

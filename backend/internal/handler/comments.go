@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/lhw/scolymarket/internal/middleware"
-	"github.com/lhw/scolymarket/internal/service"
+	"github.com/lhw/astroledger/internal/middleware"
+	"github.com/lhw/astroledger/internal/service"
 )
 
 // CommentHandler serves the comment endpoints.

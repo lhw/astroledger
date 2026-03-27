@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/astroledger/internal/db"
 )
 
 // TradingService handles buy/sell operations.
