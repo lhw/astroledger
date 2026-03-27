@@ -70,39 +70,7 @@ export function maxAffordable(
 	return lo;
 }
 
-// ── Legacy binary helpers (for existing references) ─────────────────────
 
-/** @deprecated Use lmsrCostN instead. */
-export function lmsrCost(b: number, qYes: number, qNo: number): number {
-	return lmsrCostN(b, [qYes, qNo]);
-}
-
-/** @deprecated Use buyCost with shares array. */
-export function buyCostBinary(
-	b: number,
-	qYes: number,
-	qNo: number,
-	shares: number,
-	yes: boolean
-): number {
-	return buyCost(b, [qYes, qNo], yes ? 0 : 1, shares);
-}
-
-/** @deprecated Use sellRevenue with shares array. */
-export function sellRevenueBinary(
-	b: number,
-	qYes: number,
-	qNo: number,
-	shares: number,
-	yes: boolean
-): number {
-	return sellRevenue(b, [qYes, qNo], yes ? 0 : 1, shares);
-}
-
-/** @deprecated Use outcomeProb with shares array. */
-export function yesProb(b: number, qYes: number, qNo: number): number {
-	return outcomeProb(b, [qYes, qNo], 0);
-}
 
 /** @deprecated Use maxAffordable with shares array. */
 export function maxAffordableBinary(

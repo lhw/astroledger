@@ -93,6 +93,34 @@ func RequireMod(queries *db.Queries) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireAdmin rejects non-admin requests with 403 using the current DB role state.
+func RequireAdmin(queries *db.Queries) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := GetClaims(r)
+			if claims == nil {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+
+			user, err := queries.GetUserByID(r.Context(), claims.UserID)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+				return
+			}
+			if user.IsAdmin != 1 {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // GetClaims retrieves session claims from the context. Returns nil if unauthenticated.
 func GetClaims(r *http.Request) *Claims {
 	v, _ := r.Context().Value(UserClaimsKey).(*Claims)

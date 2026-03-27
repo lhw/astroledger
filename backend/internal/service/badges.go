@@ -347,19 +347,8 @@ var BadgeKeysMap = func() map[string]BadgeDefinition {
 	return m
 }()
 
-// StoreBadges returns only the purchasable badges in cost order.
-func StoreBadges() []BadgeDefinition {
-	var out []BadgeDefinition
-	for _, b := range AllBadges {
-		if b.Purchasable {
-			out = append(out, b)
-		}
-	}
-	return out
-}
-
-// AdmiralRankBadges returns the admiral rank badges in threshold order.
-func AdmiralRankBadges() []BadgeDefinition {
+// AdmiralRankBadgesCache caches the admiral rank badges (those with SpendThreshold > 0).
+var AdmiralRankBadgesCache = func() []BadgeDefinition {
 	var out []BadgeDefinition
 	for _, b := range AllBadges {
 		if b.SpendThreshold > 0 {
@@ -367,6 +356,11 @@ func AdmiralRankBadges() []BadgeDefinition {
 		}
 	}
 	return out
+}()
+
+// AdmiralRankBadges returns the admiral rank badges in threshold order.
+func AdmiralRankBadges() []BadgeDefinition {
+	return AdmiralRankBadgesCache
 }
 
 // BadgeService evaluates and awards badges after state-changing events.

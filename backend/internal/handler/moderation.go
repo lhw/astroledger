@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -18,12 +19,13 @@ import (
 // ModerationHandler handles report submission and mod-only report management.
 type ModerationHandler struct {
 	queries  *db.Queries
+	sqlDB    *sql.DB
 	badgeSvc *service.BadgeService
 }
 
 // NewModerationHandler creates a ModerationHandler.
-func NewModerationHandler(q *db.Queries, badgeSvc *service.BadgeService) *ModerationHandler {
-	return &ModerationHandler{queries: q, badgeSvc: badgeSvc}
+func NewModerationHandler(q *db.Queries, sqlDB *sql.DB, badgeSvc *service.BadgeService) *ModerationHandler {
+	return &ModerationHandler{queries: q, sqlDB: sqlDB, badgeSvc: badgeSvc}
 }
 
 // SubmitReport lets any authenticated user flag a market for mod review.
@@ -284,9 +286,19 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Check stock against release limit.
+	// Begin transaction for atomicity (prevents TOCTOU races).
+	tx, err := h.sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	defer tx.Rollback()
+
+	qTx := h.queries.WithBoundTx(tx)
+
+	// Check stock against release limit (within transaction).
 	if release.Stock != nil {
-		sold, err := h.queries.CountBadgePurchases(ctx, def.Key)
+		sold, err := qTx.CountBadgePurchases(ctx, def.Key)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
@@ -298,7 +310,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	}
 
 	// Fetch current balance.
-	user, err := h.queries.GetUserByID(ctx, claims.UserID)
+	user, err := qTx.GetUserByID(ctx, claims.UserID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
@@ -308,8 +320,8 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Check already owned.
-	badges, err := h.queries.GetUserBadges(ctx, claims.UserID)
+	// Check already owned (within transaction).
+	badges, err := qTx.GetUserBadges(ctx, claims.UserID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
@@ -321,17 +333,23 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Deduct balance, then award with purchase price for admiral rank tracking.
-	if err := h.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{
+	// Deduct balance.
+	if err := qTx.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{
 		Balance: -release.Price,
 		ID:      claims.UserID,
 	}); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	if err := h.queries.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price); err != nil {
-		// Refund on failure.
-		_ = h.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{Balance: release.Price, ID: claims.UserID})
+
+	// Award badge with purchase price for admiral rank tracking.
+	if err := qTx.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price); err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	// Commit transaction.
+	if err := tx.Commit(); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}

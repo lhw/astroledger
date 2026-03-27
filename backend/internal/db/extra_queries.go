@@ -319,12 +319,17 @@ func (q *Queries) CountMarketsWithYES(ctx context.Context, userID int64) (int64,
 	return n, err
 }
 
-// CountMarketsWithNO returns how many distinct markets the user has bought non-winning shares in.
-// (legacy compat — now counts markets where user holds any position)
+// CountMarketsWithNO returns how many distinct markets the user held a losing position in
+// (sold or held when resolved to a different outcome).
 func (q *Queries) CountMarketsWithNO(ctx context.Context, userID int64) (int64, error) {
 	var n int64
-	err := q.db.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT market_id) FROM positions WHERE user_id = ? AND shares > 0`, userID).Scan(&n)
+	err := q.db.QueryRowContext(ctx, `
+SELECT COUNT(DISTINCT p.market_id) FROM positions p
+JOIN markets m ON m.id = p.market_id
+WHERE p.user_id = ?
+  AND m.status = 'resolved'
+  AND p.outcome_id != m.resolved_outcome_id
+  AND p.shares > 0`, userID).Scan(&n)
 	return n, err
 }
 
@@ -742,9 +747,13 @@ func (q *Queries) ArchiveBadgeRelease(ctx context.Context, id int64) error {
 
 // AwardBadgePurchased inserts a purchased badge with the price paid, ignoring duplicates.
 func (q *Queries) AwardBadgePurchased(ctx context.Context, userID int64, badgeKey string, price int64) error {
-	_, err := q.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO user_badges (user_id, badge_key, purchase_price) VALUES (?, ?, ?)`,
-		userID, badgeKey, price)
+	var stmt string
+	if q.isPG() {
+		stmt = `INSERT INTO user_badges (user_id, badge_key, purchase_price) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`
+	} else {
+		stmt = `INSERT OR IGNORE INTO user_badges (user_id, badge_key, purchase_price) VALUES (?, ?, ?)`
+	}
+	_, err := q.db.ExecContext(ctx, stmt, userID, badgeKey, price)
 	return err
 }
 

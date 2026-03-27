@@ -82,7 +82,7 @@ func run() error {
 	userH := handler.NewUserHandler(queries)
 	marketH := handler.NewMarketHandler(queries, marketSvc)
 	tradeH := handler.NewTradingHandler(tradingSvc)
-	modH := handler.NewModerationHandler(queries, badgeSvc)
+	modH := handler.NewModerationHandler(queries, sqlDB, badgeSvc)
 	commentH := handler.NewCommentHandler(commentSvc)
 	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
 	patchH := handler.NewPatchHandler(queries)
@@ -228,9 +228,10 @@ func run() error {
 			r.Post("/mod/patches/{id}/notify", patchH.MarkNotified)
 		})
 
-		// Admin routes (admin check performed inside handlers)
+		// Admin routes (admin-only via middleware)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireAdmin(queries))
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
 			r.Post("/admin/weekly-payout", adminH.TriggerWeeklyPayout)
 			r.Get("/admin/users/search", adminH.SearchUsers)

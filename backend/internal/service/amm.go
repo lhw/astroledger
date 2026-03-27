@@ -95,36 +95,3 @@ func MaxAffordableShares(b float64, shares []float64, outcomeIdx int, budget int
 	}
 	return lo
 }
-
-// ── Legacy binary helpers (kept for tests that reference them directly) ───────
-
-// YESPrice returns the YES probability for a 2-outcome market.
-func YESPrice(b, qYes, qNo float64) float64 {
-	return OutcomeProb(b, []float64{qYes, qNo}, 0)
-}
-
-// PriceCents returns the YES price in whole ScollyBucks cents (1-99) for a binary market.
-func PriceCents(b, qYes, qNo float64) int64 {
-	return OutcomeProbCents(b, []float64{qYes, qNo}, 0)
-}
-
-// BuyCostBinary returns the cost to buy deltaShares of one side in a binary market.
-// isYes=true buys YES (index 0), false buys NO (index 1).
-// Convenience wrapper over BuyCost for callers that still use the binary 2-outcome model.
-func BuyCostBinary(b, qYes, qNo, deltaShares float64, isYes bool) int64 {
-	idx := 1
-	if isYes {
-		idx = 0
-	}
-	return BuyCost(b, []float64{qYes, qNo}, idx, deltaShares)
-}
-
-// SellRevenueBinary returns the revenue from selling deltaShares in a binary market.
-// Convenience wrapper over SellRevenue.
-func SellRevenueBinary(b, qYes, qNo, deltaShares float64, isYes bool) int64 {
-	idx := 1
-	if isYes {
-		idx = 0
-	}
-	return SellRevenue(b, []float64{qYes, qNo}, idx, deltaShares)
-}

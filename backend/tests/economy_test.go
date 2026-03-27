@@ -75,7 +75,7 @@ func TestEconomy_SingleUser_AllYes_ResolvesYes(t *testing.T) {
 	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
 	const shares = 10.0
-	cost := service.BuyCostBinary(defaultLiqB, 0, 0, shares, true)
+	cost := service.BuyCost(defaultLiqB, []float64{0, 0}, 0, shares)
 	_, err := tradingSvc.Execute(ctx, service.TradeInput{
 		UserID: bettor.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: shares,
 	})
@@ -150,7 +150,14 @@ func TestEconomy_ThreeUsers_MixedBets_ResolveYes(t *testing.T) {
 	totalCollected := int64(0)
 	for _, buy := range buys {
 		sideYes := buy.isYes
-		cost := service.BuyCostBinary(defaultLiqB, qYes, qNo, buy.shares, sideYes)
+		// Convert outcomeID to side index (0-based for multi-outcome AMM)
+		var sideidx int
+		if buy.isYes {
+			sideidx = 0 // YES outcome
+		} else {
+			sideidx = 1 // NO outcome
+		}
+		cost := service.BuyCost(defaultLiqB, []float64{qYes, qNo}, sideidx, buy.shares)
 		res, err := tradingSvc.Execute(ctx, service.TradeInput{
 			UserID: buy.userID, MarketID: m.ID, OutcomeID: buy.outcomeID,
 			Action: "buy", Shares: buy.shares,
@@ -245,7 +252,7 @@ func TestEconomy_HeavySingleBettor_TenKShares(t *testing.T) {
 	before := sumBalances(t, ctx, q, users...)
 
 	const shares = 10_000.0
-	cost := service.BuyCostBinary(defaultLiqB, 0, 0, shares, true)
+	cost := service.BuyCost(defaultLiqB, []float64{0, 0}, 0, shares)
 	payout := int64(shares) * payoutPerShareE
 
 	t.Logf("=== Whale buys %.0f YES shares ===", shares)
@@ -289,7 +296,13 @@ func TestEconomy_SellBeforeResolution(t *testing.T) {
 
 	outs, err := q.GetOutcomesByMarketID(ctx, m.ID)
 	must(t, err, "get outcomes after buy")
-	sellRev := service.SellRevenueBinary(defaultLiqB, outs[0].Shares, outs[1].Shares, shares, true)
+
+	// Extract shares from outcomes for AMM calculation
+	shareAmounts := make([]float64, len(outs))
+	for i, out := range outs {
+		shareAmounts[i] = out.Shares
+	}
+	sellRev := service.SellRevenue(defaultLiqB, shareAmounts, 0, shares)
 
 	sellRes, err := tradingSvc.Execute(ctx, service.TradeInput{
 		UserID: trader.ID, MarketID: m.ID, OutcomeID: yesID, Action: "sell", Shares: shares,
@@ -372,7 +385,7 @@ func TestEconomy_PriceMovesAfterTrade(t *testing.T) {
 	m := createActiveMarket(t, ctx, marketSvc, "eco: price impact", mod.ID, mod.ID)
 	yesID, _ := marketOutcomes(t, ctx, q, m.ID)
 
-	prevPrice := service.YESPrice(defaultLiqB, 0, 0)
+	prevPrice := service.OutcomeProb(defaultLiqB, []float64{0, 0}, 0)
 	qYes := 0.0
 	for i, lot := range []float64{2, 2, 2, 2, 2} {
 		_, err := tradingSvc.Execute(ctx, service.TradeInput{
@@ -384,7 +397,7 @@ func TestEconomy_PriceMovesAfterTrade(t *testing.T) {
 		must(t, err, "get outcomes")
 		mkt, err := q.GetMarketByID(ctx, m.ID)
 		must(t, err, "get market")
-		newPrice := service.YESPrice(mkt.LiquidityParam, outs[0].Shares, outs[1].Shares)
+		newPrice := service.OutcomeProb(mkt.LiquidityParam, []float64{outs[0].Shares, outs[1].Shares}, 0)
 		t.Logf("lot %d (qYes=%.0f): YES price = %.2f%% (was %.2f%%)", i+1, qYes, newPrice*100, prevPrice*100)
 		if newPrice <= prevPrice {
 			t.Errorf("lot %d: price did not increase after buying YES (%.4f -> %.4f)", i+1, prevPrice, newPrice)
@@ -457,7 +470,7 @@ func TestEconomy_WinnerPayoutEquality(t *testing.T) {
 	must(t, err, "get outcomes after early buy")
 	mkt, err := q.GetMarketByID(ctx, m.ID)
 	must(t, err, "get mkt")
-	lateCostPre := service.BuyCostBinary(mkt.LiquidityParam, outs[0].Shares, outs[1].Shares, 5, true)
+	lateCostPre := service.BuyCost(mkt.LiquidityParam, []float64{outs[0].Shares, outs[1].Shares}, 0, 5)
 	_, err = tradingSvc.Execute(ctx, service.TradeInput{
 		UserID: late.ID, MarketID: m.ID, OutcomeID: yesID, Action: "buy", Shares: 5,
 	})
@@ -485,8 +498,8 @@ func TestEconomy_PerShareCostMatchesProbability(t *testing.T) {
 		{0, 30}, // ~25%
 	}
 	for _, tc := range cases {
-		prob := service.YESPrice(defaultLiqB, tc.qYes, tc.qNo)
-		cost := service.BuyCostBinary(defaultLiqB, tc.qYes, tc.qNo, 1, true)
+		prob := service.OutcomeProb(defaultLiqB, []float64{tc.qYes, tc.qNo}, 0)
+		cost := service.BuyCost(defaultLiqB, []float64{tc.qYes, tc.qNo}, 0, 1)
 		expected := prob * payoutPerShareE
 		if float64(cost) < expected-20 || float64(cost) > expected+20 {
 			t.Errorf("at qYes=%.0f qNo=%.0f (p=%.0f%%): BuyCost=%d bUEC, want ~%.0f bUEC",

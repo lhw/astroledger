@@ -139,7 +139,7 @@ func TestFullMarketLifecycle(t *testing.T) {
 	// Initial state: b=100, all shares 0, p=50%
 	yesID, noID := marketOutcomes(t, ctx, q, m.ID)
 	const yesShares = 10.0
-	expectedYesCost := service.BuyCostBinary(100.0, 0.0, 0.0, yesShares, true)
+	expectedYesCost := service.BuyCost(100.0, []float64{0.0, 0.0}, 0, yesShares)
 
 	yesResult, err := tradingSvc.Execute(ctx, service.TradeInput{
 		UserID:    yesBettor.ID,
@@ -160,7 +160,7 @@ func TestFullMarketLifecycle(t *testing.T) {
 	// ── Buy NO shares ─────────────────────────────────────────────────────────
 	// After YES trade: qYes=10, qNo=0.
 	const noShares = 10.0
-	expectedNoCost := service.BuyCostBinary(100.0, yesShares, 0.0, noShares, false)
+	expectedNoCost := service.BuyCost(100.0, []float64{yesShares, 0.0}, 1, noShares)
 
 	noResult, err := tradingSvc.Execute(ctx, service.TradeInput{
 		UserID:    noBettor.ID,
@@ -217,7 +217,7 @@ func TestSellShares(t *testing.T) {
 
 	// Buy 8 YES (20 shares would exceed the 1000 bUEC default balance at correct prices).
 	const shares = 8.0
-	buyCost := service.BuyCostBinary(100.0, 0.0, 0.0, shares, true)
+	buyCost := service.BuyCost(100.0, []float64{0.0, 0.0}, 0, shares)
 
 	buyResult, err := tradingSvc.Execute(ctx, service.TradeInput{
 		UserID:    trader.ID,
@@ -232,7 +232,7 @@ func TestSellShares(t *testing.T) {
 	// Sell all YES back — get current YES outcome shares from DB.
 	outcomes, err := q.GetOutcomesByMarketID(ctx, m.ID)
 	must(t, err, "get outcomes for sell")
-	sellRevenue := service.SellRevenueBinary(100.0, outcomes[0].Shares, outcomes[1].Shares, shares, true)
+	sellRevenue := service.SellRevenue(100.0, []float64{outcomes[0].Shares, outcomes[1].Shares}, 0, shares)
 
 	sellResult, err := tradingSvc.Execute(ctx, service.TradeInput{
 		UserID:    trader.ID,
@@ -467,7 +467,11 @@ func TestAMMMath(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cost := service.BuyCostBinary(b, tc.qYes, tc.qNo, tc.shares, tc.sideYes)
+			sideidx := 0
+			if !tc.sideYes {
+				sideidx = 1
+			}
+			cost := service.BuyCost(b, []float64{tc.qYes, tc.qNo}, sideidx, tc.shares)
 			if cost <= 0 {
 				t.Errorf("BuyCostBinary should be positive, got %d", cost)
 			}
@@ -480,7 +484,7 @@ func TestAMMMath(t *testing.T) {
 				newYes = tc.qYes
 				newNo = tc.qNo + tc.shares
 			}
-			rev := service.SellRevenueBinary(b, newYes, newNo, tc.shares, tc.sideYes)
+			rev := service.SellRevenue(b, []float64{newYes, newNo}, sideidx, tc.shares)
 			if rev <= 0 {
 				t.Errorf("SellRevenueBinary should be positive, got %d", rev)
 			}
