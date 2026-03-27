@@ -30,9 +30,8 @@
   },
   "dependencies": {
     "@internationalized/date": "^3.12.0",
-    "@types/dompurify": "^3.0.0",
     "bits-ui": "^2.16.4",
-    "dompurify": "^3.2.4",
+    "isomorphic-dompurify": "^2.36.0",
     "lucide-svelte": "^1.0.1",
     "marked": "^15.0.12"
   }
