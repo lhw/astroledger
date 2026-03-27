@@ -163,9 +163,19 @@ func (s *CommentService) ListComments(ctx context.Context, marketID, viewerID in
 }
 
 // DeleteComment hard-deletes a comment (moderator action).
-func (s *CommentService) DeleteComment(ctx context.Context, commentID int64) error {
+func (s *CommentService) DeleteComment(ctx context.Context, commentID, modUserID int64) error {
 	if err := s.q.DeleteComment(ctx, commentID); err != nil {
 		return fmt.Errorf("delete comment %d: %w", commentID, err)
+	}
+	note := "deleted comment"
+	if err := s.q.LogModAudit(ctx, db.LogModAuditParams{
+		ActionType: "delete_comment",
+		TargetType: "comment",
+		TargetID:   commentID,
+		ModUserID:  modUserID,
+		Note:       &note,
+	}); err != nil {
+		slog.Warn("mod audit log failed", "action", "delete_comment", "comment_id", commentID, "mod_id", modUserID, "err", err)
 	}
 	return nil
 }

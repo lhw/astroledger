@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -88,6 +89,12 @@ func (h *ModerationHandler) DismissReport(w http.ResponseWriter, r *http.Request
 }
 
 func (h *ModerationHandler) setReportStatus(w http.ResponseWriter, r *http.Request, status string) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid report id")
@@ -96,6 +103,16 @@ func (h *ModerationHandler) setReportStatus(w http.ResponseWriter, r *http.Reque
 	if err := h.queries.UpdateReportStatus(r.Context(), id, status); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	note := "report marked " + status
+	if err := h.queries.LogModAudit(r.Context(), db.LogModAuditParams{
+		ActionType: "report_" + status,
+		TargetType: "report",
+		TargetID:   id,
+		ModUserID:  claims.UserID,
+		Note:       &note,
+	}); err != nil {
+		slog.Warn("mod audit log failed", "action", "report_"+status, "report_id", id, "mod_id", claims.UserID, "err", err)
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": status})
 }

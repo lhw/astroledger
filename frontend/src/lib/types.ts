@@ -90,6 +90,8 @@ export interface Market {
 	resolution_evidence: string | null;
 	/** Comment count (included in list view only). */
 	comment_count?: number;
+	/** Matching auto-filter rules (shown in mod queue). */
+	auto_filter_matches?: string[];
 	/** All outcomes for this market */
 	outcomes: MarketOutcome[];
 }
@@ -259,6 +261,7 @@ export interface Report {
 	reporter_name: string;
 	market_id: number;
 	market_title: string;
+	category: MarketCategory;
 	reason: string;
 	status: string;
 	created_at: string;

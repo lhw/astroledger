@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getMe, getMyPositions, getMyTrades, getMyBadges, logout, setActiveBadge } from '$lib/api';
+	import { getMyPositions, getMyTrades, getMyBadges, logout, setActiveBadge } from '$lib/api';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
+	import Tooltip from '$lib/components/Tooltip.svelte';
+	import BadgePill from '$lib/components/BadgePill.svelte';
 	import type { Position, TradeWithMarket, Badge } from '$lib/types';
 
 	let positions = $state<Position[]>([]);
@@ -11,26 +13,56 @@
 	let activeBadgeKey = $state<string>('');
 	let badgeSaving = $state(false);
 	let loading = $state(true);
+	let positionsLoading = $state(false);
+	let tradesLoading = $state(false);
+	let badgesLoading = $state(false);
 	let error = $state('');
 
 	onMount(async () => {
-		if (!$isLoggedIn) { loading = false; return; }
-		try {
-			const [, posRes, tradeRes, badgeRes] = await Promise.all([
-				Promise.resolve(), // placeholder
-				getMyPositions(),
-				getMyTrades(0),
-				getMyBadges()
-			]);
-			positions = posRes;
-			trades = tradeRes;
-			badges = badgeRes;
-			activeBadgeKey = $currentUser?.active_badge_key ?? '';
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		} finally {
+		if (!$isLoggedIn) {
 			loading = false;
+			return;
 		}
+
+		activeBadgeKey = $currentUser?.active_badge_key ?? '';
+		loading = false;
+		error = '';
+
+		positionsLoading = true;
+		tradesLoading = true;
+		badgesLoading = true;
+
+		const jobs = [
+			(async () => {
+				try {
+					positions = await getMyPositions();
+				} catch (e) {
+					error ||= e instanceof Error ? e.message : String(e);
+				} finally {
+					positionsLoading = false;
+				}
+			})(),
+			(async () => {
+				try {
+					trades = await getMyTrades(0);
+				} catch (e) {
+					error ||= e instanceof Error ? e.message : String(e);
+				} finally {
+					tradesLoading = false;
+				}
+			})(),
+			(async () => {
+				try {
+					badges = await getMyBadges();
+				} catch (e) {
+					error ||= e instanceof Error ? e.message : String(e);
+				} finally {
+					badgesLoading = false;
+				}
+			})()
+		];
+
+		await Promise.allSettled(jobs);
 	});
 
 	const openPositions = $derived(positions.filter(p => p.market_status !== 'resolved'));
@@ -145,7 +177,9 @@
 				<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">Badges</h2>
 				<a href="/fomo" class="text-xs text-primary-600 hover:text-primary-800 font-semibold uppercase tracking-wider">FOMO Store →</a>
 			</div>
-			{#if badges.length === 0}
+			{#if badgesLoading}
+				<div class="text-surface-400 text-sm py-4">Loading badges…</div>
+			{:else if badges.length === 0}
 				<div class="text-surface-400 text-sm py-4">
 					No badges yet. Trade more to earn them — or visit the <a href="/fomo" class="text-primary-600 hover:underline">FOMO Store</a>!
 				</div>
@@ -154,21 +188,16 @@
 				<div class="flex flex-wrap gap-3">
 					{#each badges as badge}
 						{@const isActive = activeBadgeKey === badge.badge_key}
-						<button
-							class="badge-pill tier-{badge.tier} {isActive ? 'badge-active' : ''} badge-btn"
-							class:opacity-40={badgeSaving && !isActive}
-							title={isActive ? `Active — click to unset` : badge.description}
-							onclick={() => pickBadge(badge.badge_key)}
-							disabled={badgeSaving}
-						>
-							<span class="badge-pip">
-								{#if badge.tier === 5}★{:else if badge.tier === 4}◈{:else if badge.tier === 3}◆{:else if badge.tier === 2}●{:else}▲{/if}
-							</span>
-							<span class="badge-pill-title">{badge.title}</span>
-							{#if isActive}
-								<span class="badge-active-dot" title="Active">✓</span>
-							{/if}
-						</button>
+						<Tooltip text={isActive ? 'Active — click to unset' : badge.description}>
+							<button
+								class="badge-btn"
+								class:opacity-40={badgeSaving && !isActive}
+								onclick={() => pickBadge(badge.badge_key)}
+								disabled={badgeSaving}
+							>
+								<BadgePill tier={badge.tier} title={badge.title} active={isActive} showCheck={isActive} />
+							</button>
+						</Tooltip>
 					{/each}
 				</div>
 			{/if}
@@ -179,7 +208,9 @@
 		<section class="mb-8">
 			<!-- Open positions -->
 			<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600 mb-4">Open Positions</h2>
-			{#if openPositions.length === 0}
+			{#if positionsLoading}
+				<div class="text-surface-400 text-sm py-4">Loading positions…</div>
+			{:else if openPositions.length === 0}
 				<div class="text-surface-400 text-sm py-4">No open positions yet. Go make some bets!</div>
 			{:else}
 				<div class="space-y-2 mb-6">
@@ -244,7 +275,9 @@
 		<!-- Recent trades -->
 		<section>
 			<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600 mb-4">Recent Trades</h2>
-			{#if trades.length === 0}
+			{#if tradesLoading}
+				<div class="text-surface-400 text-sm py-4">Loading trades…</div>
+			{:else if trades.length === 0}
 				<div class="text-surface-400 text-sm py-4">No trades yet.</div>
 			{:else}
 				<div class="sc-card overflow-hidden">
@@ -286,94 +319,18 @@
 </div>
 
 <style>
-/* ─── Badge pills for profile page ──────────────────────────────── */
-.badge-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	padding: 0.35rem 0.85rem 0.35rem 0.65rem;
-	border-radius: 9999px;
-	font-size: 0.75rem;
-	font-weight: 700;
-	transition: transform 0.15s ease, box-shadow 0.15s ease;
-	cursor: default;
-}
+/* ─── Badge button wrapper (visual handled by BadgePill component) ─ */
 .badge-btn {
 	cursor: pointer;
 	border: none;
-	background: inherit;
-}
-.badge-btn:hover { transform: scale(1.06); }
-.badge-btn:not(.badge-active):hover { filter: brightness(0.92); }
-.badge-active {
-	outline: 2px solid currentColor;
-	outline-offset: 2px;
-	box-shadow: 0 0 0 4px rgba(99,102,241,0.15);
-}
-.badge-active-dot {
-	font-size: 0.6rem;
-	font-weight: 900;
-	background: #22c55e;
-	color: #fff;
-	border-radius: 50%;
-	width: 1rem;
-	height: 1rem;
+	background: transparent;
+	padding: 0;
 	display: inline-flex;
 	align-items: center;
-	justify-content: center;
-	margin-left: 0.1rem;
+	transition: transform 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
 }
-.badge-pip {
-	font-size: 0.75rem;
-	line-height: 1;
-}
-.badge-pill-title {
-	letter-spacing: 0.02em;
-}
-
-/* T1 Common */
-.badge-pill.tier-1 {
-	background: #f5ede0;
-	border: 1.5px solid #d4b896;
-	color: #7a5030;
-}
-/* T2 Uncommon */
-.badge-pill.tier-2 {
-	background: linear-gradient(90deg, #fef3d0, #fde68a);
-	border: 1.5px solid #e6c96b;
-	color: #92400e;
-}
-/* T3 Rare */
-.badge-pill.tier-3 {
-	background: linear-gradient(90deg, #fef9e0, #fef3c0);
-	border: 1.5px solid #f0c040;
-	color: #6b2d06;
-	box-shadow: 0 0 6px rgba(240,192,64,0.3);
-}
-/* T4 Epic */
-.badge-pill.tier-4 {
-	background: linear-gradient(90deg, #1c1008, #2d1c00);
-	border: 1.5px solid #fbbf24;
-	color: #fef3c7;
-	box-shadow: 0 0 8px rgba(251,191,36,0.4);
-	animation: pill-glow 3s ease-in-out infinite alternate;
-}
-@keyframes pill-glow {
-	from { box-shadow: 0 0 6px rgba(251,191,36,0.35); }
-	to   { box-shadow: 0 0 14px rgba(251,191,36,0.65); }
-}
-/* T5 Legendary */
-.badge-pill.tier-5 {
-	background: linear-gradient(90deg, #0d0d0d, #1a1200);
-	border: 1.5px solid #ffd700;
-	color: #ffd700;
-	text-shadow: 0 0 6px rgba(255,215,0,0.5);
-	box-shadow: 0 0 12px rgba(255,215,0,0.35);
-	animation: pill-legendary 4s linear infinite;
-}
-@keyframes pill-legendary {
-	from { box-shadow: 0 0 10px rgba(255,215,0,0.3), 0 0 0 1.5px #ffd700; }
-	50%  { box-shadow: 0 0 18px rgba(200,100,255,0.4), 0 0 0 1.5px #c880ff; }
-	to   { box-shadow: 0 0 10px rgba(255,215,0,0.3), 0 0 0 1.5px #ffd700; }
+.badge-btn:hover:not(:disabled) {
+	transform: scale(1.06);
+	filter: brightness(0.92);
 }
 </style>

@@ -4,9 +4,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -275,12 +280,32 @@ func (h *MarketHandler) GetTrades(w http.ResponseWriter, r *http.Request) {
 
 // ListPending returns markets awaiting moderation review.
 func (h *MarketHandler) ListPending(w http.ResponseWriter, r *http.Request) {
+	rules, err := h.queries.GetEnabledAutofilterRules(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
 	markets, err := h.queries.ListPendingMarkets(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	respondJSON(w, http.StatusOK, markets)
+
+	type pendingMarketWithMatches struct {
+		db.ListPendingMarketsRow
+		AutoFilterMatches []string `json:"auto_filter_matches"`
+	}
+
+	result := make([]pendingMarketWithMatches, len(markets))
+	for i, m := range markets {
+		result[i] = pendingMarketWithMatches{
+			ListPendingMarketsRow: m,
+			AutoFilterMatches:     autoFilterMatches(rules, m.Title+" "+m.Description),
+		}
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 
 // Approve approves a pending market.
@@ -416,6 +441,12 @@ func (h *MarketHandler) ListResolutionRequested(w http.ResponseWriter, r *http.R
 
 // DenyResolution rejects a resolution request and sets the market back to active.
 func (h *MarketHandler) DenyResolution(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid market id")
@@ -436,5 +467,49 @@ func (h *MarketHandler) DenyResolution(w http.ResponseWriter, r *http.Request) {
 	}
 	// Clean up the request details so a fresh request can be filed later.
 	_ = h.queries.DeleteResolutionRequestDetails(r.Context(), id)
+
+	note := "resolution request denied"
+	if err := h.queries.LogModAudit(r.Context(), db.LogModAuditParams{
+		ActionType: "deny_resolution",
+		TargetType: "market",
+		TargetID:   id,
+		ModUserID:  claims.UserID,
+		Note:       &note,
+	}); err != nil {
+		slog.Warn("mod audit log failed", "action", "deny_resolution", "market_id", id, "mod_id", claims.UserID, "err", err)
+	}
+
 	respondJSON(w, http.StatusOK, map[string]string{"status": "active"})
+}
+
+func autoFilterMatches(rules []db.GetEnabledAutofilterRulesRow, text string) []string {
+	lower := strings.ToLower(text)
+	trimmed := strings.TrimSpace(text)
+	matches := make([]string, 0)
+
+	for _, rule := range rules {
+		switch rule.RuleType {
+		case "keyword":
+			if strings.Contains(lower, strings.ToLower(rule.Value)) {
+				matches = append(matches, fmt.Sprintf("keyword: %s", rule.Value))
+			}
+		case "regex":
+			re, err := regexp.Compile(rule.Value)
+			if err != nil {
+				continue
+			}
+			if re.MatchString(lower) {
+				matches = append(matches, fmt.Sprintf("regex: %s", rule.Value))
+			}
+		case "min_length":
+			var minLen int
+			if _, err := fmt.Sscanf(rule.Value, "%d", &minLen); err == nil {
+				if utf8.RuneCountInString(trimmed) < minLen {
+					matches = append(matches, fmt.Sprintf("min_length: %d", minLen))
+				}
+			}
+		}
+	}
+
+	return matches
 }

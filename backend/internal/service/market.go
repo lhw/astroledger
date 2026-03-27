@@ -127,6 +127,16 @@ func (s *MarketService) ApproveMarket(ctx context.Context, marketID, modID int64
 	}); err != nil {
 		return fmt.Errorf("update market status: %w", err)
 	}
+	note := "approved pending market"
+	if err := s.queries.LogModAudit(ctx, db.LogModAuditParams{
+		ActionType: "approve",
+		TargetType: "market",
+		TargetID:   marketID,
+		ModUserID:  modID,
+		Note:       &note,
+	}); err != nil {
+		slog.Warn("mod audit log failed", "action", "approve", "market_id", marketID, "mod_id", modID, "err", err)
+	}
 	// Award a 50 bUEC creator bonus when the market goes live.
 	if err := s.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{
 		Balance: 50,
@@ -160,6 +170,16 @@ func (s *MarketService) RejectMarket(ctx context.Context, marketID, modID int64)
 		ID:     marketID,
 	}); err != nil {
 		return fmt.Errorf("update market status: %w", err)
+	}
+	note := "rejected pending market"
+	if err := s.queries.LogModAudit(ctx, db.LogModAuditParams{
+		ActionType: "reject",
+		TargetType: "market",
+		TargetID:   marketID,
+		ModUserID:  modID,
+		Note:       &note,
+	}); err != nil {
+		slog.Warn("mod audit log failed", "action", "reject", "market_id", marketID, "mod_id", modID, "err", err)
 	}
 	slog.Info("market rejected", "market_id", marketID, "mod_id", modID)
 	return nil
@@ -231,6 +251,16 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 			return fmt.Errorf("payout user %d: %w", pos.UserID, err)
 		}
 		slog.Info("payout", "user_id", pos.UserID, "outcome_id", pos.OutcomeID, "payout", payout)
+	}
+	resolveNote := fmt.Sprintf("resolved market with outcome_id=%d", inp.WinningOutcomeID)
+	if err := qTx.LogModAudit(ctx, db.LogModAuditParams{
+		ActionType: "resolve",
+		TargetType: "market",
+		TargetID:   inp.MarketID,
+		ModUserID:  inp.ModID,
+		Note:       &resolveNote,
+	}); err != nil {
+		return fmt.Errorf("log mod audit: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

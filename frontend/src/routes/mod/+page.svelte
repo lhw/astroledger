@@ -16,6 +16,7 @@
 	import { isModerator } from '$lib/stores/auth';
 	import type { Market, ResolutionRequestMarket, Report, DetectedPatch } from '$lib/types';
 	import { CATEGORY_LABELS } from '$lib/categories';
+	import TabBar from '$lib/components/TabBar.svelte';
 
 	let pending = $state<(Market & { creator_name: string })[]>([]);
 	let resolutionRequests = $state<ResolutionRequestMarket[]>([]);
@@ -26,10 +27,64 @@
 	let actionError = $state('');
 	let actingId = $state<number | null>(null);
 	let activeTab = $state<'review' | 'resolution' | 'reports'>('review');
+	let keywordFilter = $state('');
+	let categoryFilter = $state('all');
+	let reporterFilter = $state('all');
+	let selectedPending = $state<Record<number, boolean>>({});
+	let bulkAction = $state<'approve' | 'reject' | null>(null);
+	let bulkSummary = $state<string | null>(null);
 	// Per-market evidence links for the resolve action.
 	let resolveEvidence = $state<Record<number, string>>({});
 
 	let unseenPatches = $derived(patches.filter((p) => p.notified === 0));
+	let categoryOptions = $derived(
+		[...new Set([...pending.map((m) => m.category), ...resolutionRequests.map((m) => m.category), ...reports.map((r) => r.category)])]
+			.sort((a, b) => a.localeCompare(b))
+	);
+	let reporterOptions = $derived(
+		[...new Set(reports.map((r) => r.reporter_name))].sort((a, b) => a.localeCompare(b))
+	);
+	let keyword = $derived(keywordFilter.trim().toLowerCase());
+
+	function includesKeyword(parts: Array<string | null | undefined>) {
+		if (!keyword) return true;
+		return parts.some((p) => (p ?? '').toLowerCase().includes(keyword));
+	}
+
+	let filteredPending = $derived(
+		pending.filter((market) => {
+			if (categoryFilter !== 'all' && market.category !== categoryFilter) return false;
+			return includesKeyword([market.title, market.description, market.resolution_criteria, market.creator_name]);
+		})
+	);
+
+	let filteredResolutionRequests = $derived(
+		resolutionRequests.filter((rr) => {
+			if (categoryFilter !== 'all' && rr.category !== categoryFilter) return false;
+			return includesKeyword([
+				rr.title,
+				rr.description,
+				rr.resolution_criteria,
+				rr.creator_name,
+				rr.requester_name,
+				rr.request_note,
+				rr.request_link
+			]);
+		})
+	);
+
+	let filteredReports = $derived(
+		reports.filter((report) => {
+			if (categoryFilter !== 'all' && report.category !== categoryFilter) return false;
+			if (reporterFilter !== 'all' && report.reporter_name !== reporterFilter) return false;
+			return includesKeyword([report.market_title, report.reason, report.reporter_name]);
+		})
+	);
+
+	let selectedPendingIds = $derived(
+		filteredPending.map((m) => m.id).filter((id) => selectedPending[id])
+	);
+	let selectedPendingCount = $derived(selectedPendingIds.length);
 
 	onMount(async () => {
 		await load();
@@ -38,6 +93,7 @@
 	async function load() {
 		loading = true;
 		error = '';
+		bulkSummary = null;
 		try {
 			[pending, resolutionRequests, reports, patches] = await Promise.all([
 				listPendingMarkets(),
@@ -49,6 +105,7 @@
 			if (pending.length === 0 && resolutionRequests.length > 0) {
 				activeTab = 'resolution';
 			}
+			selectedPending = {};
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -97,6 +154,50 @@
 	async function doMarkSeen(id: number) {
 		await withAction(id, () => markPatchNotified(id));
 	}
+
+	function togglePendingSelection(id: number) {
+		selectedPending = { ...selectedPending, [id]: !selectedPending[id] };
+	}
+
+	function toggleAllFilteredPending() {
+		const allSelected = filteredPending.length > 0 && selectedPendingCount === filteredPending.length;
+		const next = { ...selectedPending };
+		for (const market of filteredPending) {
+			next[market.id] = !allSelected;
+		}
+		selectedPending = next;
+	}
+
+	async function doBulkPending(action: 'approve' | 'reject') {
+		if (selectedPendingIds.length === 0) return;
+		bulkAction = action;
+		bulkSummary = null;
+		actionError = '';
+
+		let success = 0;
+		const failed: number[] = [];
+		for (const id of selectedPendingIds) {
+			try {
+				if (action === 'approve') {
+					await approveMarket(id);
+				} else {
+					await rejectMarket(id);
+				}
+				success += 1;
+			} catch {
+				failed.push(id);
+			}
+		}
+
+		if (failed.length === 0) {
+			bulkSummary = `${action === 'approve' ? 'Approved' : 'Rejected'} ${success} market${success === 1 ? '' : 's'}.`;
+		} else {
+			actionError = `${action === 'approve' ? 'Approve' : 'Reject'} completed with errors. Failed IDs: ${failed.join(', ')}`;
+		}
+
+		bulkAction = null;
+		await load();
+	}
 </script>
 
 <svelte:head>
@@ -121,6 +222,9 @@
 	{:else}
 		{#if actionError}
 			<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{actionError}</div>
+		{/if}
+		{#if bulkSummary}
+			<div class="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm mb-4">{bulkSummary}</div>
 		{/if}
 
 		<!-- New Patch Detections -->
@@ -179,57 +283,117 @@
 			{/if}
 		</div>
 
+		<!-- Filters -->
+		<div class="sc-card p-4 mb-6 space-y-3">
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+				<div>
+					<label for="mod-filter-keyword" class="block text-[10px] font-bold uppercase tracking-[0.15em] text-surface-500 mb-1">Keyword</label>
+					<input
+						id="mod-filter-keyword"
+						type="text"
+						bind:value={keywordFilter}
+						placeholder="Search title, criteria, notes, reason..."
+						class="sc-input text-sm"
+					/>
+				</div>
+				<div>
+					<label for="mod-filter-category" class="block text-[10px] font-bold uppercase tracking-[0.15em] text-surface-500 mb-1">Category</label>
+					<select id="mod-filter-category" bind:value={categoryFilter} class="sc-input text-sm">
+						<option value="all">All categories</option>
+						{#each categoryOptions as cat}
+							<option value={cat}>{CATEGORY_LABELS[cat] ?? cat}</option>
+						{/each}
+					</select>
+				</div>
+				<div>
+					<label for="mod-filter-reporter" class="block text-[10px] font-bold uppercase tracking-[0.15em] text-surface-500 mb-1">Reporter (Reports tab)</label>
+					<select id="mod-filter-reporter" bind:value={reporterFilter} class="sc-input text-sm">
+						<option value="all">All reporters</option>
+						{#each reporterOptions as reporter}
+							<option value={reporter}>{reporter}</option>
+						{/each}
+					</select>
+				</div>
+			</div>
+			<div class="flex items-center justify-between text-xs text-surface-500">
+				<span>
+					Pending: {filteredPending.length}/{pending.length} ·
+					Resolution: {filteredResolutionRequests.length}/{resolutionRequests.length} ·
+					Reports: {filteredReports.length}/{reports.length}
+				</span>
+				<button
+					onclick={() => {
+						keywordFilter = '';
+						categoryFilter = 'all';
+						reporterFilter = 'all';
+					}}
+					class="text-primary-600 hover:text-primary-700 font-semibold uppercase tracking-wider"
+				>
+					Reset
+				</button>
+			</div>
+		</div>
+
 		<!-- Tabs -->
-		<div class="flex border-b border-surface-200 mb-6">
-			<button
-				onclick={() => (activeTab = 'review')}
-				class="px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] border-b-2 transition-colors
-					{activeTab === 'review'
-						? 'border-primary-500 text-primary-700'
-						: 'border-transparent text-surface-500 hover:text-surface-700 hover:border-surface-300'}"
-			>
-				Pending Review
-				{#if pending.length > 0}
-					<span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-100 text-primary-700 text-[10px] font-bold">{pending.length}</span>
-				{/if}
-			</button>
-			<button
-				onclick={() => (activeTab = 'resolution')}
-				class="px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] border-b-2 transition-colors
-					{activeTab === 'resolution'
-						? 'border-amber-500 text-amber-700'
-						: 'border-transparent text-surface-500 hover:text-surface-700 hover:border-surface-300'}"
-			>
-				Resolution Requests
-				{#if resolutionRequests.length > 0}
-					<span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">{resolutionRequests.length}</span>
-				{/if}
-			</button>
-			<button
-				onclick={() => (activeTab = 'reports')}
-				class="px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] border-b-2 transition-colors
-					{activeTab === 'reports'
-						? 'border-red-500 text-red-700'
-						: 'border-transparent text-surface-500 hover:text-surface-700 hover:border-surface-300'}"
-			>
-				Reports
-				{#if reports.length > 0}
-					<span class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">{reports.length}</span>
-				{/if}
-			</button>
+		<div class="mb-6">
+			<TabBar
+				tabs={[
+					{ id: 'review', label: 'Pending Review', badge: pending.length || undefined },
+					{ id: 'resolution', label: 'Resolution Requests', badge: resolutionRequests.length || undefined },
+					{ id: 'reports', label: 'Reports', badge: reports.length || undefined }
+				]}
+				bind:active={activeTab}
+			/>
 		</div>
 
 		<!-- Tab: Pending Review -->
 		{#if activeTab === 'review'}
 			{#if pending.length === 0}
 				<div class="sc-card p-8 text-center text-surface-400 text-sm">No markets pending review.</div>
+			{:else if filteredPending.length === 0}
+				<div class="sc-card p-8 text-center text-surface-400 text-sm">No pending markets match the current filters.</div>
 			{:else}
+				<div class="mb-3 sc-card p-3 flex flex-wrap items-center justify-between gap-3">
+					<div class="flex items-center gap-3">
+						<label class="inline-flex items-center gap-2 text-xs text-surface-600">
+							<input
+								type="checkbox"
+								checked={filteredPending.length > 0 && selectedPendingCount === filteredPending.length}
+								onchange={toggleAllFilteredPending}
+							/>
+							Select all filtered
+						</label>
+						<span class="text-xs text-surface-500">{selectedPendingCount} selected</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<button
+							onclick={() => doBulkPending('approve')}
+							disabled={selectedPendingCount === 0 || bulkAction !== null || actingId !== null}
+							class="btn btn-sm bg-green-600 hover:bg-green-700 text-white text-xs uppercase tracking-wider disabled:opacity-50"
+						>
+							{bulkAction === 'approve' ? 'Approving…' : 'Bulk Approve'}
+						</button>
+						<button
+							onclick={() => doBulkPending('reject')}
+							disabled={selectedPendingCount === 0 || bulkAction !== null || actingId !== null}
+							class="btn btn-sm bg-red-600 hover:bg-red-700 text-white text-xs uppercase tracking-wider disabled:opacity-50"
+						>
+							{bulkAction === 'reject' ? 'Rejecting…' : 'Bulk Reject'}
+						</button>
+					</div>
+				</div>
+
 				<div class="space-y-3">
-					{#each pending as market}
+					{#each filteredPending as market}
 						<div class="sc-card p-5">
 							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-2">
+									<div class="flex items-center gap-2 mb-2 flex-wrap">
+										<input
+											type="checkbox"
+											checked={Boolean(selectedPending[market.id])}
+											onchange={() => togglePendingSelection(market.id)}
+										/>
 										<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
 									</div>
 									<h2 class="text-surface-800 font-semibold text-base">{market.title}</h2>
@@ -242,6 +406,16 @@
 									<p class="text-surface-400 text-xs mt-2">
 										{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
 									</p>
+									{#if (market.auto_filter_matches?.length ?? 0) > 0}
+										<div class="mt-2 flex flex-wrap items-center gap-1.5">
+											<span class="text-[10px] font-bold uppercase tracking-wider text-amber-700">Auto-filter matches:</span>
+											{#each market.auto_filter_matches ?? [] as match}
+												<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">{match}</span>
+											{/each}
+										</div>
+									{:else}
+										<p class="text-[11px] text-green-700 mt-2">Auto-filter: clean</p>
+									{/if}
 								</div>
 								<div class="flex flex-col gap-2 shrink-0">
 									<button
@@ -270,15 +444,20 @@
 		{#if activeTab === 'reports'}
 			{#if reports.length === 0}
 				<div class="sc-card p-8 text-center text-surface-400 text-sm">No pending reports.</div>
+			{:else if filteredReports.length === 0}
+				<div class="sc-card p-8 text-center text-surface-400 text-sm">No reports match the current filters.</div>
 			{:else}
 				<div class="space-y-3">
-					{#each reports as report}
+					{#each filteredReports as report}
 						<div class="sc-card p-5 border-l-4 border-l-red-400">
 							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 								<div class="flex-1 min-w-0">
 									<p class="text-surface-500 text-xs mb-1">
 										Reported by <span class="font-semibold text-surface-700">{report.reporter_name}</span>
 										&middot; {new Date(report.created_at).toLocaleString()}
+									</p>
+									<p class="text-surface-400 text-[11px] mb-1 uppercase tracking-wider">
+										{CATEGORY_LABELS[report.category] ?? report.category}
 									</p>
 									<h2 class="text-surface-800 font-semibold text-base">
 										<a href="/markets/{report.market_id}" class="hover:text-primary-600 transition-colors">{report.market_title}</a>
@@ -315,9 +494,11 @@
 		{#if activeTab === 'resolution'}
 			{#if resolutionRequests.length === 0}
 				<div class="sc-card p-8 text-center text-surface-400 text-sm">No resolution requests.</div>
+			{:else if filteredResolutionRequests.length === 0}
+				<div class="sc-card p-8 text-center text-surface-400 text-sm">No resolution requests match the current filters.</div>
 			{:else}
 				<div class="space-y-3">
-					{#each resolutionRequests as rr}
+					{#each filteredResolutionRequests as rr}
 						<div class="sc-card p-5 border-l-4 border-l-amber-400 bg-amber-50/20">
 							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
 								<div class="flex-1 min-w-0">

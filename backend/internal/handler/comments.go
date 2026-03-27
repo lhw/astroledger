@@ -82,13 +82,19 @@ func (h *CommentHandler) Post(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/comments/{id} (moderator only).
 func (h *CommentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	commentID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || commentID <= 0 {
 		respondError(w, http.StatusBadRequest, "invalid comment id")
 		return
 	}
 
-	if err := h.svc.DeleteComment(r.Context(), commentID); err != nil {
+	if err := h.svc.DeleteComment(r.Context(), commentID, claims.UserID); err != nil {
 		slog.Error("delete comment", "comment_id", commentID, "err", err)
 		respondError(w, http.StatusInternalServerError, "could not delete comment")
 		return

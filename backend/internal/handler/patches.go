@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/lhw/scolymarket/internal/db"
+	"github.com/lhw/scolymarket/internal/middleware"
 )
 
 // PatchHandler serves patch detection endpoints.
@@ -33,6 +35,12 @@ func (h *PatchHandler) List(w http.ResponseWriter, r *http.Request) {
 // MarkNotified marks a patch as seen by a moderator.
 // POST /api/mod/patches/:id/notify
 func (h *PatchHandler) MarkNotified(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid id")
@@ -41,6 +49,16 @@ func (h *PatchHandler) MarkNotified(w http.ResponseWriter, r *http.Request) {
 	if err := h.queries.MarkPatchNotified(r.Context(), id); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
+	}
+	note := "marked patch notification as seen"
+	if err := h.queries.LogModAudit(r.Context(), db.LogModAuditParams{
+		ActionType: "patch_mark_seen",
+		TargetType: "patch",
+		TargetID:   id,
+		ModUserID:  claims.UserID,
+		Note:       &note,
+	}); err != nil {
+		slog.Warn("mod audit log failed", "action", "patch_mark_seen", "patch_id", id, "mod_id", claims.UserID, "err", err)
 	}
 	respondJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

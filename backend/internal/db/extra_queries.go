@@ -175,6 +175,7 @@ type ReportRow struct {
 	ReporterName string    `json:"reporter_name"`
 	MarketID     int64     `json:"market_id"`
 	MarketTitle  string    `json:"market_title"`
+	Category     string    `json:"category"`
 	Reason       string    `json:"reason"`
 	Status       string    `json:"status"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -195,6 +196,7 @@ func (q *Queries) ListPendingReports(ctx context.Context) ([]ReportRow, error) {
 	const query = `
 SELECT r.id, r.reporter_id, u.display_name AS reporter_name,
        r.market_id, m.title AS market_title,
+	   m.category,
        r.reason, r.status, r.created_at
 FROM reports r
 JOIN users u   ON u.id = r.reporter_id
@@ -210,13 +212,37 @@ ORDER BY r.created_at ASC`
 	for rows.Next() {
 		var i ReportRow
 		if err := rows.Scan(&i.ID, &i.ReporterID, &i.ReporterName,
-			&i.MarketID, &i.MarketTitle, &i.Reason, &i.Status, &i.CreatedAt,
+			&i.MarketID, &i.MarketTitle, &i.Category, &i.Reason, &i.Status, &i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
 	}
 	return items, rows.Err()
+}
+
+// LogModAuditParams are the fields persisted in mod_audit.
+type LogModAuditParams struct {
+	ActionType string  `json:"action_type"`
+	TargetType string  `json:"target_type"`
+	TargetID   int64   `json:"target_id"`
+	ModUserID  int64   `json:"mod_user_id"`
+	Note       *string `json:"note"`
+}
+
+// LogModAudit writes a moderation audit record.
+func (q *Queries) LogModAudit(ctx context.Context, arg LogModAuditParams) error {
+	const stmt = `
+INSERT INTO mod_audit (action_type, target_type, target_id, mod_user_id, note)
+VALUES (?, ?, ?, ?, ?)`
+	_, err := q.db.ExecContext(ctx, stmt,
+		arg.ActionType,
+		arg.TargetType,
+		arg.TargetID,
+		arg.ModUserID,
+		arg.Note,
+	)
+	return err
 }
 
 // UpdateReportStatus sets a report's status to 'reviewed' or 'dismissed'.

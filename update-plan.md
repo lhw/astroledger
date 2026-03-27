@@ -82,7 +82,7 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - The store shows scarcity signals: countdown timers for time-limited badges, stock counters (X/N remaining) for hull-limited badges, SOLD OUT / EXPIRED banners.
 - Backend routes: `GET /api/fomo`, `POST /api/fomo/purchase`, `GET /api/admiral`, `PUT /api/me/badge`, `GET /api/me/badges`.
 
-### User Portfolio Page Improvements
+### ~~User Portfolio Page Improvements~~ ✅ Done
 - Show unrealized P&L per position (current share value at market price vs. cost basis — requires storing average cost, not currently tracked).
 - Show resolved markets with payout received.
 - Badges section already exists; add a description tooltip for each badge.
@@ -94,11 +94,11 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - `picture` claim from the OIDC token is stored as `avatar_url` when present; a deterministic colour-initial avatar is shown as fallback.
 - `UserAvatar` component displays a circular photo or initials badge wherever user names appear; navbar now shows the avatar next to the display name.
 
-### Admin / Mod Panel Improvements
-- Add a bulk-action UI for mod queue (approve/reject multiple at once).
-- Add a search + filter to the mod queue by category, reporter, or keyword.
-- Show auto-filter rule matches on each pending market card.
-- Log all mod actions to an audit table (`mod_audit` with action type, target, mod user, timestamp, note).
+### ~~Admin / Mod Panel Improvements~~ ✅ Done
+- Bulk approve/reject controls added to the pending-review tab in the mod queue, with filtered select-all and per-run success/error summary.
+- Mod queue now has unified search + filters (keyword, category, reporter) applied across pending review, resolution requests, and reports.
+- Pending market cards now surface auto-filter rule matches (`keyword`, `regex`, `min_length`) with explicit badges and a clean state indicator.
+- Added `mod_audit` logging for moderator actions (approve, reject, resolve, deny-resolution, report review/dismiss, patch seen, comment delete) with action type, target type/id, moderator user, timestamp, and optional note.
 
 ---
 

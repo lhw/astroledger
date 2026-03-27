@@ -17,7 +17,8 @@ export const USER_LOGGED_IN: User = {
 	rsi_citizen_record: null,
 	avatar_url: null,
 	created_at: '2024-01-01T00:00:00Z',
-	last_login_at: '2024-01-10T00:00:00Z'
+	last_login_at: '2024-01-10T00:00:00Z',
+	active_badge_key: ''
 };
 
 export const USER_MODERATOR: User = {
@@ -156,6 +157,7 @@ export const PENDING_REPORT: Report = {
 	reporter_name: 'TestPilot',
 	market_id: 10,
 	market_title: 'Will quantum fuel fix before 4.2?',
+	category: 'bug_fixes',
 	reason: 'This market topic duplicates an existing one.',
 	status: 'pending',
 	created_at: '2026-03-21T09:00:00Z'
