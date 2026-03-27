@@ -14,6 +14,7 @@ export interface User {
 	avatar_url: string | null;
 	created_at: string;
 	last_login_at: string;
+	active_badge_key: string;
 }
 
 /** Public user profile returned by GET /api/users/:id */
@@ -209,6 +210,7 @@ export interface Comment {
 	market_id: number;
 	user_id: number;
 	author_name: string;
+	author_top_badge?: string;
 	content: string;
 	/**
 	 * True only when this is the viewer's own shadow-hidden comment.
@@ -224,6 +226,43 @@ export interface Badge {
 	awarded_at: string;
 	title: string;
 	description: string;
+	tier: number;
+	cost: number;
+	purchasable: boolean;
+}
+
+/** A badge available in the FOMO Store */
+export interface StoreBadge {
+	badge_key: string;
+	title: string;
+	description: string;
+	tier: number;
+	cost: number;
+	owned: boolean;
+	/** Total stock cap; omitted if unlimited. */
+	stock?: number;
+	/** Remaining units; omitted if unlimited. */
+	remaining_stock?: number;
+	/** ISO date after which this badge can no longer be purchased. */
+	available_until?: string;
+	/** True if available_until has passed. */
+	expired: boolean;
+}
+
+/** A rank in the Admiral Rank progression */
+export interface AdmiralRank {
+	badge_key: string;
+	title: string;
+	description: string;
+	tier: number;
+	spend_threshold: number;
+	owned: boolean;
+}
+
+/** Response from GET /api/admiral */
+export interface AdmiralRanksResponse {
+	ranks: AdmiralRank[];
+	lifetime_spend: number;
 }
 
 /** A pending moderation report */

@@ -17,7 +17,9 @@ type Comment struct {
 	MarketID   int64  `json:"market_id"`
 	UserID     int64  `json:"user_id"`
 	AuthorName string `json:"author_name"`
-	Content    string `json:"content"`
+	// AuthorTopBadge is the badge_key of the user's highest-tier badge, or empty.
+	AuthorTopBadge string `json:"author_top_badge,omitempty"`
+	Content        string `json:"content"`
 	// Hidden is true when this comment was shadow-hidden by the abuse detector
 	// AND the viewer is the author (the author can always see their own comment).
 	// Other viewers never receive hidden=true — they simply don't see the comment.
@@ -124,17 +126,33 @@ func (s *CommentService) ListComments(ctx context.Context, marketID, viewerID in
 		return nil, fmt.Errorf("list comments: %w", err)
 	}
 
+	// Collect unique author IDs so we can batch-fetch their top badge.
+	authorIDs := make([]int64, 0, len(rows))
+	seen := map[int64]bool{}
+	for _, r := range rows {
+		if !seen[r.UserID] {
+			seen[r.UserID] = true
+			authorIDs = append(authorIDs, r.UserID)
+		}
+	}
+
+	topBadge, err := s.q.GetUsersActiveBadges(ctx, authorIDs)
+	if err != nil {
+		topBadge = map[int64]string{} // non-fatal: render without badges
+	}
+
 	out := make([]*Comment, 0, len(rows))
 	for _, r := range rows {
 		dbHidden := r.Hidden != 0
 		isOwnHidden := dbHidden && r.UserID == viewerID
 
 		out = append(out, &Comment{
-			ID:         r.ID,
-			MarketID:   r.MarketID,
-			UserID:     r.UserID,
-			AuthorName: r.AuthorName,
-			Content:    r.Content,
+			ID:             r.ID,
+			MarketID:       r.MarketID,
+			UserID:         r.UserID,
+			AuthorName:     r.AuthorName,
+			AuthorTopBadge: topBadge[r.UserID],
+			Content:        r.Content,
 			// Only expose hidden=true to the comment's own author.
 			Hidden:    isOwnHidden,
 			CreatedAt: r.CreatedAt,

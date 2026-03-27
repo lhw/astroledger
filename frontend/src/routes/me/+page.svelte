@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getMe, getMyPositions, getMyTrades, getMyBadges, logout } from '$lib/api';
+	import { getMe, getMyPositions, getMyTrades, getMyBadges, logout, setActiveBadge } from '$lib/api';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
 	import type { Position, TradeWithMarket, Badge } from '$lib/types';
@@ -8,19 +8,44 @@
 	let positions = $state<Position[]>([]);
 	let trades = $state<TradeWithMarket[]>([]);
 	let badges = $state<Badge[]>([]);
+	let activeBadgeKey = $state<string>('');
+	let badgeSaving = $state(false);
 	let loading = $state(true);
 	let error = $state('');
 
 	onMount(async () => {
 		if (!$isLoggedIn) { loading = false; return; }
 		try {
-			[positions, trades, badges] = await Promise.all([getMyPositions(), getMyTrades(0), getMyBadges()]);
+			const [, posRes, tradeRes, badgeRes] = await Promise.all([
+				Promise.resolve(), // placeholder
+				getMyPositions(),
+				getMyTrades(0),
+				getMyBadges()
+			]);
+			positions = posRes;
+			trades = tradeRes;
+			badges = badgeRes;
+			activeBadgeKey = $currentUser?.active_badge_key ?? '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
 			loading = false;
 		}
 	});
+
+	async function pickBadge(key: string) {
+		// Toggle off if already active.
+		const newKey = activeBadgeKey === key ? '' : key;
+		badgeSaving = true;
+		try {
+			const res = await setActiveBadge(newKey);
+			activeBadgeKey = res.active_badge_key;
+		} catch {
+			// ignore — UI stays consistent on failure
+		} finally {
+			badgeSaving = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -113,25 +138,39 @@
 
 		<!-- Badges -->
 		<section class="mb-8">
-			<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600 mb-4">Badges</h2>
+			<div class="flex items-center justify-between mb-1">
+				<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">Badges</h2>
+				<a href="/fomo" class="text-xs text-primary-600 hover:text-primary-800 font-semibold uppercase tracking-wider">FOMO Store →</a>
+			</div>
 			{#if badges.length === 0}
 				<div class="text-surface-400 text-sm py-4">
-					No badges yet. Trade more to earn them!
+					No badges yet. Trade more to earn them — or visit the <a href="/fomo" class="text-primary-600 hover:underline">FOMO Store</a>!
 				</div>
 			{:else}
+				<p class="text-[11px] text-surface-400 mb-3">Click a badge to display it on your comments. Click again to unset.</p>
 				<div class="flex flex-wrap gap-3">
 					{#each badges as badge}
-						<div class="sc-card px-4 py-3 flex flex-col gap-0.5 min-w-[160px]">
-							<span class="text-sm font-bold text-primary-700">{badge.title}</span>
-							<span class="text-xs text-surface-600">{badge.description}</span>
-							<span class="text-[10px] text-surface-400 mt-1">
-								Earned {new Date(badge.awarded_at).toLocaleDateString()}
+						{@const isActive = activeBadgeKey === badge.badge_key}
+						<button
+							class="badge-pill tier-{badge.tier} {isActive ? 'badge-active' : ''} badge-btn"
+							class:opacity-40={badgeSaving && !isActive}
+							title={isActive ? `Active — click to unset` : badge.description}
+							onclick={() => pickBadge(badge.badge_key)}
+							disabled={badgeSaving}
+						>
+							<span class="badge-pip">
+								{#if badge.tier === 5}★{:else if badge.tier === 4}◈{:else if badge.tier === 3}◆{:else if badge.tier === 2}●{:else}▲{/if}
 							</span>
-						</div>
+							<span class="badge-pill-title">{badge.title}</span>
+							{#if isActive}
+								<span class="badge-active-dot" title="Active">✓</span>
+							{/if}
+						</button>
 					{/each}
 				</div>
 			{/if}
 		</section>
+
 
 		<!-- Positions -->
 		<section class="mb-8">
@@ -202,3 +241,96 @@
 		</section>
 	{/if}
 </div>
+
+<style>
+/* ─── Badge pills for profile page ──────────────────────────────── */
+.badge-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.35rem 0.85rem 0.35rem 0.65rem;
+	border-radius: 9999px;
+	font-size: 0.75rem;
+	font-weight: 700;
+	transition: transform 0.15s ease, box-shadow 0.15s ease;
+	cursor: default;
+}
+.badge-btn {
+	cursor: pointer;
+	border: none;
+	background: inherit;
+}
+.badge-btn:hover { transform: scale(1.06); }
+.badge-btn:not(.badge-active):hover { filter: brightness(0.92); }
+.badge-active {
+	outline: 2px solid currentColor;
+	outline-offset: 2px;
+	box-shadow: 0 0 0 4px rgba(99,102,241,0.15);
+}
+.badge-active-dot {
+	font-size: 0.6rem;
+	font-weight: 900;
+	background: #22c55e;
+	color: #fff;
+	border-radius: 50%;
+	width: 1rem;
+	height: 1rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: 0.1rem;
+}
+.badge-pip {
+	font-size: 0.75rem;
+	line-height: 1;
+}
+.badge-pill-title {
+	letter-spacing: 0.02em;
+}
+
+/* T1 Common */
+.badge-pill.tier-1 {
+	background: #f5ede0;
+	border: 1.5px solid #d4b896;
+	color: #7a5030;
+}
+/* T2 Uncommon */
+.badge-pill.tier-2 {
+	background: linear-gradient(90deg, #fef3d0, #fde68a);
+	border: 1.5px solid #e6c96b;
+	color: #92400e;
+}
+/* T3 Rare */
+.badge-pill.tier-3 {
+	background: linear-gradient(90deg, #fef9e0, #fef3c0);
+	border: 1.5px solid #f0c040;
+	color: #6b2d06;
+	box-shadow: 0 0 6px rgba(240,192,64,0.3);
+}
+/* T4 Epic */
+.badge-pill.tier-4 {
+	background: linear-gradient(90deg, #1c1008, #2d1c00);
+	border: 1.5px solid #fbbf24;
+	color: #fef3c7;
+	box-shadow: 0 0 8px rgba(251,191,36,0.4);
+	animation: pill-glow 3s ease-in-out infinite alternate;
+}
+@keyframes pill-glow {
+	from { box-shadow: 0 0 6px rgba(251,191,36,0.35); }
+	to   { box-shadow: 0 0 14px rgba(251,191,36,0.65); }
+}
+/* T5 Legendary */
+.badge-pill.tier-5 {
+	background: linear-gradient(90deg, #0d0d0d, #1a1200);
+	border: 1.5px solid #ffd700;
+	color: #ffd700;
+	text-shadow: 0 0 6px rgba(255,215,0,0.5);
+	box-shadow: 0 0 12px rgba(255,215,0,0.35);
+	animation: pill-legendary 4s linear infinite;
+}
+@keyframes pill-legendary {
+	from { box-shadow: 0 0 10px rgba(255,215,0,0.3), 0 0 0 1.5px #ffd700; }
+	50%  { box-shadow: 0 0 18px rgba(200,100,255,0.4), 0 0 0 1.5px #c880ff; }
+	to   { box-shadow: 0 0 10px rgba(255,215,0,0.3), 0 0 0 1.5px #ffd700; }
+}
+</style>

@@ -6,6 +6,9 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 
 ## Recently Completed
 
+- **Badge System Expansion**: Added ~45 total badges across three groups. Earned badges now include 6 trade-count milestones (First Blood → Galaxy Brained), 3 prediction milestones (Bug Prophet → Oracle), 3 participation-breadth milestones (Eternal Optimist → Universe Citizen), and 2 market-creation milestones (Market Founder, Serial Founder). The FOMO Store now has 22 purchasable badges including general, hull-limited (fixed global stock), and rotating (time-limited) tiers. Badge checks are triggered after every trade, market resolution, and market approval.
+- **Admiral Rank**: A `/admiral` page shows a 5-tier rank ladder (Ensign → Coin Admiral) earned by cumulative FOMO store spend (500 / 5k / 25k / 100k / 1M bUEC). Progress bar with milestone ticks, per-tier military insignia styling, and automatic rank award on purchase. Nav link: "Rank".
+- **User-Selectable Active Badge**: Users pick their displayed badge from `/me` (click to equip, click again to unequip). Stored as `active_badge_key` on the `users` table (migration 012). Comments show the user's chosen badge instead of auto-picking highest tier.
 - **Payout balance refresh**: The frontend now refreshes the user's balance when visiting a resolved market, so the updated bUEC shows immediately instead of waiting for a page reload.
 - **Resolved markets visible**: Markets are no longer hidden after resolution. The market list includes a "Resolved" filter, and resolved markets show their result badge. Cancelled markets are also now filterable.
 - **Buy by bUEC budget**: The trade widget now has a "By Shares / By Budget" toggle. In budget mode, users enter how much bUEC they want to spend, and the UI shows the estimated share count using the LMSR `maxAffordable` function.
@@ -62,47 +65,22 @@ This document tracks remaining work, known issues, and future ideas. See `plan.m
 - **Time-axis labels**: Five evenly-spaced date labels (0%, 25%, 50%, 75%, 100% of the trade range) replace the old start/end-only pair.
 - Legend row shows YES and NO current prices with colour swatches.
 
-### Admiral Rank Store
-- Users earn a **military rank** by making **incremental bUEC contributions** — exactly like RSI's lifetime pledge value model. You don't need to have the full amount up front; every bUEC you pay in permanently counts toward your total. Tiers in order: **High Admiral → Grand Admiral → Space Marshal → Praetorian → Legatus Navium**.
-- **Lifetime contribution thresholds** (cumulative total, not per-upgrade): 500 / 2,000 / 5,000 / 15,000 / 50,000 bUEC. e.g. a user who has contributed 3,400 bUEC total is Grand Admiral and needs 1,600 more to reach Space Marshal.
-- Contributions are permanent and non-refundable. bUEC is deducted from balance on each contribution and added to `rank_contribution` (a running total). The rank is derived from this total — never stored separately.
-- A `/store/rank` page shows the full tier ladder with thresholds, a progress bar toward the next rank, a "Contribute X bUEC" input (any amount from 1 to the user's current balance), and satirical tier descriptions (e.g., Legatus Navium: *"Spent how much on a space game? We salute you."*).
-- The user can contribute any arbitrary amount at any time — small drips or a lump sum. The rank updates automatically the moment the running total crosses a threshold.
-- A rank pip/icon is shown next to the user's display name in chat, trades/positions, and on the profile page. Users with no contributions show no pip.
-- The `users` table gains a `rank_contribution` integer column (default 0). No separate rank column — rank is always computed from this value.
-- Backend: `POST /api/store/rank/contribute` with `{ amount: int }`. Validates amount > 0 and ≤ balance, deducts atomically, increments `rank_contribution`. Returns new total and current rank.
-- Tier names, thresholds, and derived rank are defined in a shared constant (Go + TypeScript) so they never drift.
-- *(Not yet implemented — placeholder for future work.)*
+### ~~Admiral Rank Store~~ ✅ Done
+- Users earn a military rank based on their **cumulative FOMO store lifetime spend** (not a separate contribution model). Every badge purchase permanently counts toward the total.
+- **5 ranks**: Ensign (500 bUEC) → Lieutenant (5,000) → Commander (25,000) → Captain (100,000) → Coin Admiral (1,000,000).
+- Ranks are auto-awarded when the spend threshold is crossed — no separate action needed. The check runs after every FOMO purchase.
+- A `/admiral` page shows the full rank ladder, a progress bar toward the next rank, per-rank cards with tier-distinct military insignia styling (⚓ naval blue → ⚔ silver-green → 🛡 burnished copper → 👑 deep gold → 🌟 holographic), and a footer CTA linking to the FOMO Store.
+- Admiral rank badges appear in comments and on the profile badge picker like any other badge.
 
-### Badge Store
-- A `/store/badges` page where users can spend bUEC to equip cosmetic badges shown next to their display name in comments and market activity feeds.
-- **Three availability classes:**
-  - **Generally available**: Always in stock at a fixed bUEC price. A curated set of tongue-in-cheek badges, e.g.:
-    - 🐋 *Space Whale* — "Your wallet is canon-sized."
-    - 🐛 *Professional Bug Finder* — "It's not a bug, it's a stretch goal."
-    - 📦 *Mostly Backer* — "In since 2012. Still waiting."
-    - ⚙️ *Tech Preview Survivor* — "I've seen things you wouldn't believe. Then they wiped the servers."
-    - 📋 *Connoisseur of Roadmaps* — "Holds 47 tabs of schedule promises."
-    - 🔭 *Star Gazer* — "Watched the CitizenCon stream live every year. No regrets."
-    - 🏗️ *Persistent Universe Citizen* — "Was there for server meshing. Both times."
-  - **Hull Limited** (scarce): Only a fixed number of copies (e.g., 3–10) are purchasable per week — supply resets each Monday. High bUEC price (5,000+ bUEC). Examples:
-    - 💎 *Unobtainium Tier* — "You spent HOW much?"
-    - 🚀 *Fleet Commander* — "Controls more ships than crew."
-    - 👑 *Backer Royalty* — "The original true believers."
-    - 🪐 *System Colonist* — "Reserved a plot in a star system that may never ship."
-    A live "X of N remaining this week" count is shown on the badge card.
-  - **Rotating** (limited-time): A small set of badges (3–5) that cycle in and out of the store on a fixed schedule (e.g., monthly or tied to in-game events/patch releases). Once the window closes, the badge is gone from the store (existing owners keep it). Examples:
-    - 🎉 *Alpha 4.x Optimist* — "Believed the patch notes."
-    - 🗓️ *Q4 Enjoyer* — "Adjusted expectations quarterly since 2015."
-    - 🛸 *CitizenCon Pilgrim* — "Was there / watched the stream / followed the thread."
-    Rotating badges have an `available_until` timestamp rather than a weekly cap. The store shows a countdown timer.
-- Users can equip one badge at a time (the "active badge" field on the user), or none. Equipping/unequipping a purchased badge is free.
-- The `badges` table defines available badges: `id`, `slug`, `name`, `description`, `price`, `availability` (`permanent` | `hull_limited` | `rotating`), `weekly_supply`, `available_from`, `available_until`, `image_url`.
-- The `user_badges` table tracks ownership: `user_id`, `badge_id`, `purchased_at`.
-- A weekly purchase counter column on `badges` tracks hull-limited sales; resets are handled by the existing background scheduler. Rotating badges use `available_until` — no counter needed.
-- Backend endpoints: `GET /api/store/badges` (list with stock/timer info), `POST /api/store/badges/{id}/purchase`, `POST /api/store/badges/{id}/equip`, `DELETE /api/store/badges/equip` (unequip).
-- The active badge (slug + name + emoji) is included in all user-facing API responses (`/api/me`, comment author objects, trade history entries).
-- Admin panel gets a "Manage Badges" section: create/edit/delete badge definitions (including setting rotation windows and hull-limited supply), view purchase history.
+### ~~Badge Store~~ ✅ Done
+- The `/fomo` page ("FOMO Store") lets users spend bUEC on cosmetic badges shown in comments. All badge definitions live in `backend/internal/service/badges.go`.
+- **~45 total badges** across three groups:
+  - **Earned** (13 badges, awarded automatically): trade milestones (First Blood → Quick Shot → Market Maven → Seasoned Trader → Market Obsessed → Galaxy Brained at 1/10/50/100/250/500 trades), prediction milestones (Bug Prophet → Skeptic → Oracle at 5/10/25 correct), market breadth (Eternal Optimist → Portfolio Manager → Universe Citizen at 10/25/50 positions), and market creation (Market Founder / Serial Founder at 1/5 live markets).
+  - **FOMO Store** (purchasable, 22 badges): general availability (unlimited stock), hull-limited (fixed global stock, e.g. Idris Captain ×10), and rotating (AvailableUntil deadline, e.g. CitizenCon Pilgrim ends Dec 2026). Price range: 50–7,500 bUEC.
+  - **Admiral Rank** (5 badges, auto-awarded by lifetime spend): Ensign → Lieutenant → Commander → Captain → Coin Admiral.
+- Users select their **active badge** on `/me` (click to equip, click again to unequip). This is stored as `active_badge_key` on the `users` table (migration 012) and shown in comments.
+- The store shows scarcity signals: countdown timers for time-limited badges, stock counters (X/N remaining) for hull-limited badges, SOLD OUT / EXPIRED banners.
+- Backend routes: `GET /api/fomo`, `POST /api/fomo/purchase`, `GET /api/admiral`, `PUT /api/me/badge`, `GET /api/me/badges`.
 
 ### User Portfolio Page Improvements
 - Show unrealized P&L per position (current share value at market price vs. cost basis — requires storing average cost, not currently tracked).

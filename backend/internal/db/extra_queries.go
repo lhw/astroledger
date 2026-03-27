@@ -271,34 +271,45 @@ func (q *Queries) CountUserTrades(ctx context.Context, userID int64) (int64, err
 }
 
 // CountCorrectPredictions returns how many resolved markets the user predicted correctly
-// (held more shares on the winning side when the market closed).
+// (held any position in the winning outcome when the market resolved).
 func (q *Queries) CountCorrectPredictions(ctx context.Context, userID int64) (int64, error) {
 	var n int64
 	err := q.db.QueryRowContext(ctx, `
-SELECT COUNT(*) FROM positions p
+SELECT COUNT(DISTINCT p.market_id) FROM positions p
 JOIN markets m ON m.id = p.market_id
 WHERE p.user_id = ?
   AND m.status = 'resolved'
-  AND (
-      (m.resolution = 'yes' AND p.yes_shares > p.no_shares) OR
-      (m.resolution = 'no'  AND p.no_shares  > p.yes_shares)
-  )`, userID).Scan(&n)
+  AND p.outcome_id = m.resolved_outcome_id
+  AND p.shares > 0`, userID).Scan(&n)
 	return n, err
 }
 
-// CountMarketsWithYES returns how many distinct markets the user has bought YES shares in.
+// CountMarketsWithYES returns how many distinct markets the user has bought any shares in.
+// (legacy compat — now checks any position across all outcomes)
 func (q *Queries) CountMarketsWithYES(ctx context.Context, userID int64) (int64, error) {
 	var n int64
 	err := q.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM positions WHERE user_id = ? AND yes_shares > 0`, userID).Scan(&n)
+		`SELECT COUNT(DISTINCT market_id) FROM positions WHERE user_id = ? AND shares > 0`, userID).Scan(&n)
 	return n, err
 }
 
-// CountMarketsWithNO returns how many distinct markets the user has bought NO shares in.
+// CountMarketsWithNO returns how many distinct markets the user has bought non-winning shares in.
+// (legacy compat — now counts markets where user holds any position)
 func (q *Queries) CountMarketsWithNO(ctx context.Context, userID int64) (int64, error) {
 	var n int64
 	err := q.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM positions WHERE user_id = ? AND no_shares > 0`, userID).Scan(&n)
+		`SELECT COUNT(DISTINCT market_id) FROM positions WHERE user_id = ? AND shares > 0`, userID).Scan(&n)
+	return n, err
+}
+
+// CountLiveMarketsCreatedBy returns how many markets the user has submitted that are
+// currently active, resolved, resolution_requested, or deadline_passed (i.e. went live).
+func (q *Queries) CountLiveMarketsCreatedBy(ctx context.Context, userID int64) (int64, error) {
+	var n int64
+	err := q.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM markets
+WHERE created_by = ?
+  AND status IN ('active','resolved','resolution_requested','deadline_passed')`, userID).Scan(&n)
 	return n, err
 }
 
@@ -456,4 +467,84 @@ func (q *Queries) RunWeeklyPayout(ctx context.Context, weekKey string) (int64, e
 		return 0, err
 	}
 	return count, nil
+}
+
+// CountBadgePurchases returns how many users currently own the given badge key.
+func (q *Queries) CountBadgePurchases(ctx context.Context, badgeKey string) (int64, error) {
+	var n int64
+	err := q.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM user_badges WHERE badge_key = ?`, badgeKey).Scan(&n)
+	return n, err
+}
+
+// GetUserTopBadge returns the badge_key of the highest-tier badge the user owns,
+// or an empty string if the user has no badges. Tier order is determined by the
+// caller via BadgeKeysMap.
+func (q *Queries) GetUserBadgeKeys(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT badge_key FROM user_badges WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := make([]string, 0)
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// GetUserActiveBadge returns the user's chosen active_badge_key (or "" if unset).
+func (q *Queries) GetUserActiveBadge(ctx context.Context, userID int64) (string, error) {
+	var key string
+	err := q.db.QueryRowContext(ctx,
+		`SELECT active_badge_key FROM users WHERE id = ?`, userID).Scan(&key)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return key, err
+}
+
+// SetUserActiveBadge updates the active_badge_key for a user.
+func (q *Queries) SetUserActiveBadge(ctx context.Context, userID int64, key string) error {
+	_, err := q.db.ExecContext(ctx,
+		`UPDATE users SET active_badge_key = ? WHERE id = ?`, key, userID)
+	return err
+}
+
+// GetUsersActiveBadges returns a map of userID → active_badge_key for the given set of user IDs.
+func (q *Queries) GetUsersActiveBadges(ctx context.Context, userIDs []int64) (map[int64]string, error) {
+	if len(userIDs) == 0 {
+		return map[int64]string{}, nil
+	}
+	// Build a parameterised IN clause.
+	args := make([]any, len(userIDs))
+	ph := make([]byte, 0, len(userIDs)*2)
+	for i, id := range userIDs {
+		args[i] = id
+		if i > 0 {
+			ph = append(ph, ',')
+		}
+		ph = append(ph, '?')
+	}
+	query := `SELECT id, active_badge_key FROM users WHERE id IN (` + string(ph) + `)`
+	rows, err := q.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[int64]string, len(userIDs))
+	for rows.Next() {
+		var uid int64
+		var key string
+		if err := rows.Scan(&uid, &key); err != nil {
+			return nil, err
+		}
+		m[uid] = key
+	}
+	return m, rows.Err()
 }

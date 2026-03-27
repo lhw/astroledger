@@ -19,6 +19,8 @@ import type {
 	ApiError,
 	ResolutionRequestMarket,
 	Badge,
+	StoreBadge,
+	AdmiralRanksResponse,
 	Report,
 	PricePoint,
 	Comment,
@@ -191,6 +193,28 @@ export async function getMyBadges(): Promise<Badge[]> {
 
 export async function getUserBadges(id: number): Promise<Badge[]> {
 	return request<Badge[]>(`/api/users/${id}/badges`);
+}
+
+export async function getStoreBadges(): Promise<StoreBadge[]> {
+	return request<StoreBadge[]>('/api/fomo');
+}
+
+export async function purchaseBadge(badge_key: string): Promise<{ status: string }> {
+	return request<{ status: string }>('/api/fomo/purchase', {
+		method: 'POST',
+		body: JSON.stringify({ badge_key })
+	});
+}
+
+export async function getAdmiralRanks(): Promise<AdmiralRanksResponse> {
+	return request<AdmiralRanksResponse>('/api/admiral');
+}
+
+export async function setActiveBadge(badge_key: string): Promise<{ active_badge_key: string }> {
+	return request<{ active_badge_key: string }>('/api/me/badge', {
+		method: 'PUT',
+		body: JSON.stringify({ badge_key })
+	});
 }
 
 // --- Reports ---

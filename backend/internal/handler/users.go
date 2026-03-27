@@ -40,7 +40,11 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, userResponse(user))
+	activeBadge, _ := h.queries.GetUserActiveBadge(r.Context(), claims.UserID)
+
+	resp := userResponse(user)
+	resp["active_badge_key"] = activeBadge
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // GetUser returns a user's public profile by ID.

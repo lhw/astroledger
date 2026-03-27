@@ -8,6 +8,58 @@
 	import type { MarketWithPrice, PricePoint, Comment, MarketOutcome } from '$lib/types';
 	import { CATEGORY_LABELS } from '$lib/categories';
 
+	// Badge tier map for inline badge display in comments.
+	const BADGE_TIERS: Record<string, { tier: number; title: string; symbol: string }> = {
+		// ── Earned ──────────────────────────────────────────────────────────
+		first_blood:              { tier: 1, title: 'First Blood',               symbol: '▲' },
+		quick_shot:               { tier: 1, title: 'Quick Shot',                symbol: '▲' },
+		market_founder:           { tier: 1, title: 'Market Founder',            symbol: '▲' },
+		eternal_optimist:         { tier: 2, title: 'Eternal Optimist',          symbol: '●' },
+		doomsayer:                { tier: 2, title: 'Doomsayer',                 symbol: '●' },
+		market_maven:             { tier: 2, title: 'Market Maven',              symbol: '●' },
+		seasoned_trader:          { tier: 2, title: 'Seasoned Trader',           symbol: '●' },
+		skeptic:                  { tier: 2, title: 'Skeptic',                   symbol: '●' },
+		portfolio_manager:        { tier: 2, title: 'Portfolio Manager',         symbol: '●' },
+		serial_founder:           { tier: 2, title: 'Serial Founder',            symbol: '●' },
+		bug_prophet:              { tier: 3, title: 'Bug Prophet',               symbol: '◆' },
+		market_obsessed:          { tier: 3, title: 'Market Obsessed',           symbol: '◆' },
+		universe_citizen:         { tier: 3, title: 'Universe Citizen',          symbol: '◆' },
+		galaxy_brained:           { tier: 4, title: 'Galaxy Brained',            symbol: '◈' },
+		oracle:                   { tier: 4, title: 'Oracle',                    symbol: '◈' },
+		// ── FOMO Store ──────────────────────────────────────────────────────
+		citizen_backer:           { tier: 1, title: 'Citizen Backer',            symbol: '▲' },
+		professional_bug_finder:  { tier: 1, title: 'Professional Bug Finder',   symbol: '▲' },
+		aurora_pilot:             { tier: 1, title: 'Aurora Pilot',              symbol: '▲' },
+		roadmap_reader:           { tier: 1, title: 'Roadmap Reader',            symbol: '▲' },
+		warp_speed:               { tier: 1, title: 'Warp Speed',                symbol: '▲' },
+		mostly_backer:            { tier: 2, title: 'Mostly Backer',             symbol: '●' },
+		hangar_queen:             { tier: 2, title: 'Hangar Queen',              symbol: '●' },
+		tech_preview_survivor:    { tier: 2, title: 'Tech Preview Survivor',     symbol: '●' },
+		star_gazer:               { tier: 2, title: 'Star Gazer',               symbol: '●' },
+		alpha_tester:             { tier: 2, title: 'Alpha Tester',              symbol: '●' },
+		space_whale:              { tier: 2, title: 'Space Whale',               symbol: '●' },
+		bugged_not_broken:        { tier: 2, title: 'Bugged, Not Broken',        symbol: '●' },
+		verse_veteran:            { tier: 2, title: "'Verse Veteran",            symbol: '●' },
+		alpha_optimist:           { tier: 2, title: 'Alpha Optimist',            symbol: '●' },
+		q4_enjoyer:               { tier: 2, title: 'Q4 Enjoyer',               symbol: '●' },
+		persistent_citizen:       { tier: 3, title: 'Persistent Universe Citizen', symbol: '◆' },
+		org_leader:               { tier: 3, title: 'Org Leader',                symbol: '◆' },
+		'900i_enjoyer':           { tier: 3, title: '900i Enjoyer',              symbol: '◆' },
+		system_colonist:          { tier: 3, title: 'System Colonist',           symbol: '◆' },
+		citizencon_pilgrim:       { tier: 3, title: 'CitizenCon Pilgrim',        symbol: '◆' },
+		idris_captain:            { tier: 4, title: 'Idris Captain',             symbol: '◈' },
+		backer_royalty:           { tier: 4, title: 'Backer Royalty',            symbol: '◈' },
+		fleet_commander_badge:    { tier: 4, title: 'Fleet Commander',           symbol: '◈' },
+		golden_ticket:            { tier: 5, title: 'Golden Ticket',             symbol: '★' },
+		unobtainium:              { tier: 5, title: 'Unobtainium Tier',          symbol: '★' },
+		// ── Admiral Rank ────────────────────────────────────────────────────
+		ensign:                   { tier: 1, title: 'Ensign',                    symbol: '⚓' },
+		lieutenant:               { tier: 2, title: 'Lieutenant',                symbol: '⚔' },
+		commander:                { tier: 3, title: 'Commander',                 symbol: '🛡' },
+		captain:                  { tier: 4, title: 'Captain',                   symbol: '👑' },
+		coin_admiral:             { tier: 5, title: 'Coin Admiral',              symbol: '🌟' },
+	};
+
 	let { data } = $props<{ data: { market: MarketWithPrice | null; history: PricePoint[] } }>();
 
 	const id = $derived(Number($page.params.id));
@@ -484,8 +536,15 @@
 						<div class="space-y-5 mb-5">
 							{#each comments as comment}
 								<div>
-									<div class="flex items-baseline gap-2 mb-1 flex-wrap">
+									<div class="flex items-center gap-1.5 mb-1 flex-wrap">
 										<span class="font-semibold text-surface-800 text-xs">{comment.author_name}</span>
+										{#if comment.author_top_badge && BADGE_TIERS[comment.author_top_badge]}
+											{@const b = BADGE_TIERS[comment.author_top_badge]}
+											<span
+												class="comment-badge tier-{b.tier}"
+												title={b.title}
+											>{b.symbol} {b.title}</span>
+										{/if}
 										<span class="text-surface-400 text-[10px]">{new Date(comment.created_at).toLocaleString()}</span>
 										{#if $currentUser?.is_moderator}
 											<button
@@ -817,3 +876,42 @@
 		</div>
 	{/if}
 </div>
+<style>
+/* ─── Inline comment badges ──────────────────────────────────────── */
+.comment-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	padding: 0.1rem 0.45rem;
+	border-radius: 9999px;
+	font-size: 0.6rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+.comment-badge.tier-1 {
+	background: #f5ede0;
+	border: 1px solid #d4b896;
+	color: #7a5030;
+}
+.comment-badge.tier-2 {
+	background: linear-gradient(90deg, #fef3d0, #fde68a);
+	border: 1px solid #e6c96b;
+	color: #92400e;
+}
+.comment-badge.tier-3 {
+	background: linear-gradient(90deg, #fef9e0, #fef3c0);
+	border: 1px solid #f0c040;
+	color: #6b2d06;
+}
+.comment-badge.tier-4 {
+	background: linear-gradient(90deg, #1c1008, #2d1c00);
+	border: 1px solid #fbbf24;
+	color: #fef3c7;
+}
+.comment-badge.tier-5 {
+	background: linear-gradient(90deg, #0d0d0d, #1a1200);
+	border: 1px solid #ffd700;
+	color: #ffd700;
+}
+</style>

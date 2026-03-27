@@ -126,9 +126,20 @@ func run() error {
 			r.Get("/me/positions", userH.GetUserPositions)
 			r.Get("/me/trades", userH.GetUserTrades)
 			r.Get("/me/badges", modH.GetMyBadges)
+			r.Put("/me/badge", modH.SetActiveBadge)
 		})
 
 		r.Get("/users/{id}/badges", modH.GetUserBadges)
+
+		// FOMO store
+		r.Get("/fomo", modH.GetStoreBadges)
+		r.Get("/admiral", modH.GetAdmiralRanks)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth)
+			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
+			r.Use(httprate.LimitByIP(10, time.Minute))
+			r.Post("/fomo/purchase", modH.PurchaseBadge)
+		})
 
 		// Patches (public)
 		r.Get("/patches", patchH.List)

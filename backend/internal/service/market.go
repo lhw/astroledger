@@ -134,6 +134,11 @@ func (s *MarketService) ApproveMarket(ctx context.Context, marketID, modID int64
 	}); err != nil {
 		slog.Warn("creator bonus failed (non-fatal)", "market_id", marketID, "creator_id", market.CreatedBy, "err", err)
 	}
+	// Check market-creation badges for the creator — non-blocking.
+	if s.badgeSvc != nil {
+		creatorID := market.CreatedBy
+		go s.badgeSvc.CheckAndAward(context.Background(), creatorID)
+	}
 	slog.Info("market approved", "market_id", marketID, "mod_id", modID, "creator_id", market.CreatedBy)
 	return nil
 }

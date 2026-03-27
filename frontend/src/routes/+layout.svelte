@@ -42,6 +42,12 @@
 			<a href="/leaderboard" class="text-surface-300 hover:text-primary-400 text-sm tracking-wide transition-colors no-underline uppercase">
 				Leaderboard
 			</a>
+			<a href="/fomo" class="text-surface-300 hover:text-yellow-400 text-sm tracking-wide transition-colors no-underline uppercase">
+				FOMO
+			</a>
+			<a href="/admiral" class="text-surface-300 hover:text-blue-400 text-sm tracking-wide transition-colors no-underline uppercase">
+				Rank
+			</a>
 
 			{#if $isModerator}
 				<a href="/mod" class="text-yellow-400 hover:text-yellow-300 text-sm tracking-wide transition-colors no-underline uppercase">
