@@ -26,7 +26,9 @@ import type {
 	Comment,
 	DetectedPatch,
 	AnalyticsStats,
-	UserSearchResult
+	UserSearchResult,
+	BadgeCatalogEntry,
+	AdminBadgeRelease
 } from './types';
 
 class ApiClientError extends Error {
@@ -295,6 +297,51 @@ export async function getPatches(): Promise<DetectedPatch[]> {
 
 export async function markPatchNotified(id: number): Promise<void> {
 	await request(`/api/mod/patches/${id}/notify`, { method: 'POST' });
+}
+
+// --- Admin: Badge Releases ---
+
+export async function adminGetBadgeCatalog(): Promise<BadgeCatalogEntry[]> {
+	return request<BadgeCatalogEntry[]>('/api/admin/badge-catalog');
+}
+
+export async function adminListBadgeReleases(): Promise<AdminBadgeRelease[]> {
+	return request<AdminBadgeRelease[]>('/api/admin/badge-releases');
+}
+
+export async function adminCreateBadgeRelease(body: {
+	badge_key: string;
+	price: number;
+	stock: number | null;
+	released_at: string;
+	expires_at: string | null;
+	notes: string | null;
+}): Promise<AdminBadgeRelease> {
+	return request<AdminBadgeRelease>('/api/admin/badge-releases', {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+}
+
+export async function adminUpdateBadgeRelease(
+	id: number,
+	body: Partial<{
+		price: number;
+		stock: number | null;
+		released_at: string;
+		expires_at: string | null;
+		active: boolean;
+		notes: string | null;
+	}>
+): Promise<AdminBadgeRelease> {
+	return request<AdminBadgeRelease>(`/api/admin/badge-releases/${id}`, {
+		method: 'PUT',
+		body: JSON.stringify(body)
+	});
+}
+
+export async function adminArchiveBadgeRelease(id: number): Promise<void> {
+	await request(`/api/admin/badge-releases/${id}`, { method: 'DELETE' });
 }
 
 export { ApiClientError };

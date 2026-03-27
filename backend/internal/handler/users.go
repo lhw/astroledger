@@ -94,7 +94,8 @@ func (h *UserHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, rows)
 }
 
-// GetUserPositions returns the authenticated user's open market positions.
+// GetUserPositions returns the authenticated user's open market positions,
+// enriched with cost basis and resolved market info for P&L display.
 func (h *UserHandler) GetUserPositions(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -102,7 +103,7 @@ func (h *UserHandler) GetUserPositions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	positions, err := h.queries.GetUserPositions(r.Context(), claims.UserID)
+	positions, err := h.queries.GetUserPositionsEnriched(r.Context(), claims.UserID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return

@@ -548,3 +548,254 @@ func (q *Queries) GetUsersActiveBadges(ctx context.Context, userIDs []int64) (ma
 	}
 	return m, rows.Err()
 }
+
+// ─── Badge Releases ───────────────────────────────────────────────────────────
+
+// BadgeReleaseRow represents a row from the badge_releases table.
+type BadgeReleaseRow struct {
+	ID         int64      `json:"id"`
+	BadgeKey   string     `json:"badge_key"`
+	Price      int64      `json:"price"`
+	Stock      *int       `json:"stock"`
+	ReleasedAt time.Time  `json:"released_at"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	Active     bool       `json:"active"`
+	Notes      *string    `json:"notes"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+func scanBadgeRelease(row func(dest ...any) error) (BadgeReleaseRow, error) {
+	var r BadgeReleaseRow
+	var activeInt int64
+	err := row(
+		&r.ID, &r.BadgeKey, &r.Price, &r.Stock,
+		&r.ReleasedAt, &r.ExpiresAt, &activeInt, &r.Notes, &r.CreatedAt,
+	)
+	if err != nil {
+		return r, err
+	}
+	r.Active = activeInt == 1
+	return r, nil
+}
+
+const badgeReleaseSelectCols = `id, badge_key, price, stock, released_at, expires_at, active, notes, created_at`
+
+// ListBadgeReleases returns all releases ordered newest-first (admin use).
+func (q *Queries) ListBadgeReleases(ctx context.Context) ([]BadgeReleaseRow, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT `+badgeReleaseSelectCols+` FROM badge_releases ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]BadgeReleaseRow, 0)
+	for rows.Next() {
+		r, err := scanBadgeRelease(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, r)
+	}
+	return items, rows.Err()
+}
+
+// GetBadgeReleaseByID returns a single release by primary key.
+func (q *Queries) GetBadgeReleaseByID(ctx context.Context, id int64) (BadgeReleaseRow, error) {
+	return scanBadgeRelease(q.db.QueryRowContext(ctx,
+		`SELECT `+badgeReleaseSelectCols+` FROM badge_releases WHERE id = ?`, id).Scan)
+}
+
+// GetActiveBadgeReleases returns all releases that are currently purchasable:
+// active=1, released_at <= now, (expires_at IS NULL OR expires_at > now).
+func (q *Queries) GetActiveBadgeReleases(ctx context.Context) ([]BadgeReleaseRow, error) {
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	rows, err := q.db.QueryContext(ctx, `
+SELECT `+badgeReleaseSelectCols+` FROM badge_releases
+WHERE active = 1
+  AND released_at <= ?
+  AND (expires_at IS NULL OR expires_at > ?)
+ORDER BY released_at DESC`, now, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]BadgeReleaseRow, 0)
+	for rows.Next() {
+		r, err := scanBadgeRelease(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, r)
+	}
+	return items, rows.Err()
+}
+
+// GetActiveBadgeReleaseForKey returns the active release for a given badge_key, if any.
+func (q *Queries) GetActiveBadgeReleaseForKey(ctx context.Context, badgeKey string) (BadgeReleaseRow, bool, error) {
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	row, err := scanBadgeRelease(q.db.QueryRowContext(ctx, `
+SELECT `+badgeReleaseSelectCols+` FROM badge_releases
+WHERE badge_key = ? AND active = 1
+  AND released_at <= ?
+  AND (expires_at IS NULL OR expires_at > ?)
+LIMIT 1`, badgeKey, now, now).Scan)
+	if err == sql.ErrNoRows {
+		return BadgeReleaseRow{}, false, nil
+	}
+	if err != nil {
+		return BadgeReleaseRow{}, false, err
+	}
+	return row, true, nil
+}
+
+// CreateBadgeReleaseParams holds fields for inserting a new badge release.
+type CreateBadgeReleaseParams struct {
+	BadgeKey   string
+	Price      int64
+	Stock      *int
+	ReleasedAt time.Time
+	ExpiresAt  *time.Time
+	Notes      *string
+}
+
+// CreateBadgeRelease inserts a new badge release row and returns its ID.
+func (q *Queries) CreateBadgeRelease(ctx context.Context, p CreateBadgeReleaseParams) (int64, error) {
+	releasedAt := p.ReleasedAt.UTC().Format("2006-01-02T15:04:05Z")
+	var expiresAt *string
+	if p.ExpiresAt != nil {
+		s := p.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")
+		expiresAt = &s
+	}
+	res, err := q.db.ExecContext(ctx, `
+INSERT INTO badge_releases (badge_key, price, stock, released_at, expires_at, active, notes)
+VALUES (?, ?, ?, ?, ?, 1, ?)`,
+		p.BadgeKey, p.Price, p.Stock, releasedAt, expiresAt, p.Notes)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// UpdateBadgeReleaseParams holds mutable fields for an existing badge release.
+type UpdateBadgeReleaseParams struct {
+	ID         int64
+	Price      int64
+	Stock      *int
+	ReleasedAt time.Time
+	ExpiresAt  *time.Time
+	Active     bool
+	Notes      *string
+}
+
+// UpdateBadgeRelease overwrites the mutable fields of an existing release.
+func (q *Queries) UpdateBadgeRelease(ctx context.Context, p UpdateBadgeReleaseParams) error {
+	releasedAt := p.ReleasedAt.UTC().Format("2006-01-02T15:04:05Z")
+	var expiresAt *string
+	if p.ExpiresAt != nil {
+		s := p.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")
+		expiresAt = &s
+	}
+	activeInt := 0
+	if p.Active {
+		activeInt = 1
+	}
+	_, err := q.db.ExecContext(ctx, `
+UPDATE badge_releases
+SET price = ?, stock = ?, released_at = ?, expires_at = ?, active = ?, notes = ?
+WHERE id = ?`,
+		p.Price, p.Stock, releasedAt, expiresAt, activeInt, p.Notes, p.ID)
+	return err
+}
+
+// ArchiveBadgeRelease sets active=0 on a release (soft-delete).
+func (q *Queries) ArchiveBadgeRelease(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx,
+		`UPDATE badge_releases SET active = 0 WHERE id = ?`, id)
+	return err
+}
+
+// AwardBadgePurchased inserts a purchased badge with the price paid, ignoring duplicates.
+func (q *Queries) AwardBadgePurchased(ctx context.Context, userID int64, badgeKey string, price int64) error {
+	_, err := q.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO user_badges (user_id, badge_key, purchase_price) VALUES (?, ?, ?)`,
+		userID, badgeKey, price)
+	return err
+}
+
+// GetUserBadgePurchasePrices returns a map of badge_key → purchase_price for all badges owned by a user.
+func (q *Queries) GetUserBadgePurchasePrices(ctx context.Context, userID int64) (map[string]int64, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT badge_key, purchase_price FROM user_badges WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	m := make(map[string]int64)
+	for rows.Next() {
+		var key string
+		var price int64
+		if err := rows.Scan(&key, &price); err != nil {
+			return nil, err
+		}
+		m[key] = price
+	}
+	return m, rows.Err()
+}
+
+// ─── Enriched User Positions ─────────────────────────────────────────────────
+
+// EnrichedPositionRow extends the basic position with cost basis (from trades)
+// and resolved market info so the frontend can compute P&L.
+type EnrichedPositionRow struct {
+	UserID            int64   `json:"user_id"`
+	MarketID          int64   `json:"market_id"`
+	OutcomeID         int64   `json:"outcome_id"`
+	Shares            float64 `json:"shares"`
+	MarketTitle       string  `json:"market_title"`
+	MarketStatus      string  `json:"market_status"`
+	LiquidityParam    float64 `json:"liquidity_param"`
+	OutcomeLabel      string  `json:"outcome_label"`
+	ResolvedOutcomeID *int64  `json:"resolved_outcome_id"`
+	CostBasis         int64   `json:"cost_basis"`
+}
+
+// GetUserPositionsEnriched returns all non-zero positions for a user, enriched with
+// cost basis (net bUEC spent on buys minus sell proceeds for this outcome) and the
+// market's resolved_outcome_id for P&L display.
+func (q *Queries) GetUserPositionsEnriched(ctx context.Context, userID int64) ([]EnrichedPositionRow, error) {
+	const query = `
+SELECT p.user_id, p.market_id, p.outcome_id, p.shares,
+       m.title AS market_title, m.status AS market_status,
+       m.liquidity_param, o.label AS outcome_label,
+       m.resolved_outcome_id,
+       COALESCE(SUM(CASE WHEN t.action = 'buy' THEN t.cost ELSE -t.cost END), 0) AS cost_basis
+FROM positions p
+JOIN markets m ON m.id = p.market_id
+JOIN market_outcomes o ON o.id = p.outcome_id
+LEFT JOIN trades t ON t.user_id = p.user_id
+                   AND t.market_id = p.market_id
+                   AND t.outcome_id = p.outcome_id
+WHERE p.user_id = ?
+  AND p.shares > 0
+GROUP BY p.user_id, p.market_id, p.outcome_id
+ORDER BY m.status ASC, m.id DESC`
+
+	rows, err := q.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]EnrichedPositionRow, 0)
+	for rows.Next() {
+		var r EnrichedPositionRow
+		if err := rows.Scan(
+			&r.UserID, &r.MarketID, &r.OutcomeID, &r.Shares,
+			&r.MarketTitle, &r.MarketStatus, &r.LiquidityParam,
+			&r.OutcomeLabel, &r.ResolvedOutcomeID, &r.CostBasis,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, r)
+	}
+	return items, rows.Err()
+}

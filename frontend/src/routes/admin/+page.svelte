@@ -4,12 +4,17 @@
 		adminAdjustBalance,
 		adminGetAnalytics,
 		adminSearchUsers,
+		adminGetBadgeCatalog,
+		adminListBadgeReleases,
+		adminCreateBadgeRelease,
+		adminUpdateBadgeRelease,
+		adminArchiveBadgeRelease,
 		ApiClientError
 	} from '$lib/api';
-	import type { AnalyticsStats, UserSearchResult } from '$lib/types';
+	import type { AnalyticsStats, UserSearchResult, BadgeCatalogEntry, AdminBadgeRelease } from '$lib/types';
 
 	// ── Tab state ─────────────────────────────────────────────────────────
-	let activeTab = $state<'operations' | 'analytics'>('operations');
+	let activeTab = $state<'operations' | 'analytics' | 'badges'>('operations');
 
 	// ── Operations: payout ────────────────────────────────────────────────
 	let payoutLoading = $state(false);
@@ -174,6 +179,141 @@
 		const n = data.daily?.length || 1;
 		return Math.round(data.total_views / n);
 	}
+
+	// ── Badge Releases ────────────────────────────────────────────────────
+	let catalog = $state<BadgeCatalogEntry[]>([]);
+	let releases = $state<AdminBadgeRelease[]>([]);
+	let badgesLoading = $state(false);
+	let badgesError = $state<string | null>(null);
+
+	// Create form state
+	let cfBadgeKey = $state('');
+	let cfPrice = $state('');
+	let cfStock = $state('');
+	let cfReleasedAt = $state('');
+	let cfExpiresAt = $state('');
+	let cfNotes = $state('');
+	let cfLoading = $state(false);
+	let cfError = $state<string | null>(null);
+
+	// Inline-edit state: map of release id → edit draft
+	type EditDraft = { price: string; stock: string; expiresAt: string; active: boolean; notes: string };
+	let editDrafts = $state<Record<number, EditDraft>>({});
+	let editSaving = $state<Record<number, boolean>>({});
+	let editError = $state<Record<number, string | null>>({});
+
+	async function loadBadges() {
+		badgesLoading = true;
+		badgesError = null;
+		try {
+			[catalog, releases] = await Promise.all([
+				adminGetBadgeCatalog(),
+				adminListBadgeReleases()
+			]);
+		} catch (e) {
+			badgesError = e instanceof ApiClientError ? e.message : String(e);
+		} finally {
+			badgesLoading = false;
+		}
+	}
+
+	function switchToBadges() {
+		activeTab = 'badges';
+		if (!catalog.length && !releases.length) loadBadges();
+	}
+
+	async function createRelease() {
+		cfError = null;
+		const price = parseInt(cfPrice, 10);
+		if (!cfBadgeKey) { cfError = 'Select a badge.'; return; }
+		if (!Number.isInteger(price) || price < 0) { cfError = 'Price must be a non-negative integer.'; return; }
+		const stock = cfStock.trim() ? parseInt(cfStock, 10) : null;
+		if (stock !== null && (!Number.isInteger(stock) || stock <= 0)) { cfError = 'Stock must be a positive integer.'; return; }
+		const releasedAt = cfReleasedAt ? new Date(cfReleasedAt).toISOString() : new Date().toISOString();
+		const expiresAt = cfExpiresAt ? new Date(cfExpiresAt).toISOString() : null;
+		cfLoading = true;
+		try {
+			const created = await adminCreateBadgeRelease({
+				badge_key: cfBadgeKey,
+				price,
+				stock,
+				released_at: releasedAt,
+				expires_at: expiresAt,
+				notes: cfNotes.trim() || null
+			});
+			releases = [created, ...releases];
+			cfBadgeKey = ''; cfPrice = ''; cfStock = ''; cfReleasedAt = ''; cfExpiresAt = ''; cfNotes = '';
+		} catch (e) {
+			cfError = e instanceof ApiClientError ? e.message : String(e);
+		} finally {
+			cfLoading = false;
+		}
+	}
+
+	function startEdit(rel: AdminBadgeRelease) {
+		editDrafts[rel.id] = {
+			price: String(rel.price),
+			stock: rel.stock != null ? String(rel.stock) : '',
+			expiresAt: rel.expires_at ? rel.expires_at.slice(0, 16) : '',
+			active: rel.active,
+			notes: rel.notes ?? ''
+		};
+	}
+
+	function cancelEdit(id: number) {
+		const { [id]: _, ...rest } = editDrafts;
+		editDrafts = rest;
+		const { [id]: _e, ...eRest } = editError;
+		editError = eRest;
+	}
+
+	async function saveEdit(rel: AdminBadgeRelease) {
+		const d = editDrafts[rel.id];
+		if (!d) return;
+		editError[rel.id] = null;
+		const price = parseInt(d.price, 10);
+		if (!Number.isInteger(price) || price < 0) { editError[rel.id] = 'Price must be a non-negative integer.'; return; }
+		const stock = d.stock.trim() ? parseInt(d.stock, 10) : null;
+		if (stock !== null && (!Number.isInteger(stock) || stock <= 0)) { editError[rel.id] = 'Stock must be positive.'; return; }
+		editSaving[rel.id] = true;
+		try {
+			const updated = await adminUpdateBadgeRelease(rel.id, {
+				price,
+				stock,
+				expires_at: d.expiresAt ? new Date(d.expiresAt).toISOString() : null,
+				active: d.active,
+				notes: d.notes.trim() || null
+			});
+			releases = releases.map((r) => (r.id === rel.id ? updated : r));
+			cancelEdit(rel.id);
+		} catch (e) {
+			editError[rel.id] = e instanceof ApiClientError ? e.message : String(e);
+		} finally {
+			editSaving[rel.id] = false;
+		}
+	}
+
+	async function archiveRelease(id: number) {
+		editSaving[id] = true;
+		try {
+			await adminArchiveBadgeRelease(id);
+			releases = releases.map((r) => (r.id === id ? { ...r, active: false } : r));
+			cancelEdit(id);
+		} catch (e) {
+			editError[id] = e instanceof ApiClientError ? e.message : String(e);
+		} finally {
+			editSaving[id] = false;
+		}
+	}
+
+	const TIER_LABELS: Record<number, string> = { 1: 'Common', 2: 'Uncommon', 3: 'Rare', 4: 'Epic', 5: 'Legendary' };
+	const TIER_COLORS: Record<number, string> = {
+		1: 'text-surface-400',
+		2: 'text-green-400',
+		3: 'text-blue-400',
+		4: 'text-purple-400',
+		5: 'text-primary-400'
+	};
 </script>
 
 <svelte:head>
@@ -200,6 +340,14 @@
 				: 'border-transparent text-surface-400 hover:text-surface-200'}"
 		>
 			Analytics
+		</button>
+		<button
+			onclick={switchToBadges}
+			class="px-5 py-2.5 text-xs font-semibold uppercase tracking-widest border-b-2 -mb-px transition-colors {activeTab === 'badges'
+				? 'border-primary-400 text-primary-400'
+				: 'border-transparent text-surface-400 hover:text-surface-200'}"
+		>
+			Badges
 		</button>
 	</div>
 
@@ -490,6 +638,198 @@
 					</div>
 				</div>
 			{/if}
+		</div>
+	{/if}
+
+	<!-- ── Badges Tab ───────────────────────────────────────────────── -->
+	{#if activeTab === 'badges'}
+		<div class="space-y-8">
+
+			{#if badgesError}
+				<div class="px-4 py-3 rounded bg-error-900 border border-error-700 text-error-300 text-sm">{badgesError}</div>
+			{/if}
+
+			<!-- Create Release -->
+			<section class="bg-surface-800 border border-surface-700 rounded-xl p-6">
+				<h2 class="text-sm font-semibold text-surface-100 uppercase tracking-widest mb-4">New Badge Release</h2>
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+					<!-- Badge selector -->
+					<div class="sm:col-span-2">
+						<label class="block text-surface-400 text-xs uppercase tracking-wide mb-1" for="cf-badge">Badge</label>
+						<select id="cf-badge" bind:value={cfBadgeKey}
+							class="input w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 text-sm focus:border-primary-500 outline-none">
+							<option value="">— select a badge —</option>
+							{#each catalog as entry}
+								<option value={entry.key}>[T{entry.tier}] {entry.title}</option>
+							{/each}
+						</select>
+					</div>
+					<!-- Price -->
+					<div>
+						<label class="block text-surface-400 text-xs uppercase tracking-wide mb-1" for="cf-price">Price (bUEC)</label>
+						<input id="cf-price" type="number" min="0" bind:value={cfPrice}
+							placeholder="e.g. 500"
+							class="input w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 text-sm focus:border-primary-500 outline-none" />
+					</div>
+					<!-- Stock -->
+					<div>
+						<label class="block text-surface-400 text-xs uppercase tracking-wide mb-1" for="cf-stock">Stock (blank = unlimited)</label>
+						<input id="cf-stock" type="number" min="1" bind:value={cfStock}
+							placeholder="e.g. 25"
+							class="input w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 text-sm focus:border-primary-500 outline-none" />
+					</div>
+					<!-- Released At -->
+					<div>
+						<label class="block text-surface-400 text-xs uppercase tracking-wide mb-1" for="cf-released">Release Date/Time (blank = now)</label>
+						<input id="cf-released" type="datetime-local" bind:value={cfReleasedAt}
+							class="input w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 text-sm focus:border-primary-500 outline-none" />
+					</div>
+					<!-- Expires At -->
+					<div>
+						<label class="block text-surface-400 text-xs uppercase tracking-wide mb-1" for="cf-expires">Expiry Date/Time (blank = never)</label>
+						<input id="cf-expires" type="datetime-local" bind:value={cfExpiresAt}
+							class="input w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 text-sm focus:border-primary-500 outline-none" />
+					</div>
+					<!-- Notes -->
+					<div class="sm:col-span-2">
+						<label class="block text-surface-400 text-xs uppercase tracking-wide mb-1" for="cf-notes">Admin Notes (optional)</label>
+						<input id="cf-notes" type="text" bind:value={cfNotes}
+							placeholder="e.g. CitizenCon 2026 special drop"
+							class="input w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-surface-100 text-sm focus:border-primary-500 outline-none" />
+					</div>
+				</div>
+				{#if cfError}
+					<p class="text-red-400 text-sm mt-3">{cfError}</p>
+				{/if}
+				<div class="mt-4">
+					<button onclick={createRelease} disabled={cfLoading}
+						class="btn preset-filled-primary-500 tracking-wider uppercase text-xs disabled:opacity-50">
+						{cfLoading ? 'Creating…' : 'Create Release'}
+					</button>
+				</div>
+			</section>
+
+			<!-- Releases Table -->
+			<section class="bg-surface-800 border border-surface-700 rounded-xl overflow-hidden">
+				<div class="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
+					<h2 class="text-sm font-semibold text-surface-100 uppercase tracking-widest">All Releases</h2>
+					{#if badgesLoading}
+						<span class="text-surface-500 text-xs">Loading…</span>
+					{:else}
+						<button onclick={loadBadges} class="text-xs text-primary-400 hover:text-primary-300 uppercase tracking-wider">Refresh</button>
+					{/if}
+				</div>
+
+				{#if releases.length === 0 && !badgesLoading}
+					<p class="text-surface-500 text-sm px-6 py-8 text-center">No releases yet. Create one above.</p>
+				{:else}
+					<div class="divide-y divide-surface-700">
+						{#each releases as rel}
+							{@const draft = editDrafts[rel.id]}
+							{@const saving = editSaving[rel.id] ?? false}
+							<div class="px-6 py-4 {rel.active ? '' : 'opacity-50'}">
+								{#if draft}
+									<!-- Edit mode -->
+									<div class="space-y-3">
+										<div class="flex items-center gap-3 mb-1">
+											<span class="{TIER_COLORS[rel.tier] ?? 'text-surface-300'} text-xs font-bold uppercase tracking-widest">{TIER_LABELS[rel.tier] ?? `T${rel.tier}`}</span>
+											<span class="text-surface-100 text-sm font-semibold">{rel.title}</span>
+											<span class="text-surface-500 text-xs font-mono">{rel.badge_key}</span>
+										</div>
+										<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+											<div>
+												<label class="block text-surface-400 text-xs mb-0.5">Price (bUEC)
+													<input type="number" min="0" bind:value={draft.price}
+														class="input w-full bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-surface-100 outline-none focus:border-primary-500" />
+												</label>
+											</div>
+											<div>
+												<label class="block text-surface-400 text-xs mb-0.5">Stock (blank=∞)
+													<input type="number" min="1" bind:value={draft.stock}
+														class="input w-full bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-surface-100 outline-none focus:border-primary-500" />
+												</label>
+											</div>
+											<div class="sm:col-span-2">
+												<label class="block text-surface-400 text-xs mb-0.5">Expires (blank=never)
+													<input type="datetime-local" bind:value={draft.expiresAt}
+														class="input w-full bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-surface-100 outline-none focus:border-primary-500" />
+												</label>
+											</div>
+											<div class="sm:col-span-3">
+												<label class="block text-surface-400 text-xs mb-0.5">Notes
+													<input type="text" bind:value={draft.notes}
+														class="input w-full bg-surface-700 border border-surface-600 rounded px-2 py-1 text-sm text-surface-100 outline-none focus:border-primary-500" />
+												</label>
+											</div>
+											<div class="flex items-end pb-0.5">
+												<label class="flex items-center gap-2 cursor-pointer text-sm text-surface-300">
+													<input type="checkbox" bind:checked={draft.active} class="w-4 h-4 accent-primary-400" />
+													Active
+												</label>
+											</div>
+										</div>
+										{#if editError[rel.id]}
+											<p class="text-red-400 text-xs">{editError[rel.id]}</p>
+										{/if}
+										<div class="flex gap-2">
+											<button onclick={() => saveEdit(rel)} disabled={saving}
+												class="btn preset-filled-primary-500 text-xs uppercase tracking-wider disabled:opacity-50 px-3 py-1">
+												{saving ? 'Saving…' : 'Save'}
+											</button>
+											<button onclick={() => cancelEdit(rel.id)} disabled={saving}
+												class="btn bg-surface-700 text-surface-300 hover:bg-surface-600 text-xs uppercase tracking-wider px-3 py-1">
+												Cancel
+											</button>
+											{#if rel.active}
+												<button onclick={() => archiveRelease(rel.id)} disabled={saving}
+													class="btn bg-red-900 text-red-300 hover:bg-red-800 text-xs uppercase tracking-wider px-3 py-1 ml-auto">
+													Archive
+												</button>
+											{/if}
+										</div>
+									</div>
+								{:else}
+									<!-- View mode -->
+									<div class="flex items-start justify-between gap-4">
+										<div class="flex-1 min-w-0">
+											<div class="flex items-center gap-2 flex-wrap mb-0.5">
+												<span class="{TIER_COLORS[rel.tier] ?? 'text-surface-300'} text-xs font-bold uppercase tracking-widest">{TIER_LABELS[rel.tier] ?? `T${rel.tier}`}</span>
+												<span class="text-surface-100 text-sm font-semibold">{rel.title}</span>
+												<span class="text-surface-500 text-xs font-mono">{rel.badge_key}</span>
+												{#if !rel.active}
+													<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-surface-700 text-surface-500">Archived</span>
+												{/if}
+												{#if rel.expires_at && new Date(rel.expires_at) < new Date()}
+													<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-red-900/60 text-red-400">Expired</span>
+												{/if}
+											</div>
+											<div class="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-surface-400">
+												<span><span class="text-primary-300 font-semibold">{rel.price.toLocaleString()} bUEC</span></span>
+												{#if rel.stock != null}
+													<span>{rel.sold}/{rel.stock} sold</span>
+												{:else}
+													<span>{rel.sold} sold · unlimited</span>
+												{/if}
+												<span>Released {new Date(rel.released_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
+												{#if rel.expires_at}
+													<span>Expires {new Date(rel.expires_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</span>
+												{/if}
+												{#if rel.notes}
+													<span class="text-surface-500 italic">{rel.notes}</span>
+												{/if}
+											</div>
+										</div>
+										<button onclick={() => startEdit(rel)}
+											class="shrink-0 text-xs text-surface-400 hover:text-surface-200 uppercase tracking-wider border border-surface-600 hover:border-surface-400 rounded px-2 py-1 transition-colors">
+											Edit
+										</button>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
 		</div>
 	{/if}
 </div>

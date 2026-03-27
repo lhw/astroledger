@@ -391,15 +391,20 @@ func (s *BadgeService) CheckAndAward(ctx context.Context, userID int64) {
 }
 
 // ComputeLifetimeSpend returns the total bUEC the user has spent in the FOMO store.
-// It sums badge costs for every purchasable badge the user owns.
+// It uses the purchase_price recorded on each user_badge row (set when buying via a release).
+// Badges acquired before the release system (purchase_price=0) fall back to the static
+// Cost field on the BadgeDefinition so old spends still count toward admiral ranks.
 func (s *BadgeService) ComputeLifetimeSpend(ctx context.Context, userID int64) (int64, error) {
-	keys, err := s.queries.GetUserBadgeKeys(ctx, userID)
+	prices, err := s.queries.GetUserBadgePurchasePrices(ctx, userID)
 	if err != nil {
 		return 0, err
 	}
 	var total int64
-	for _, k := range keys {
-		if def, ok := BadgeKeysMap[k]; ok && def.Purchasable {
+	for key, price := range prices {
+		if price > 0 {
+			total += price
+		} else if def, ok := BadgeKeysMap[key]; ok && def.Purchasable {
+			// Fallback for badges purchased before the release system was introduced.
 			total += def.Cost
 		}
 	}

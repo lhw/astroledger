@@ -412,3 +412,277 @@ func (h *AdminHandler) AdjustUserBalance(w http.ResponseWriter, r *http.Request)
 
 	respondJSON(w, http.StatusOK, map[string]any{"new_balance": newBalance})
 }
+
+// ─── Badge Release Management ─────────────────────────────────────────────────
+
+// badgeReleaseResponse is the shape returned to the admin UI.
+type badgeReleaseResponse struct {
+	ID          int64   `json:"id"`
+	BadgeKey    string  `json:"badge_key"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Tier        int     `json:"tier"`
+	Price       int64   `json:"price"`
+	Stock       *int    `json:"stock"`
+	ReleasedAt  string  `json:"released_at"`
+	ExpiresAt   *string `json:"expires_at"`
+	Active      bool    `json:"active"`
+	Notes       *string `json:"notes"`
+	CreatedAt   string  `json:"created_at"`
+	Sold        int64   `json:"sold"`
+}
+
+// badgeCatalogEntry is one entry from AllBadges returned to the admin UI.
+type badgeCatalogEntry struct {
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tier        int    `json:"tier"`
+}
+
+func toReleaseResponse(rel db.BadgeReleaseRow, sold int64) badgeReleaseResponse {
+	r := badgeReleaseResponse{
+		ID:         rel.ID,
+		BadgeKey:   rel.BadgeKey,
+		Price:      rel.Price,
+		Stock:      rel.Stock,
+		ReleasedAt: rel.ReleasedAt.Format("2006-01-02T15:04:05Z"),
+		Active:     rel.Active,
+		Notes:      rel.Notes,
+		CreatedAt:  rel.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		Sold:       sold,
+	}
+	if rel.ExpiresAt != nil {
+		s := rel.ExpiresAt.Format("2006-01-02T15:04:05Z")
+		r.ExpiresAt = &s
+	}
+	if def, ok := service.BadgeKeysMap[rel.BadgeKey]; ok {
+		r.Title = def.Title
+		r.Description = def.Description
+		r.Tier = def.Tier
+	}
+	return r
+}
+
+// GetBadgeCatalog returns all badge definitions the admin can release.
+// GET /api/admin/badge-catalog
+func (h *AdminHandler) GetBadgeCatalog(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	entries := make([]badgeCatalogEntry, 0, len(service.AllBadges))
+	for _, b := range service.AllBadges {
+		// Exclude admiral rank badges — they're auto-awarded by spend, not released.
+		if b.SpendThreshold > 0 {
+			continue
+		}
+		entries = append(entries, badgeCatalogEntry{
+			Key:         b.Key,
+			Title:       b.Title,
+			Description: b.Description,
+			Tier:        b.Tier,
+		})
+	}
+	respondJSON(w, http.StatusOK, entries)
+}
+
+// ListBadgeReleases returns all badge releases (including inactive) for the admin.
+// GET /api/admin/badge-releases
+func (h *AdminHandler) ListBadgeReleases(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	ctx := r.Context()
+	releases, err := h.queries.ListBadgeReleases(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	result := make([]badgeReleaseResponse, 0, len(releases))
+	for _, rel := range releases {
+		sold, _ := h.queries.CountBadgePurchases(ctx, rel.BadgeKey)
+		result = append(result, toReleaseResponse(rel, sold))
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+// createBadgeReleaseBody is the request body for creating/updating a release.
+type createBadgeReleaseBody struct {
+	BadgeKey   string  `json:"badge_key"`
+	Price      int64   `json:"price"`
+	Stock      *int    `json:"stock"`
+	ReleasedAt string  `json:"released_at"` // RFC3339 or empty for now
+	ExpiresAt  *string `json:"expires_at"`  // RFC3339 or nil
+	Notes      *string `json:"notes"`
+}
+
+// CreateBadgeRelease creates a new badge release.
+// POST /api/admin/badge-releases
+func (h *AdminHandler) CreateBadgeRelease(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	ctx := r.Context()
+
+	var body createBadgeReleaseBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if _, ok := service.BadgeKeysMap[body.BadgeKey]; !ok {
+		respondError(w, http.StatusBadRequest, "unknown badge_key")
+		return
+	}
+	if body.Price < 0 {
+		respondError(w, http.StatusBadRequest, "price must be >= 0")
+		return
+	}
+	if body.Stock != nil && *body.Stock <= 0 {
+		respondError(w, http.StatusBadRequest, "stock must be a positive integer or null for unlimited")
+		return
+	}
+
+	releasedAt := time.Now().UTC()
+	if body.ReleasedAt != "" {
+		if t, err := time.Parse(time.RFC3339, body.ReleasedAt); err == nil {
+			releasedAt = t.UTC()
+		}
+	}
+	var expiresAt *time.Time
+	if body.ExpiresAt != nil && *body.ExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, *body.ExpiresAt); err == nil {
+			v := t.UTC()
+			expiresAt = &v
+		} else {
+			respondError(w, http.StatusBadRequest, "expires_at must be RFC3339 or omitted")
+			return
+		}
+	}
+
+	id, err := h.queries.CreateBadgeRelease(ctx, db.CreateBadgeReleaseParams{
+		BadgeKey:   body.BadgeKey,
+		Price:      body.Price,
+		Stock:      body.Stock,
+		ReleasedAt: releasedAt,
+		ExpiresAt:  expiresAt,
+		Notes:      body.Notes,
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	rel, err := h.queries.GetBadgeReleaseByID(ctx, id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusCreated, toReleaseResponse(rel, 0))
+}
+
+// UpdateBadgeRelease updates price, stock, dates, active flag, and notes on an existing release.
+// PUT /api/admin/badge-releases/:id
+func (h *AdminHandler) UpdateBadgeRelease(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	ctx := r.Context()
+
+	releaseID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	existing, err := h.queries.GetBadgeReleaseByID(ctx, releaseID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "release not found")
+		return
+	}
+
+	// Decode partial update body — reuse createBadgeReleaseBody plus active flag.
+	var body struct {
+		createBadgeReleaseBody
+		Active bool `json:"active"`
+	}
+	// Default to existing values before decode so only provided fields override.
+	body.Price = existing.Price
+	body.Stock = existing.Stock
+	body.ReleasedAt = existing.ReleasedAt.Format("2006-01-02T15:04:05Z")
+	body.Active = existing.Active
+	body.Notes = existing.Notes
+	if existing.ExpiresAt != nil {
+		s := existing.ExpiresAt.Format("2006-01-02T15:04:05Z")
+		body.ExpiresAt = &s
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if body.Price < 0 {
+		respondError(w, http.StatusBadRequest, "price must be >= 0")
+		return
+	}
+	if body.Stock != nil && *body.Stock <= 0 {
+		respondError(w, http.StatusBadRequest, "stock must be a positive integer or null for unlimited")
+		return
+	}
+
+	releasedAt := existing.ReleasedAt
+	if body.ReleasedAt != "" {
+		if t, err2 := time.Parse(time.RFC3339, body.ReleasedAt); err2 == nil {
+			releasedAt = t.UTC()
+		} else if t, err2 = time.Parse("2006-01-02T15:04:05Z", body.ReleasedAt); err2 == nil {
+			releasedAt = t.UTC()
+		}
+	}
+	var expiresAt *time.Time
+	if body.ExpiresAt != nil && *body.ExpiresAt != "" {
+		if t, err2 := time.Parse(time.RFC3339, *body.ExpiresAt); err2 == nil {
+			v := t.UTC()
+			expiresAt = &v
+		} else if t, err2 := time.Parse("2006-01-02T15:04:05Z", *body.ExpiresAt); err2 == nil {
+			v := t.UTC()
+			expiresAt = &v
+		} else {
+			respondError(w, http.StatusBadRequest, "expires_at must be RFC3339 or omitted")
+			return
+		}
+	}
+
+	if err := h.queries.UpdateBadgeRelease(ctx, db.UpdateBadgeReleaseParams{
+		ID:         releaseID,
+		Price:      body.Price,
+		Stock:      body.Stock,
+		ReleasedAt: releasedAt,
+		ExpiresAt:  expiresAt,
+		Active:     body.Active,
+		Notes:      body.Notes,
+	}); err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	rel, _ := h.queries.GetBadgeReleaseByID(ctx, releaseID)
+	sold, _ := h.queries.CountBadgePurchases(ctx, rel.BadgeKey)
+	respondJSON(w, http.StatusOK, toReleaseResponse(rel, sold))
+}
+
+// ArchiveBadgeRelease sets a release to inactive (soft-delete).
+// DELETE /api/admin/badge-releases/:id
+func (h *AdminHandler) ArchiveBadgeRelease(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	releaseID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.queries.ArchiveBadgeRelease(r.Context(), releaseID); err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "archived"})
+}

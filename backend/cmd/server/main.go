@@ -216,6 +216,12 @@ func run() error {
 			r.Get("/admin/users/search", adminH.SearchUsers)
 			r.Post("/admin/users/{id}/balance", adminH.AdjustUserBalance)
 			r.Get("/admin/analytics", adminH.AnalyticsProxy)
+			// Badge release management
+			r.Get("/admin/badge-catalog", adminH.GetBadgeCatalog)
+			r.Get("/admin/badge-releases", adminH.ListBadgeReleases)
+			r.Post("/admin/badge-releases", adminH.CreateBadgeRelease)
+			r.Put("/admin/badge-releases/{id}", adminH.UpdateBadgeRelease)
+			r.Delete("/admin/badge-releases/{id}", adminH.ArchiveBadgeRelease)
 		})
 	})
 	srv := &http.Server{

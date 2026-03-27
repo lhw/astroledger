@@ -164,19 +164,6 @@ export interface TradeWithTrader extends Trade {
 	trader_name: string;
 }
 
-/** User position in a market outcome */
-export interface Position {
-	user_id: number;
-	market_id: number;
-	outcome_id: number;
-	outcome_label: string;
-	shares: number;
-	market_title: string;
-	market_status: MarketStatus;
-	outcomes: MarketOutcome[];
-	liquidity_param: number;
-}
-
 /** Trade execution result */
 export interface TradeResult {
 	TradeID: number;
@@ -329,4 +316,47 @@ export interface UserSearchResult {
 	display_name: string;
 	rsi_handle: string | null;
 	balance: number;
+}
+
+/** A badge definition from the catalog (admin use) */
+export interface BadgeCatalogEntry {
+	key: string;
+	title: string;
+	description: string;
+	tier: number;
+}
+
+/** A badge release created by an admin */
+export interface AdminBadgeRelease {
+	id: number;
+	badge_key: string;
+	title: string;
+	description: string;
+	tier: number;
+	price: number;
+	stock: number | null;
+	released_at: string;
+	expires_at: string | null;
+	active: boolean;
+	notes: string | null;
+	created_at: string;
+	/** Number of users who have purchased this badge so far. */
+	sold: number;
+}
+
+/** User position enriched with cost basis and resolved market info */
+export interface Position {
+	user_id: number;
+	market_id: number;
+	outcome_id: number;
+	outcome_label: string;
+	shares: number;
+	market_title: string;
+	market_status: MarketStatus;
+	liquidity_param: number;
+	outcomes: MarketOutcome[];
+	/** Net bUEC paid for this position (buys minus sells). */
+	cost_basis: number;
+	/** Winning outcome ID once market resolves; null while active. */
+	resolved_outcome_id: number | null;
 }

@@ -159,6 +159,7 @@ func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, u
 }
 
 // GetStoreBadges returns the list of purchasable FOMO store badges with owned status.
+// Only badges with an active DB release (created via the admin panel) are included.
 // GET /api/fomo
 func (h *ModerationHandler) GetStoreBadges(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -188,33 +189,42 @@ func (h *ModerationHandler) GetStoreBadges(w http.ResponseWriter, r *http.Reques
 		Expired        bool    `json:"expired"`
 	}
 
+	releases, err := h.queries.GetActiveBadgeReleases(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
 	now := time.Now()
-	store := service.StoreBadges()
-	result := make([]storeBadge, 0, len(store))
-	for _, b := range store {
-		sb := storeBadge{
-			BadgeKey:    b.Key,
-			Title:       b.Title,
-			Description: b.Description,
-			Tier:        b.Tier,
-			Cost:        b.Cost,
-			Owned:       owned[b.Key],
+	result := make([]storeBadge, 0, len(releases))
+	for _, rel := range releases {
+		def, ok := service.BadgeKeysMap[rel.BadgeKey]
+		if !ok {
+			continue // badge key no longer in catalog — skip gracefully
 		}
-		if b.Stock != nil {
-			sb.Stock = b.Stock
-			sold, err := h.queries.CountBadgePurchases(ctx, b.Key)
+		sb := storeBadge{
+			BadgeKey:    rel.BadgeKey,
+			Title:       def.Title,
+			Description: def.Description,
+			Tier:        def.Tier,
+			Cost:        rel.Price,
+			Owned:       owned[rel.BadgeKey],
+		}
+		if rel.Stock != nil {
+			sb.Stock = rel.Stock
+			sold, err := h.queries.CountBadgePurchases(ctx, rel.BadgeKey)
 			if err == nil {
-				rem := int64(*b.Stock) - sold
+				rem := int64(*rel.Stock) - sold
 				if rem < 0 {
 					rem = 0
 				}
 				sb.RemainingStock = &rem
 			}
 		}
-		if b.AvailableUntil != nil {
-			s := b.AvailableUntil.Format("2006-01-02T15:04:05Z")
+		if rel.ExpiresAt != nil {
+			s := rel.ExpiresAt.Format("2006-01-02T15:04:05Z")
 			sb.AvailableUntil = &s
-			sb.Expired = now.After(*b.AvailableUntil)
+			sb.Expired = now.After(*rel.ExpiresAt)
 		}
 		result = append(result, sb)
 	}
@@ -239,26 +249,32 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Validate against catalog.
 	def, ok := service.BadgeKeysMap[body.BadgeKey]
-	if !ok || !def.Purchasable {
+	if !ok {
 		respondError(w, http.StatusBadRequest, "badge not available for purchase")
 		return
 	}
 
-	// Check time-limited availability.
-	if def.AvailableUntil != nil && time.Now().After(*def.AvailableUntil) {
-		respondError(w, http.StatusGone, "this badge is no longer available")
+	// Require an active release for this badge key.
+	release, hasRelease, err := h.queries.GetActiveBadgeReleaseForKey(ctx, body.BadgeKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	if !hasRelease {
+		respondError(w, http.StatusGone, "this badge is not currently available")
 		return
 	}
 
-	// Check stock.
-	if def.Stock != nil {
+	// Check stock against release limit.
+	if release.Stock != nil {
 		sold, err := h.queries.CountBadgePurchases(ctx, def.Key)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
-		if sold >= int64(*def.Stock) {
+		if sold >= int64(*release.Stock) {
 			respondError(w, http.StatusConflict, "this badge is sold out")
 			return
 		}
@@ -270,7 +286,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	if user.Balance < def.Cost {
+	if user.Balance < release.Price {
 		respondError(w, http.StatusPaymentRequired, "insufficient balance")
 		return
 	}
@@ -288,17 +304,17 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Deduct balance, then award. Both are idempotent so no transaction needed for badge award.
+	// Deduct balance, then award with purchase price for admiral rank tracking.
 	if err := h.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{
-		Balance: -def.Cost,
+		Balance: -release.Price,
 		ID:      claims.UserID,
 	}); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	if err := h.queries.AwardBadgeIfNew(ctx, claims.UserID, def.Key); err != nil {
+	if err := h.queries.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price); err != nil {
 		// Refund on failure.
-		_ = h.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{Balance: def.Cost, ID: claims.UserID})
+		_ = h.queries.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{Balance: release.Price, ID: claims.UserID})
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -306,7 +322,6 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	respondJSON(w, http.StatusOK, map[string]string{"status": "purchased"})
 
 	// Non-blocking: check admiral rank milestones after the purchase.
-	// Use context.Background() since the request context may be cancelled by the time the goroutine runs.
 	userID := claims.UserID
 	go h.badgeSvc.CheckAndAwardAdmiralRanks(context.Background(), userID)
 }
