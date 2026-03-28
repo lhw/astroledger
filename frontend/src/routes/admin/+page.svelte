@@ -11,7 +11,7 @@
 		adminArchiveBadgeRelease,
 		ApiClientError
 	} from '$lib/api';
-	import type { AnalyticsStats, UserSearchResult, BadgeCatalogEntry, AdminBadgeRelease } from '$lib/types';
+	import type { AnalyticsStats, AnalyticsStat, UserSearchResult, BadgeCatalogEntry, AdminBadgeRelease } from '$lib/types';
 	import BadgeReleaseCalendar from '$lib/components/BadgeReleaseCalendar.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
 
@@ -180,6 +180,20 @@
 	function avgDailyViews(data: AnalyticsStats) {
 		const n = data.daily?.length || 1;
 		return Math.round(data.total_views / n);
+	}
+
+	function statBarWidth(item: AnalyticsStat, list: AnalyticsStat[]) {
+		const max = list[0]?.count || 1;
+		return Math.round((item.count / max) * 100);
+	}
+
+	function statPanels(data: AnalyticsStats): { label: string; items: AnalyticsStat[] }[] {
+		return [
+			{ label: 'Browsers', items: data.browsers ?? [] },
+			{ label: 'Operating Systems', items: data.systems ?? [] },
+			{ label: 'Locations', items: data.locations ?? [] },
+			{ label: 'Languages', items: data.languages ?? [] }
+		];
 	}
 
 	// ── Badge Releases ────────────────────────────────────────────────────
@@ -527,6 +541,30 @@
 							<p class="text-surface-500 text-xs">No referrer data yet.</p>
 						{/if}
 					</div>
+				</div>
+
+				<!-- ── Browsers / OS / Locations / Languages ─────────────── -->
+				<div class="grid grid-cols-2 gap-4">
+					{#each statPanels(analyticsData) as panel}
+						<div class="bg-surface-800 border border-surface-700 rounded-xl p-5">
+							<p class="text-surface-400 text-xs uppercase tracking-widest mb-4">{panel.label}</p>
+							{#if panel.items?.length}
+								<div class="space-y-2">
+									{#each panel.items as item}
+										<div class="flex items-center justify-between gap-3">
+											<span class="text-surface-300 text-xs truncate flex-1" title={item.name}>{item.name}</span>
+											<span class="text-primary-300 text-xs font-semibold tabular-nums shrink-0">{item.count.toLocaleString()}</span>
+										</div>
+										<div class="w-full bg-surface-700 rounded-full h-0.5">
+											<div class="bg-primary-500 h-0.5 rounded-full" style="width: {statBarWidth(item, panel.items)}%"></div>
+										</div>
+									{/each}
+								</div>
+							{:else}
+								<p class="text-surface-500 text-xs">No data yet.</p>
+							{/if}
+						</div>
+					{/each}
 				</div>
 			{/if}
 		</div>

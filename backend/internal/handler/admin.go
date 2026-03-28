@@ -62,6 +62,18 @@ type gcRef struct {
 	Count int    `json:"count"`
 }
 
+// gcStatItem is the common element in GoatCounter list-stat responses
+// (browsers, systems, locations, languages, sizes).
+type gcStatItem struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type gcStatListResponse struct {
+	Stats []gcStatItem `json:"stats"`
+}
+
 // ── Analytics response types returned to the frontend ────────────────────
 
 type analyticsResponse struct {
@@ -72,6 +84,15 @@ type analyticsResponse struct {
 	Daily       []analyticsDayStat `json:"daily"`
 	TopPages    []analyticsPage    `json:"top_pages"`
 	TopRefs     []analyticsRef     `json:"top_refs"`
+	Browsers    []analyticsStat    `json:"browsers"`
+	Systems     []analyticsStat    `json:"systems"`
+	Locations   []analyticsStat    `json:"locations"`
+	Languages   []analyticsStat    `json:"languages"`
+}
+
+type analyticsStat struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 type analyticsDayStat struct {
@@ -130,8 +151,19 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 		err  error
 	}
 
+	type listResult struct {
+		data []byte
+		err  error
+	}
+
 	hitsCh := make(chan hitsResult, 1)
 	refsCh := make(chan refsResult, 1)
+	browsersCh := make(chan listResult, 1)
+	systemsCh := make(chan listResult, 1)
+	locationsCh := make(chan listResult, 1)
+	languagesCh := make(chan listResult, 1)
+
+	statParams := fmt.Sprintf("start=%s&end=%s&limit=10", start, end)
 
 	go func() {
 		data, err := h.gcFetch(r.Context(),
@@ -140,12 +172,32 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 	}()
 	go func() {
 		data, err := h.gcFetch(r.Context(),
-			fmt.Sprintf("/api/v0/stats/refs?start=%s&end=%s&limit=10", start, end))
+			fmt.Sprintf("/api/v0/stats/refs?%s", statParams))
 		refsCh <- refsResult{data, err}
+	}()
+	go func() {
+		data, err := h.gcFetch(r.Context(), "/api/v0/stats/browsers?"+statParams)
+		browsersCh <- listResult{data, err}
+	}()
+	go func() {
+		data, err := h.gcFetch(r.Context(), "/api/v0/stats/systems?"+statParams)
+		systemsCh <- listResult{data, err}
+	}()
+	go func() {
+		data, err := h.gcFetch(r.Context(), "/api/v0/stats/locations?"+statParams)
+		locationsCh <- listResult{data, err}
+	}()
+	go func() {
+		data, err := h.gcFetch(r.Context(), "/api/v0/stats/languages?"+statParams)
+		languagesCh <- listResult{data, err}
 	}()
 
 	hitsRes := <-hitsCh
 	refsRes := <-refsCh
+	browsersRes := <-browsersCh
+	systemsRes := <-systemsCh
+	locationsRes := <-locationsCh
+	languagesRes := <-languagesCh
 
 	if hitsRes.err != nil {
 		slog.Warn("analytics: failed to fetch hits from GoatCounter", "err", hitsRes.err)
@@ -225,6 +277,29 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 		topRefs = []analyticsRef{}
 	}
 
+	// parseStatList converts a gcStatListResponse to a deduplicated analyticsStat slice.
+	parseStatList := func(data []byte, err error) []analyticsStat {
+		out := []analyticsStat{}
+		if err != nil {
+			return out
+		}
+		var resp gcStatListResponse
+		if jsonErr := json.Unmarshal(data, &resp); jsonErr != nil {
+			return out
+		}
+		for _, s := range resp.Stats {
+			name := s.Name
+			if name == "" {
+				name = s.ID
+			}
+			if name == "" {
+				name = "(unknown)"
+			}
+			out = append(out, analyticsStat{Name: name, Count: s.Count})
+		}
+		return out
+	}
+
 	respondJSON(w, http.StatusOK, analyticsResponse{
 		Configured:  true,
 		Period:      period,
@@ -233,6 +308,10 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 		Daily:       daily,
 		TopPages:    topPages,
 		TopRefs:     topRefs,
+		Browsers:    parseStatList(browsersRes.data, browsersRes.err),
+		Systems:     parseStatList(systemsRes.data, systemsRes.err),
+		Locations:   parseStatList(locationsRes.data, locationsRes.err),
+		Languages:   parseStatList(languagesRes.data, languagesRes.err),
 	})
 }
 

@@ -311,6 +311,11 @@ export interface AnalyticsRef {
 	views: number;
 }
 
+export interface AnalyticsStat {
+	name: string;
+	count: number;
+}
+
 export interface AnalyticsStats {
 	configured: boolean;
 	period: string;
@@ -319,6 +324,10 @@ export interface AnalyticsStats {
 	daily: AnalyticsDayStat[];
 	top_pages: AnalyticsPage[];
 	top_refs: AnalyticsRef[];
+	browsers: AnalyticsStat[];
+	systems: AnalyticsStat[];
+	locations: AnalyticsStat[];
+	languages: AnalyticsStat[];
 }
 
 export interface UserSearchResult {
