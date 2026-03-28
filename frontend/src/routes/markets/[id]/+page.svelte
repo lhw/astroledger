@@ -305,7 +305,7 @@
 </script>
 
 <svelte:head>
-	<title>{data_?.market.title ?? 'Market'} — ScolyMarket</title>
+	<title>{data_?.market.title ?? 'Market'} — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-4xl py-10">

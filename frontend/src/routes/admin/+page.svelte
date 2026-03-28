@@ -221,7 +221,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin Panel — ScolyMarket</title>
+	<title>Admin Panel — AstroLedger</title>
 </svelte:head>
 
 <div class="admin-shell max-w-4xl mx-auto px-6 py-10">

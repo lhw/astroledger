@@ -45,9 +45,17 @@ function recordHit(request: Request): void {
 			no_sessions: false,
 			hits: [{ path, ref, user_agent: ua, ip, language }],
 		}),
-	}).catch(() => {
-		// Analytics failure is non-fatal — silently ignore.
-	});
+	})
+		.then((res) => {
+			if (!res.ok) {
+				res.text().then((body) => {
+					console.error(`[analytics] GoatCounter returned ${res.status}: ${body}`);
+				});
+			}
+		})
+		.catch((err) => {
+			console.error(`[analytics] GoatCounter unreachable (${gcURL}):`, err.message ?? err);
+		});
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

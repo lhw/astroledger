@@ -335,7 +335,7 @@ func (h *AdminHandler) TriggerWeeklyPayout(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// AdjustUserBalance adjusts a user's ScollyBucks™ balance.
+// AdjustUserBalance adjusts a user's bUEC balance.
 // POST /api/admin/users/:id/balance
 func (h *AdminHandler) AdjustUserBalance(w http.ResponseWriter, r *http.Request) {
 	admin := h.requireAdmin(w, r)

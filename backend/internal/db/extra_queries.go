@@ -472,7 +472,7 @@ VALUES (?, ?, ?)`
 
 // ─── Weekly payout ────────────────────────────────────────────────────────────
 
-// WeeklyPayoutAmount is the number of ScollyBucks awarded to every user in the weekly payout.
+// WeeklyPayoutAmount is the number of bUEC awarded to every user in the weekly payout.
 const WeeklyPayoutAmount int64 = 200
 
 // WeeklyPayoutAlreadyRan returns true if the weekly payout for the given week key

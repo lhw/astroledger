@@ -2,11 +2,11 @@ import { test, expect } from '@playwright/test';
 import { mockMe, mockMarkets, USER_LOGGED_IN } from './helpers/mock-api';
 
 test.describe('Home page', () => {
-	test('shows ScolyMarket heading', async ({ page }) => {
+	test('shows AstroLedger heading', async ({ page }) => {
 		await mockMe(page, null);
 		await mockMarkets(page);
 		await page.goto('/');
-		await expect(page.getByRole('heading', { name: /ScolyMarket/i })).toBeVisible();
+		await expect(page.getByRole('heading', { name: /AstroLedger/i })).toBeVisible();
 	});
 
 	test('shows login button when not authenticated', async ({ page }) => {

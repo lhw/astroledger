@@ -71,7 +71,7 @@
 </script>
 
 <svelte:head>
-	<title>FOMO Store — ScolyMarket</title>
+	<title>FOMO Store — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-4xl py-10">
@@ -80,7 +80,7 @@
 		<p class="text-xs font-bold uppercase tracking-[0.2em] text-primary-500 mb-2">Cosmetic Badges</p>
 		<h1 class="text-4xl font-bold text-surface-900 mb-3">FOMO Store</h1>
 		<p class="text-surface-500 text-sm max-w-md mx-auto">
-			Spend your hard-earned ScollyBucks™ on exclusive cosmetic badges. Purely for clout. Absolutely no gameplay advantage. We promise.
+			Spend your hard-earned bUEC on exclusive cosmetic badges. Purely for clout. Absolutely no gameplay advantage. We promise.
 		</p>
 		{#if $isLoggedIn && $currentUser}
 			<div class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-50 border border-primary-200">

@@ -37,11 +37,12 @@ tasks:
   dev:frontend:
     desc: Start Vite frontend dev server
     dir: frontend
+    # Load backend/.env so SvelteKit's hooks.server.ts gets GOATCOUNTER_API_KEY
+    # (and other shared env vars) without needing a separate frontend .env file.
+    dotenv: ['../backend/.env']
     env:
       BACKEND_URL: http://localhost:8080
-      # GoatCounter server-side tracking (hooks.server.ts). API key is read
-      # from your shell env — export GOATCOUNTER_API_KEY=<token> or set it
-      # in frontend/.env (gitignored). Omit to disable tracking in dev.
+      # Override any GOATCOUNTER_URL from backend/.env with the local dev address.
       GOATCOUNTER_URL: http://localhost:8081
     cmds:
       - npm run dev
@@ -58,8 +59,52 @@ tasks:
     cmds:
       - npm run build
 
+  # ── Docker image build + push ─────────────────────────────────────────────
+
+  docker:build:
+    desc: Build both Docker images locally (uses BuildKit)
+    vars:
+      TAG: '{{.TAG | default "latest"}}'
+      REGISTRY: '{{.REGISTRY | default "registry.ring0.de/lhw/astroledger"}}'
+    cmds:
+      - docker build -t {{.REGISTRY}}/backend:{{.TAG}}  ./backend
+      - docker build -t {{.REGISTRY}}/frontend:{{.TAG}} ./frontend
+
+  docker:push:
+    desc: |
+      Build and push both production images to the registry.
+        task docker:push                    # tag: latest
+        task docker:push TAG=v1.2.3         # specific tag
+    vars:
+      TAG: '{{.TAG | default "latest"}}'
+      REGISTRY: '{{.REGISTRY | default "registry.ring0.de/lhw/astroledger"}}'
+    cmds:
+      - task: docker:build
+        vars: {TAG: "{{.TAG}}", REGISTRY: "{{.REGISTRY}}"}
+      - docker push {{.REGISTRY}}/backend:{{.TAG}}
+      - docker push {{.REGISTRY}}/frontend:{{.TAG}}
+
+  # ── Production deployment ─────────────────────────────────────────────────
+
+  deploy:
+    desc: |
+      Pull latest images and restart changed services on the production host.
+      Requires SSH access and docker compose on the remote.
+        task deploy                         # pulls latest, no rebuild
+        task deploy TAG=v1.2.3             # specific image tag
+    vars:
+      TAG: '{{.TAG | default "latest"}}'
+      REGISTRY: '{{.REGISTRY | default "registry.ring0.de/lhw/astroledger"}}'
+    cmds:
+      - docker compose pull
+      - docker compose up -d --remove-orphans
+
+  deploy:logs:
+    desc: Follow logs for all production services
+    cmds:
+      - docker compose logs -f --tail=100
+
   setup:
-    desc: Initial project setup (install deps, run migrations)
     cmds:
       - cmd: go install github.com/air-verse/air@latest
         dir: backend

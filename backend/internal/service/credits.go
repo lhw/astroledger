@@ -9,7 +9,7 @@ import (
 	"github.com/lhw/astroledger/internal/db"
 )
 
-// CreditsService manages ScollyBucks™ balances.
+// CreditsService manages bUEC balances.
 type CreditsService struct {
 	queries *db.Queries
 }

@@ -19,7 +19,7 @@
 </script>
 
 <svelte:head>
-	<title>Leaderboard — ScolyMarket</title>
+	<title>Leaderboard — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-3xl py-10">

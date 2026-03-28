@@ -83,14 +83,14 @@
 </script>
 
 <svelte:head>
-	<title>ScolyMarket — Star Citizen Prediction Markets</title>
+	<title>AstroLedger — Star Citizen Prediction Markets</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-4xl py-12">
 	<!-- Hero -->
 	<section class="text-center mb-12">
 		<p class="text-xs font-bold uppercase tracking-[0.2em] text-primary-600 mb-3">Star Citizen Community</p>
-		<h1 class="text-4xl font-bold text-surface-900 mb-3 tracking-tight">ScolyMarket</h1>
+		<h1 class="text-4xl font-bold text-surface-900 mb-3 tracking-tight">AstroLedger</h1>
 		<div class="w-12 h-px bg-primary-400 mx-auto mb-4"></div>
 		<p class="text-surface-600 mb-8 max-w-md mx-auto">
 			Prediction markets for Star Citizen events and development milestones.

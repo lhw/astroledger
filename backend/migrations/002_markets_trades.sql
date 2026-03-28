@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS trades (
     outcome_id     INTEGER NOT NULL REFERENCES market_outcomes(id),
     action         TEXT    NOT NULL,  -- buy|sell
     shares         REAL    NOT NULL,
-    cost           INTEGER NOT NULL,  -- ScollyBucks (integer, always)
+    cost           INTEGER NOT NULL,  -- bUEC (integer, always)
     price_at_trade REAL    NOT NULL,  -- 0.0–1.0 probability at time of trade
     created_at     DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );

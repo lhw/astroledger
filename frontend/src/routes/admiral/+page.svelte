@@ -54,7 +54,7 @@
 </script>
 
 <svelte:head>
-	<title>Rank — ScolyMarket</title>
+	<title>Rank — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-2xl py-10">

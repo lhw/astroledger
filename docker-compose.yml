@@ -1,36 +1,66 @@
 services:
+  # ---------------------------------------------------------------------------
+  # Go backend — REST API + auth + AMM engine
+  # ---------------------------------------------------------------------------
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: registry.ring0.de/lhw/astroledger/backend:latest
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
-      # Override DB_PATH to write into the mounted volume
+      ENVIRONMENT: production
       DB_PATH: /data/astroledger.db
       COOKIE_SECURE: "true"
+      # Internal GoatCounter URL (Docker service name — never the public stats domain)
+      GOATCOUNTER_URL: http://goatcounter:8081
     volumes:
       - db-data:/data
     networks:
       - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:8080/api/markets?limit=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
+  # ---------------------------------------------------------------------------
+  # SvelteKit frontend — adapter-node standalone server
+  # ---------------------------------------------------------------------------
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: registry.ring0.de/lhw/astroledger/frontend:latest
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
-      # ORIGIN must be the external HTTPS URL — required by SvelteKit adapter-node
-      # Set this in .env or override inline: ORIGIN=https://yourdomain.com
-      ORIGIN: ${ORIGIN}
       NODE_ENV: production
+      # ORIGIN is the canonical external HTTPS URL (required by adapter-node CSRF check)
+      ORIGIN: ${ORIGIN}
+      # Server-side analytics: forward GoatCounter vars to the SvelteKit Node process
+      GOATCOUNTER_URL: http://goatcounter:8081
+      # GOATCOUNTER_API_KEY comes from .env via env_file
+      BACKEND_URL: http://backend:8080
     networks:
       - internal
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
+  # ---------------------------------------------------------------------------
+  # GoatCounter — cookie-free, self-hosted analytics
+  # Run once after first deploy: task gc:init
+  # ---------------------------------------------------------------------------
   goatcounter:
     image: ghcr.io/arp242/goatcounter:latest
     restart: unless-stopped
-    # After first deploy, run: task gc:init
     command:
       - serve
       - -listen=:8081
@@ -40,14 +70,23 @@ services:
       - goatcounter-data:/data
     networks:
       - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:8081/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
+  # ---------------------------------------------------------------------------
+  # Caddy — HTTPS reverse proxy with automatic Let's Encrypt TLS
+  # ---------------------------------------------------------------------------
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"  # HTTP/3
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"   # HTTP/3 / QUIC
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -58,9 +97,16 @@ services:
       - backend
       - frontend
       - goatcounter
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:2019/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 networks:
   internal:
+    driver: bridge
 
 volumes:
   db-data:

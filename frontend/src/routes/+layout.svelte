@@ -46,14 +46,14 @@
 </script>
 
 <svelte:head>
-	<title>ScolyMarket — Star Citizen Prediction Markets</title>
+	<title>AstroLedger — Star Citizen Prediction Markets</title>
 </svelte:head>
 
 <div class="min-h-screen flex flex-col">
 	<!-- Header — dark charcoal nav, RSI style -->
 	<header class="site-header relative flex items-center justify-between px-4 sm:px-6 py-3 border-b sticky top-0 z-20">
 		<a href="/" class="flex items-center gap-3 no-underline min-w-0" onclick={() => (mobileMenuOpen = false)}>
-			<span class="text-primary-400 font-bold text-lg tracking-widest uppercase truncate">⚖ ScolyMarket</span>
+			<span class="text-primary-400 font-bold text-lg tracking-widest uppercase truncate">⚖ AstroLedger</span>
 			<span class="site-nav-muted text-xs hidden sm:inline tracking-wider uppercase">Prediction Markets</span>
 		</a>
 
@@ -207,7 +207,7 @@
 
 	<!-- Footer -->
 	<footer class="site-footer text-center site-nav-muted text-xs py-5 border-t">
-		ScolyMarket — No real money. No real ships delivered.
+		AstroLedger — No real money. No real ships delivered.
 		<span class="mx-2 opacity-30">·</span>
 		<a href="/docs/api" class="site-nav-muted hover:text-primary-600 transition-colors no-underline">Bot API docs</a>
 	</footer>

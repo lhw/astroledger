@@ -225,7 +225,7 @@
 </script>
 
 <svelte:head>
-	<title>Mod Queue — ScolyMarket</title>
+	<title>Mod Queue — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-4xl py-10">

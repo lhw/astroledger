@@ -72,7 +72,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Market — ScolyMarket</title>
+	<title>Create Market — AstroLedger</title>
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-2xl py-10">

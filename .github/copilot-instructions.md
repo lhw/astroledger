@@ -1,8 +1,8 @@
-# ScolyMarket — Copilot Instructions
+# AstroLedger — Copilot Instructions
 
 ## Project Overview
 
-ScolyMarket is a satirical prediction market web app for betting fake credits on Star Citizen bug fixes and general events. No real money is involved. The tone is humorous and self-aware.
+AstroLedger is a satirical prediction market web app for betting fake credits on Star Citizen bug fixes and general events. No real money is involved. The tone is humorous and self-aware.
 
 See `plan.md` for the full design document.
 
@@ -33,7 +33,7 @@ See `plan.md` for the full design document.
 - SQL queries go in `queries/` as `.sql` files. Run `sqlc generate` to produce Go code in `internal/db/`. Never edit generated files by hand.
 - Database migrations go in `migrations/` as numbered SQL files for goose.
 - Use `modernc.org/sqlite` (pure Go, no CGo) as the SQLite driver.
-- Currency (ScollyBucks™) is always integer arithmetic. Never use float for balances or costs.
+- Currency (bUEC) is always integer arithmetic. Never use float for balances or costs.
 - Use HTTP status codes correctly: 200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 422 Unprocessable Entity, 429 Too Many Requests, 500 Internal Server Error.
 - Tests use `testing` + `testify`. Prefer table-driven tests. Tests go in `tests/` or alongside the code as `_test.go` files.
 
@@ -71,7 +71,7 @@ See `plan.md` for the full design document.
 
 - **Market:** A yes/no question that users bet on. Has a deadline and resolution criteria.
 - **AMM (LMSR):** Automated Market Maker using Logarithmic Market Scoring Rule. Provides liquidity so users can always buy/sell.
-- **ScollyBucks™:** The play currency. Users start with 1,000 and get 200 weekly.
+- **bUEC:** The play currency. Users start with 1,000 and get 200 weekly.
 - **Shares:** YES or NO shares in a market. Prices range 1–99. Winning shares pay 100 at resolution.
 - **Moderation:** Markets go through auto-filter → mod queue → active. Mods resolve markets.
 - **Auto-filter:** Keyword/regex rules that auto-reject markets about banned topics (player kills, harassment, etc.).

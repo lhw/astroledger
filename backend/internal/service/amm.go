@@ -53,7 +53,7 @@ func lmsrMulti(b float64, shares []float64) float64 {
 	return b * (maxVal + math.Log(sum))
 }
 
-// BuyCost returns the integer ScollyBucks cost to buy deltaShares of outcome outcomeIdx.
+// BuyCost returns the integer bUEC cost to buy deltaShares of outcome outcomeIdx.
 // Rounds up to protect the AMM.
 func BuyCost(b float64, shares []float64, outcomeIdx int, deltaShares float64) int64 {
 	before := lmsrMulti(b, shares)
@@ -65,7 +65,7 @@ func BuyCost(b float64, shares []float64, outcomeIdx int, deltaShares float64) i
 	return int64(math.Ceil(diff * 100))
 }
 
-// SellRevenue returns the integer ScollyBucks received for selling deltaShares.
+// SellRevenue returns the integer bUEC received for selling deltaShares.
 // Rounds down to protect the AMM.
 func SellRevenue(b float64, shares []float64, outcomeIdx int, deltaShares float64) int64 {
 	before := lmsrMulti(b, shares)
