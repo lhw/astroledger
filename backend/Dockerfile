@@ -3,10 +3,10 @@ FROM node:22-alpine AS frontend-builder
 
 WORKDIR /frontend
 
-COPY ../frontend/package.json ../frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --prefer-offline
 
-COPY ../frontend/ ./
+COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build the Go binary (with embedded frontend)
@@ -18,10 +18,10 @@ RUN apk add --no-cache git
 WORKDIR /app
 
 # Cache dependency downloads separately from source
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY backend/ .
 
 # Overlay the real frontend build into the embed directory so //go:embed picks it up.
 COPY --from=frontend-builder /frontend/build ./internal/frontend/dist/

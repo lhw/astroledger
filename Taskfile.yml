@@ -67,7 +67,7 @@ tasks:
       TAG: '{{.TAG | default "latest"}}'
       REGISTRY: '{{.REGISTRY | default "registry.ring0.de/lhw/astroledger"}}'
     cmds:
-      - docker build -t {{.REGISTRY}}/backend:{{.TAG}}  ./backend
+      - docker build -f ./backend/Dockerfile -t {{.REGISTRY}}/backend:{{.TAG}} .
       - docker build -t {{.REGISTRY}}/frontend:{{.TAG}} ./frontend
 
   docker:push:
