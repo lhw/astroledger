@@ -73,7 +73,7 @@ func (s *MarketService) CreateMarket(ctx context.Context, inp CreateMarketInput)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	qTx := s.queries.WithBoundTx(tx)
 
@@ -203,7 +203,7 @@ func (s *MarketService) ResolveMarket(ctx context.Context, inp ResolveInput) err
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	qTx := s.queries.WithBoundTx(tx)
 

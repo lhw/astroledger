@@ -53,7 +53,7 @@ func (s *TradingService) Execute(ctx context.Context, inp TradeInput) (*TradeRes
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	qTx := s.queries.WithBoundTx(tx)
 

@@ -292,7 +292,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	qTx := h.queries.WithBoundTx(tx)
 
