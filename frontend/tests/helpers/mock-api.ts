@@ -163,19 +163,24 @@ export const PENDING_REPORT: Report = {
 	created_at: '2026-03-21T09:00:00Z'
 };
 
-/** Mock all three mod queue endpoints. */
+/** Mock all mod queue endpoints (pending, deadline-passed, resolution requests, reports, patches). */
 export async function mockModQueue(
 	page: Page,
 	opts: {
 		pending?: (typeof MARKETS_RESPONSE.markets)[number][];
+		deadlinePassed?: (typeof MARKETS_RESPONSE.markets)[number][];
 		resolutionRequests?: ResolutionRequestMarket[];
 		reports?: Report[];
 	} = {}
 ) {
 	const pending = opts.pending ?? [];
+	const deadlinePassed = opts.deadlinePassed ?? [];
 	const resolutionRequests = opts.resolutionRequests ?? [];
 	const reports = opts.reports ?? [];
 
+	await page.route('/api/mod/markets/deadline-passed', (route) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(deadlinePassed) })
+	);
 	await page.route('/api/mod/markets', (route) =>
 		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(pending) })
 	);
@@ -184,5 +189,8 @@ export async function mockModQueue(
 	);
 	await page.route('/api/mod/reports', (route) =>
 		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reports) })
+	);
+	await page.route('/api/patches', (route) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: '{"patches":[]}' })
 	);
 }

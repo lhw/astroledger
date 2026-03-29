@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/lhw/astroledger/internal/config"
 	"github.com/lhw/astroledger/internal/database"
 	"github.com/lhw/astroledger/internal/db"
+	"github.com/lhw/astroledger/internal/frontend"
 	"github.com/lhw/astroledger/internal/handler"
 	"github.com/lhw/astroledger/internal/middleware"
 	"github.com/lhw/astroledger/internal/service"
@@ -87,6 +90,7 @@ func run() error {
 	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
 	patchH := handler.NewPatchHandler(queries)
 	botH := handler.NewBotHandler(queries, tradingSvc)
+	analyticsH := handler.NewAnalyticsHandler(cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
 
 	r := chi.NewRouter()
 
@@ -116,6 +120,14 @@ func run() error {
 
 	// Public API routes
 	r.Route("/api", func(r chi.Router) {
+		// Client-side analytics proxy — no auth, rate-limited to 60/min per IP.
+		// Accepts navigation events from the SvelteKit frontend and forwards
+		// them to GoatCounter internally, bypassing browser extension blocklists.
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(60, time.Minute))
+			r.Post("/analytics/hit", analyticsH.Hit)
+		})
+
 		// Users
 		r.Get("/me", userH.Me)
 		r.Get("/users/{id}", userH.GetUser)
@@ -245,6 +257,14 @@ func run() error {
 			r.Delete("/admin/badge-releases/{id}", adminH.ArchiveBadgeRelease)
 		})
 	})
+
+	// Serve embedded SvelteKit static frontend for every non-API path.
+	subFS, err := fs.Sub(frontend.FS, "dist")
+	if err != nil {
+		return fmt.Errorf("frontend sub-fs: %w", err)
+	}
+	r.Handle("/*", spaHandler(subFS))
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
@@ -334,4 +354,32 @@ func setupLogger(level string) {
 		l = slog.LevelInfo
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: l})))
+}
+
+// spaHandler serves files from the embedded SvelteKit build. Any path that
+// does not map to a real file is served as index.html so that SvelteKit's
+// client-side router handles the navigation.
+func spaHandler(fsys fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(fsys))
+	indexHTML, err := fs.ReadFile(fsys, "index.html")
+	if err != nil {
+		indexHTML = []byte(`<!doctype html><html><head><meta charset="utf-8"><title>AstroLedger</title></head><body></body></html>`)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Aggressively cache SvelteKit's content-hashed asset bundles.
+		if strings.HasPrefix(r.URL.Path, "/_app/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		// Fall back to index.html for any path that has no matching file.
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "."
+		}
+		if _, err := fsys.Open(path); err != nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(indexHTML)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }

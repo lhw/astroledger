@@ -2,21 +2,15 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { afterNavigate } from '$app/navigation';
 	import { initAuth, currentUser, isLoggedIn, isModerator, isAdmin } from '$lib/stores/auth';
 	import { loginWithSCID, logout } from '$lib/api';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
 	import { cycleThemeMode, initTheme, themeMode } from '$lib/stores/theme';
 	import { Moon, Sun, Monitor } from 'lucide-svelte';
-	import type { User } from '$lib/types';
 
-	let { children, data } = $props<{ children: unknown; data: { user: User | null } }>();
+	let { children } = $props<{ children: unknown }>();
 	let mobileMenuOpen = $state(false);
-
-	// Initialise auth store from server-provided data immediately (no flash).
-	// $effect keeps the store in sync when the layout re-runs on navigation.
-	$effect(() => {
-		if (browser) currentUser.set(data.user);
-	});
 
 	onMount(async () => {
 		initTheme();
@@ -25,6 +19,24 @@
 		// balance/role changes since the SSR snapshot. Also acts as fallback
 		// when the backend was unreachable during SSR (e.g., in tests).
 		await initAuth();
+	});
+
+	// Track all navigations (including initial loads) via the backend analytics proxy.
+	afterNavigate(({ to, type }) => {
+		if (!to?.url) return;
+		// 'popstate' is browser back/forward — deduplicate with 'leave' on the previous page.
+		if (type === 'popstate') return;
+		const path = to.url.pathname + to.url.search;
+		fetch('/api/analytics/hit', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				path,
+				title: document.title,
+				ref: document.referrer
+			}),
+			keepalive: true
+		}).catch(() => {/* fire-and-forget */});
 	});
 
 	$effect(() => {

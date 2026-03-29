@@ -1,4 +1,15 @@
-# Stage 1: Build the Go binary
+# Stage 1: Build the SvelteKit static frontend
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+COPY ../frontend/package.json ../frontend/package-lock.json ./
+RUN npm ci --prefer-offline
+
+COPY ../frontend/ ./
+RUN npm run build
+
+# Stage 2: Build the Go binary (with embedded frontend)
 FROM golang:1.26-alpine AS builder
 
 # Git is needed by some go modules
@@ -12,10 +23,13 @@ RUN go mod download
 
 COPY . .
 
+# Overlay the real frontend build into the embed directory so //go:embed picks it up.
+COPY --from=frontend-builder /frontend/build ./internal/frontend/dist/
+
 # CGO_ENABLED=0: modernc.org/sqlite is pure Go — no C toolchain needed
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o bin/astroledger ./cmd/server
 
-# Stage 2: Minimal runtime image
+# Stage 3: Minimal runtime image
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata

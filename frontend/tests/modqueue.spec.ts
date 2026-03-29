@@ -35,9 +35,9 @@ test.describe('Mod queue — access control', () => {
 		await mockMe(page, USER_MODERATOR);
 		await mockModQueue(page);
 		await goToModQueue(page);
-		await expect(page.getByRole('button', { name: /Pending Review/i })).toBeVisible();
-		await expect(page.getByRole('button', { name: /Resolution Requests/i })).toBeVisible();
-		await expect(page.getByRole('button', { name: /Reports/i })).toBeVisible();
+		await expect(page.getByRole('tab', { name: /Pending Review/i })).toBeVisible();
+		await expect(page.getByRole('tab', { name: /Resolution Requests/i })).toBeVisible();
+		await expect(page.getByRole('tab', { name: /Reports/i })).toBeVisible();
 	});
 });
 
@@ -87,7 +87,7 @@ test.describe('Mod queue — Pending Review tab', () => {
 		});
 
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /approve/i }).first().click();
+		await page.getByRole('button', { name: /^approve$/i }).first().click();
 		// After action, queue reloads — check API was called.
 		await page.waitForTimeout(200);
 		expect(approveCallCount).toBe(1);
@@ -105,7 +105,7 @@ test.describe('Mod queue — Pending Review tab', () => {
 		});
 
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /reject/i }).first().click();
+		await page.getByRole('button', { name: /^reject$/i }).first().click();
 		await page.waitForTimeout(200);
 		expect(rejectCallCount).toBe(1);
 	});
@@ -118,7 +118,7 @@ test.describe('Mod queue — Resolution Requests tab', () => {
 		await mockMe(page, USER_MODERATOR);
 		await mockModQueue(page, { resolutionRequests: [] });
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /Resolution Requests/i }).click();
+		await page.getByRole('tab', { name: /Resolution Requests/i }).click();
 		await expect(page.getByText(/no resolution requests/i)).toBeVisible();
 	});
 
@@ -134,7 +134,7 @@ test.describe('Mod queue — Resolution Requests tab', () => {
 		await mockMe(page, USER_MODERATOR);
 		await mockModQueue(page, { resolutionRequests: [RESOLUTION_REQUEST] });
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /Resolution Requests/i }).click();
+		await page.getByRole('tab', { name: /Resolution Requests/i }).click();
 
 		await expect(page.getByText(RESOLUTION_REQUEST.title)).toBeVisible();
 		await expect(page.getByText(new RegExp(`Requested by.*${RESOLUTION_REQUEST.requester_name}`, 'i'))).toBeVisible();
@@ -165,7 +165,7 @@ test.describe('Mod queue — Resolution Requests tab', () => {
 		await goToModQueue(page);
 		await page.getByRole('button', { name: /Resolve YES/i }).click();
 		await page.waitForTimeout(200);
-		expect(resolveBody).toMatchObject({ resolution: 'yes' });
+		expect(resolveBody).toMatchObject({ winning_outcome_id: 19 });
 	});
 
 	test('Resolve NO calls the resolve API', async ({ page }) => {
@@ -181,7 +181,7 @@ test.describe('Mod queue — Resolution Requests tab', () => {
 		await goToModQueue(page);
 		await page.getByRole('button', { name: /Resolve NO/i }).click();
 		await page.waitForTimeout(200);
-		expect(resolveBody).toMatchObject({ resolution: 'no' });
+		expect(resolveBody).toMatchObject({ winning_outcome_id: 20 });
 	});
 
 	test('Deny calls deny-resolution API', async ({ page }) => {
@@ -208,7 +208,7 @@ test.describe('Mod queue — Reports tab', () => {
 		await mockMe(page, USER_MODERATOR);
 		await mockModQueue(page, { reports: [] });
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /Reports/i }).click();
+		await page.getByRole('tab', { name: /Reports/i }).click();
 		await expect(page.getByText(/no pending reports/i)).toBeVisible();
 	});
 
@@ -224,9 +224,9 @@ test.describe('Mod queue — Reports tab', () => {
 		await mockMe(page, USER_MODERATOR);
 		await mockModQueue(page, { reports: [PENDING_REPORT] });
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /Reports/i }).click();
+		await page.getByRole('tab', { name: /Reports/i }).click();
 
-		await expect(page.getByText(PENDING_REPORT.reporter_name)).toBeVisible();
+		await expect(page.getByText(PENDING_REPORT.reporter_name).last()).toBeVisible();
 		await expect(page.getByText(PENDING_REPORT.market_title)).toBeVisible();
 		await expect(page.getByText(PENDING_REPORT.reason)).toBeVisible();
 	});
@@ -242,7 +242,7 @@ test.describe('Mod queue — Reports tab', () => {
 		});
 
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /Reports/i }).click();
+		await page.getByRole('tab', { name: /Reports/i }).click();
 		await page.getByRole('button', { name: /reviewed/i }).click();
 		await page.waitForTimeout(200);
 		expect(reviewCalled).toBe(true);
@@ -259,7 +259,7 @@ test.describe('Mod queue — Reports tab', () => {
 		});
 
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /Reports/i }).click();
+		await page.getByRole('tab', { name: /Reports/i }).click();
 		await page.getByRole('button', { name: /dismiss/i }).click();
 		await page.waitForTimeout(200);
 		expect(dismissCalled).toBe(true);
@@ -271,7 +271,13 @@ test.describe('Mod queue — Reports tab', () => {
 test.describe('Mod queue — error handling', () => {
 	test('shows server error message without ApiClientError prefix', async ({ page }) => {
 		await mockMe(page, USER_MODERATOR);
-		// One endpoint returns an error.
+		// One endpoint returns an error; mock the rest to avoid proxy failures.
+		await page.route('/api/mod/markets/deadline-passed', (route) =>
+			route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
+		);
+		await page.route('/api/patches', (route) =>
+			route.fulfill({ status: 200, contentType: 'application/json', body: '{"patches":[]}' })
+		);
 		await page.route('/api/mod/markets', (route) =>
 			route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"database error"}' })
 		);
@@ -297,7 +303,7 @@ test.describe('Mod queue — error handling', () => {
 		);
 
 		await goToModQueue(page);
-		await page.getByRole('button', { name: /approve/i }).first().click();
+		await page.getByRole('button', { name: /^approve$/i }).first().click();
 		await expect(page.getByText('market is not pending_review')).toBeVisible();
 		await expect(page.getByText(/ApiClientError/)).toHaveCount(0);
 	});

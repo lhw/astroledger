@@ -20,7 +20,7 @@ test.describe('Home page', () => {
 		await mockMe(page, USER_LOGGED_IN);
 		await mockMarkets(page);
 		await page.goto('/');
-		await expect(page.getByRole('link', { name: 'TestPilot', exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: 'TestPilot' }).first()).toBeVisible();
 		await expect(page.getByText('1,000 bUEC')).toBeVisible();
 	});
 

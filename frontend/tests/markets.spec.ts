@@ -60,13 +60,28 @@ test.describe('Market detail page', () => {
 				status: 200,
 				contentType: 'application/json',
 				body: JSON.stringify({
-					market: MARKETS_RESPONSE.markets[0],
-					yes_price: 42,
-					no_price: 58
+					market: {
+						...MARKETS_RESPONSE.markets[0],
+						outcomes: [
+							{ id: 1, market_id: 1, label: 'YES', shares: 0, sort_order: 0, price: 42 },
+							{ id: 2, market_id: 1, label: 'NO', shares: 0, sort_order: 1, price: 58 }
+						]
+					},
+					outcomes: [
+						{ id: 1, market_id: 1, label: 'YES', shares: 0, sort_order: 0, price: 42 },
+						{ id: 2, market_id: 1, label: 'NO', shares: 0, sort_order: 1, price: 58 }
+					],
+					my_positions: [],
+					total_volume: 0,
+					trader_count: 0,
+					trade_count: 0
 				})
 			});
 		});
 		await page.route('/api/markets/1/history', (route) => {
+			route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+		});
+		await page.route('/api/markets/1/comments', (route) => {
 			route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
 		});
 	});
@@ -78,8 +93,8 @@ test.describe('Market detail page', () => {
 
 	test('shows yes and no prices', async ({ page }) => {
 		await page.goto('/markets/1');
-		await expect(page.getByText('42¢')).toBeVisible();
-		await expect(page.getByText('58¢')).toBeVisible();
+		await expect(page.getByText('42%').first()).toBeVisible();
+		await expect(page.getByText('58%').first()).toBeVisible();
 	});
 
 	test('shows buy widget when logged in', async ({ page }) => {

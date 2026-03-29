@@ -12,6 +12,7 @@
 		ApiClientError
 	} from '$lib/api';
 	import type { AnalyticsStats, AnalyticsStat, UserSearchResult, BadgeCatalogEntry, AdminBadgeRelease } from '$lib/types';
+	import { authReady, isAdmin } from '$lib/stores/auth';
 	import BadgeReleaseCalendar from '$lib/components/BadgeReleaseCalendar.svelte';
 	import TabBar from '$lib/components/TabBar.svelte';
 
@@ -239,6 +240,14 @@
 </svelte:head>
 
 <div class="admin-shell max-w-4xl mx-auto px-6 py-10">
+	{#if !$authReady}
+		<p class="text-surface-400 text-sm">Checking authentication…</p>
+	{:else if !$isAdmin}
+		<div class="bg-surface-800 border border-surface-700 rounded-xl p-8 text-center space-y-3">
+			<p class="text-red-400 text-sm font-semibold">Access denied.</p>
+			<p class="text-surface-500 text-xs">This page is restricted to administrators.</p>
+		</div>
+	{:else}
 	<h1 class="text-2xl font-bold text-primary-400 tracking-widest uppercase mb-6">Admin Panel</h1>
 
 	<div class="mb-8">
@@ -585,6 +594,7 @@
 				onArchive={onBadgeArchive}
 			/>
 		{/if}
+	{/if}
 	{/if}
 </div>
 
