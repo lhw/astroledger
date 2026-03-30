@@ -222,5 +222,7 @@
 		AstroLedger — No real money. No real ships delivered.
 		<span class="mx-2 opacity-30">·</span>
 		<a href="/docs/api" class="site-nav-muted hover:text-primary-600 transition-colors no-underline">Bot API docs</a>
+		<span class="mx-2 opacity-30">·</span>
+		<a href="/impressum" class="site-nav-muted hover:text-primary-600 transition-colors no-underline">Impressum</a>
 	</footer>
 </div>
