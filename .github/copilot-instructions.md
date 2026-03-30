@@ -4,12 +4,10 @@
 
 AstroLedger is a satirical prediction market web app for betting fake credits on Star Citizen bug fixes and general events. No real money is involved. The tone is humorous and self-aware.
 
-See `plan.md` for the full design document.
-
 ## Architecture
 
 - **Backend:** Go 1.26 with chi router. SQLite database via sqlc (type-safe SQL codegen). OIDC auth via scid.my.
-- **Frontend:** SvelteKit with Skeleton UI, TypeScript, Vite. Custom luxury gold theme.
+- **Frontend:** SvelteKit 2 + Svelte 5, Tailwind CSS v4, TypeScript, Vite. RSI-ship-page-inspired light/dark theme with warm gold accents.
 - **Monorepo:** `backend/` and `frontend/` directories at the repo root.
 
 ## Code Conventions
@@ -40,15 +38,22 @@ See `plan.md` for the full design document.
 ### TypeScript / Svelte (frontend)
 
 - Use TypeScript strictly — `strict: true` in tsconfig, avoid `any`. Use `unknown` + type guards when needed.
+- Use **Svelte 5 runes syntax**: `$state`, `$derived`, `$effect`, `$props()`, `{@render children()}`. No Svelte 4 `$:` reactive declarations in new code.
 - Use SvelteKit file-based routing under `src/routes/`.
-- Use Skeleton UI components wherever possible instead of custom CSS.
+- **Tailwind CSS v4** via the `@tailwindcss/vite` Vite plugin — no `tailwind.config.js`, no PostCSS. Utility classes directly in components.
+- **Skeleton UI v4** (`@skeletonlabs/skeleton`) provides the CSS reset and token base; imported in `app.css` alongside the `wintry` theme. Do not use Skeleton's Svelte component wrappers — prefer plain HTML + Tailwind utilities or `bits-ui` headless components.
+- **`bits-ui`** for headless accessible components (tooltips, calendars, etc.).
+- **`lucide-svelte`** for icons — always use outline-style icons.
 - API calls go through a centralized fetch wrapper in `src/lib/api.ts`.
-- Shared state uses Svelte stores in `src/lib/stores/`.
+- Shared state uses Svelte stores in `src/lib/stores/` (`auth.ts` and `theme.ts`).
 - Define TypeScript interfaces for all API response shapes in `src/lib/types.ts`.
-- Format with Prettier, lint with ESLint.
+- AMM price calculations shared with the backend live in `src/lib/amm.ts`.
+- Market category definitions live in `src/lib/categories.ts`.
+- Markdown parsing utilities live in `src/lib/markdown.ts` (uses `marked` + `isomorphic-dompurify`).
 - Sanitize user-generated markdown with DOMPurify before rendering with `{@html}`.
 - Use `+page.server.ts` load functions for authenticated data fetching (cookies are forwarded server-side).
-- The custom luxury gold theme is defined in `src/theme.ts` and applied via Skeleton's theming system.
+- The theme is defined entirely as **CSS custom properties in `src/app.css`** — there is no `src/theme.ts`. The theme is `light` by default (white body, dark charcoal nav, warm gold accents — inspired by the RSI ship page aesthetic) with a `data-theme='dark'` variant controlled by `src/lib/stores/theme.ts`.
+- `joho/godotenv` loads `.env` on backend; frontend reads nothing from env directly (all API calls go through the proxy).
 
 ### General
 
@@ -69,12 +74,20 @@ See `plan.md` for the full design document.
 
 ## Key Domain Concepts
 
-- **Market:** A yes/no question that users bet on. Has a deadline and resolution criteria.
-- **AMM (LMSR):** Automated Market Maker using Logarithmic Market Scoring Rule. Provides liquidity so users can always buy/sell.
+- **Market:** A prediction question users bet on. Supports binary (YES/NO) and multi-choice outcome types. Has a deadline and resolution criteria.
+- **AMM (LMSR):** Automated Market Maker using Logarithmic Market Scoring Rule. Provides liquidity so users can always buy/sell shares. Price calculations live in both `backend/internal/service/amm.go` and `frontend/src/lib/amm.ts`.
 - **bUEC:** The play currency. Users start with 1,000 and get 200 weekly.
 - **Shares:** YES or NO shares in a market. Prices range 1–99. Winning shares pay 100 at resolution.
-- **Moderation:** Markets go through auto-filter → mod queue → active. Mods resolve markets.
+- **Moderation:** Markets go through auto-filter → mod queue → active. Mods resolve markets. All mod actions are audit-logged.
 - **Auto-filter:** Keyword/regex rules that auto-reject markets about banned topics (player kills, harassment, etc.).
+- **Comments:** Users can post markdown-formatted comments on market pages. Mods can delete them.
+- **Badges:** Three categories — *earned* (automatic trade/prediction milestones), *FOMO Store* (purchasable cosmetics with limited stock and time-limited variants), and *Admiral Rank* (auto-awarded by lifetime FOMO spend). Users equip one active badge shown next to their name in comments.
+- **FOMO Store (`/fomo`):** Spend bUEC on cosmetic badges. General / hull-limited (fixed stock) / rotating (deadline) tiers.
+- **Admiral Rank (`/admiral`):** 5 military rank tiers (Ensign → Coin Admiral) awarded by cumulative FOMO store lifetime spend.
+- **RSI Profile:** SCID OIDC claims (`rsi_handle`, `rsi_verified`, `rsi_enlisted`, `rsi_citizen_record`, `picture`) are stored on login and displayed on profiles.
+- **Patch Scraper:** Background job scrapes SC patch notes to auto-detect resolution candidates and surface them to mods.
+- **Bot API:** Scoped API tokens allow community bots to read and trade. Tokens are rate-limited and grant no admin/mod access.
+- **Analytics:** Goatcounter analytics proxied through `/api/analytics/hit` — no third-party scripts on the frontend.
 
 ## Security Notes
 
