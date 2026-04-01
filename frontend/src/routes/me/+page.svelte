@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import {
 		getMyPositions,
 		getMyTrades,
@@ -35,13 +34,22 @@
 	let createdTokenValue = $state('');
 	let error = $state('');
 
-	onMount(async () => {
-		if (!$isLoggedIn) {
+	let dataLoaded = $state(false);
+
+	$effect(() => {
+		// Wait until auth state is resolved (not undefined) before fetching.
+		if ($currentUser === undefined) return;
+
+		if ($currentUser === null) {
 			loading = false;
 			return;
 		}
 
-		activeBadgeKey = $currentUser?.active_badge_key ?? '';
+		// Only fetch once per page load.
+		if (dataLoaded) return;
+		dataLoaded = true;
+
+		activeBadgeKey = $currentUser.active_badge_key ?? '';
 		loading = false;
 		error = '';
 
@@ -89,7 +97,7 @@
 			})()
 		];
 
-		await Promise.allSettled(jobs);
+		Promise.allSettled(jobs);
 	});
 
 	const openPositions = $derived(positions.filter(p => p.market_status !== 'resolved'));
@@ -256,19 +264,41 @@
 				</div>
 			{:else}
 				<p class="text-[11px] text-surface-400 mb-3">Click a badge to display it on your comments. Click again to unset.</p>
-				<div class="flex flex-wrap gap-3">
+				<div class="hangar-list">
 					{#each badges as badge}
 						{@const isActive = activeBadgeKey === badge.badge_key}
-						<Tooltip text={isActive ? 'Active — click to unset' : badge.description}>
-							<button
-								class="badge-btn"
-								class:opacity-40={badgeSaving && !isActive}
-								onclick={() => pickBadge(badge.badge_key)}
-								disabled={badgeSaving}
-							>
-								<BadgePill tier={badge.tier} title={badge.title} active={isActive} showCheck={isActive} />
-							</button>
-						</Tooltip>
+						<div class="hangar-row" class:active={isActive}>
+							<!-- Tier icon -->
+							<div class="hangar-icon tier-{badge.tier}">
+								{#if badge.tier === 5}★{:else if badge.tier === 4}◈{:else if badge.tier === 3}◆{:else if badge.tier === 2}●{:else}▲{/if}
+							</div>
+							<!-- Info -->
+							<div class="hangar-info">
+								<div class="hangar-title">{badge.title}</div>
+								<div class="hangar-desc">{badge.description}</div>
+								<div class="hangar-date">{new Date(badge.awarded_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+							</div>
+							<!-- Right: insurance pill + active toggle -->
+							<div class="hangar-actions">
+								{#if badge.insurance}
+									<span class="ins-pip ins-{badge.insurance}" title="Insurance tier">
+										{badge.insurance === '6w' ? '6 Weeks' : badge.insurance === '120w' ? '120 Weeks' : 'LTI'}
+									</span>
+								{:else if badge.purchasable}
+									<span class="ins-pip ins-none" title="No insurance selected at purchase">No Ins.</span>
+
+								{/if}
+								<button
+									class="hangar-btn"
+									class:active={isActive}
+									disabled={badgeSaving}
+									onclick={() => pickBadge(badge.badge_key)}
+									title={isActive ? 'Unset active badge' : 'Set as active badge'}
+								>
+									{isActive ? '✓ Active' : 'Set Active'}
+								</button>
+							</div>
+						</div>
 					{/each}
 				</div>
 			{/if}
@@ -454,18 +484,134 @@
 </div>
 
 <style>
-/* ─── Badge button wrapper (visual handled by BadgePill component) ─ */
-.badge-btn {
-	cursor: pointer;
-	border: none;
-	background: transparent;
-	padding: 0;
-	display: inline-flex;
+/* ─── Badge Hangar ────────────────────────────────────────── */
+.hangar-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	border-radius: 0.75rem;
+	overflow: hidden;
+	border: 1px solid #e5e0d8;
+}
+.hangar-row {
+	display: flex;
 	align-items: center;
-	transition: transform 0.15s ease, filter 0.15s ease, opacity 0.15s ease;
+	gap: 0.75rem;
+	padding: 0.75rem 1rem;
+	background: #fafaf8;
+	border-bottom: 1px solid #ede8e0;
+	transition: background 0.15s ease;
 }
-.badge-btn:hover:not(:disabled) {
-	transform: scale(1.06);
-	filter: brightness(0.92);
+.hangar-row:last-child { border-bottom: none; }
+.hangar-row:hover { background: #f5f0e8; }
+.hangar-row.active {
+	background: #fffbf0;
+	border-left: 3px solid #d4a017;
 }
+.hangar-icon {
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.1rem;
+	flex-shrink: 0;
+	font-weight: 700;
+}
+.hangar-icon.tier-1 { background: #f5ede0; color: #b08050; border: 1.5px solid #d4b896; }
+.hangar-icon.tier-2 { background: linear-gradient(135deg, #fde68a, #f59e0b); color: #78350f; border: 1.5px solid #f59e0b; }
+.hangar-icon.tier-3 { background: linear-gradient(135deg, #fde047, #f59e0b, #ea580c); color: #fff; border: 1.5px solid #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.3); }
+.hangar-icon.tier-4 { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #1c1008; border: 1.5px solid #fde68a; box-shadow: 0 0 10px rgba(251,191,36,0.4); }
+.hangar-icon.tier-5 { background: conic-gradient(from 0deg, #ff0080, #ff8c00, #ffd700, #00ff88, #ff0080); color: #fff; border: 1.5px solid rgba(255,255,255,0.5); box-shadow: 0 0 12px rgba(255,215,0,0.4); }
+.hangar-info {
+	flex: 1;
+	min-width: 0;
+}
+.hangar-title {
+	font-size: 0.82rem;
+	font-weight: 700;
+	color: #2d2620;
+	line-height: 1.2;
+}
+.hangar-desc {
+	font-size: 0.68rem;
+	color: #8a7560;
+	line-height: 1.4;
+	margin-top: 0.1rem;
+}
+.hangar-date {
+	font-size: 0.6rem;
+	color: #b0a090;
+	margin-top: 0.15rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+.hangar-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	flex-shrink: 0;
+}
+/* Insurance chips (owner-only cosmetic) */
+.ins-pip {
+	padding: 0.18rem 0.55rem;
+	border-radius: 9999px;
+	font-size: 0.58rem;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	border: 1.5px solid;
+	white-space: nowrap;
+}
+.ins-pip.ins-none { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
+.ins-pip.ins-earned { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
+.ins-pip.ins-6w { background: #f3e8ff; color: #7e22ce; border-color: #c084fc; }
+.ins-pip.ins-120w { background: #fff7ed; color: #c2410c; border-color: #fb923c; }
+.ins-pip.ins-lti { background: #fef2f2; color: #b91c1c; border-color: #f87171; }
+/* Active toggle button */
+.hangar-btn {
+	padding: 0.28rem 0.65rem;
+	border-radius: 0.4rem;
+	font-size: 0.65rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	border: 1.5px solid #d4b896;
+	background: transparent;
+	color: #8a7560;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	white-space: nowrap;
+}
+.hangar-btn:hover:not(:disabled) { background: #f5ede0; border-color: #b08050; color: #b08050; }
+.hangar-btn.active { background: #d4a017; border-color: #d4a017; color: #fff; }
+.hangar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─── Dark mode overrides ─────────────────────────────────────────────── */
+:root[data-theme='dark'] .hangar-list { border-color: #2e261c; }
+:root[data-theme='dark'] .hangar-row {
+	background: #161210;
+	border-bottom-color: #2e261c;
+}
+:root[data-theme='dark'] .hangar-row:hover { background: #201a12; }
+:root[data-theme='dark'] .hangar-row.active {
+	background: #1e1800;
+	border-left-color: #d4a017;
+}
+:root[data-theme='dark'] .hangar-icon.tier-1 { background: #2a1e10; color: #c8904a; border-color: #5a3e20; }
+:root[data-theme='dark'] .hangar-title { color: #e8d5b8; }
+:root[data-theme='dark'] .hangar-desc { color: #a08870; }
+:root[data-theme='dark'] .hangar-date { color: #6e5e50; }
+:root[data-theme='dark'] .ins-pip.ins-none { background: #1c1c1c; color: #9ca3af; border-color: #374151; }
+:root[data-theme='dark'] .ins-pip.ins-earned { background: #061808; color: #4ade80; border-color: #166534; }
+:root[data-theme='dark'] .ins-pip.ins-6w { background: #1e0a38; color: #c084fc; border-color: #7e22ce; }
+:root[data-theme='dark'] .ins-pip.ins-120w { background: #200c00; color: #fb923c; border-color: #c2410c; }
+:root[data-theme='dark'] .ins-pip.ins-lti { background: #200808; color: #f87171; border-color: #b91c1c; }
+:root[data-theme='dark'] .hangar-btn {
+	border-color: #4a3820;
+	color: #a08870;
+}
+:root[data-theme='dark'] .hangar-btn:hover:not(:disabled) { background: #2a1e10; border-color: #c8904a; color: #c8904a; }
+:root[data-theme='dark'] .hangar-btn.active { background: #d4a017; border-color: #d4a017; color: #fff; }
 </style>

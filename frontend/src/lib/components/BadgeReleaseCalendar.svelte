@@ -24,6 +24,7 @@
 			released_at: string;
 			expires_at: string | null;
 			notes: string | null;
+			insurance: string;
 		}) => Promise<AdminBadgeRelease>;
 		onUpdate: (
 			id: number,
@@ -33,6 +34,7 @@
 				expires_at: string | null;
 				active: boolean;
 				notes: string | null;
+				insurance: string;
 			}
 		) => Promise<AdminBadgeRelease>;
 		onArchive: (id: number) => Promise<void>;
@@ -74,6 +76,7 @@
 	let cfExpiresAt = $state('');
 	let cfIndefinite = $state(false);
 	let cfNotes = $state('');
+	let cfInsurance = $state('6w');
 	let cfLoading = $state(false);
 	let cfError = $state<string | null>(null);
 	let badgePickerOpen = $state(false);
@@ -82,7 +85,7 @@
 	const selectedBadge = $derived(catalog.find((e) => e.key === cfBadgeKey) ?? null);
 	const selectedBadgeLabel = $derived(selectedBadge ? `[T${selectedBadge.tier}] ${selectedBadge.title}` : 'Select badge');
 	const sortedCatalog = $derived(
-		[...catalog].sort((a, b) => (a.tier === b.tier ? a.title.localeCompare(b.title) : a.tier - b.tier))
+		[...catalog].filter((e) => e.purchasable).sort((a, b) => (a.tier === b.tier ? a.title.localeCompare(b.title) : a.tier - b.tier))
 	);
 
 	async function createRelease() {
@@ -102,7 +105,8 @@
 				stock,
 				released_at: releasedAt,
 				expires_at: expiresAt,
-				notes: cfNotes.trim() || null
+				notes: cfNotes.trim() || null,
+				insurance: cfInsurance
 			});
 			releases = [created, ...releases];
 			cfBadgeKey = '';
@@ -112,6 +116,7 @@
 			cfExpiresAt = '';
 			cfIndefinite = false;
 			cfNotes = '';
+			cfInsurance = '6w';
 			badgePickerOpen = false;
 			calValue = { start: undefined, end: undefined };
 		} catch (e) {
@@ -127,7 +132,7 @@
 	}
 
 	// ── Edit state ────────────────────────────────────────────────────────
-	type EditDraft = { price: string; stock: string; expiresAt: string; indefinite: boolean; active: boolean; notes: string };
+	type EditDraft = { price: string; stock: string; expiresAt: string; indefinite: boolean; active: boolean; notes: string; insurance: string };
 	let editDrafts = $state<Record<number, EditDraft>>({});
 	let editSaving = $state<Record<number, boolean>>({});
 	let editError = $state<Record<number, string | null>>({});
@@ -140,7 +145,8 @@
 			expiresAt: rel.expires_at ? rel.expires_at.slice(0, 16) : '',
 			indefinite: rel.expires_at == null,
 			active: rel.active,
-			notes: rel.notes ?? ''
+			notes: rel.notes ?? '',
+			insurance: rel.insurance
 		};
 	}
 
@@ -166,7 +172,8 @@
 				stock,
 				expires_at: d.indefinite || !d.expiresAt ? null : new Date(d.expiresAt).toISOString(),
 				active: d.active,
-				notes: d.notes.trim() || null
+				notes: d.notes.trim() || null,
+				insurance: d.insurance
 			});
 			releases = releases.map((r) => (r.id === rel.id ? updated : r));
 			cancelEdit(rel.id);
@@ -378,6 +385,20 @@
 					placeholder="e.g. CitizenCon 2026 drop"
 					class="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-sm text-surface-100 focus:border-primary-500 outline-none"
 				/>
+			</div>
+
+			<!-- Insurance tier -->
+			<div>
+				<label class="block text-[11px] uppercase tracking-wide text-surface-400 mb-1" for="brc-insurance">Insurance Tier</label>
+				<select
+					id="brc-insurance"
+					bind:value={cfInsurance}
+					class="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-sm text-surface-100 focus:border-primary-500 outline-none"
+				>
+					<option value="6w">6 Weeks</option>
+					<option value="120w">120 Weeks</option>
+					<option value="lti">LTI</option>
+				</select>
 			</div>
 
 			{#if cfError}
@@ -614,6 +635,12 @@
 										{#if rel.notes}
 											<span class="text-surface-600">·</span>
 											<span class="italic text-surface-500">{rel.notes}</span>
+										{/if}
+										{#if rel.insurance}
+											<span class="text-surface-600">·</span>
+											<span class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold bg-amber-900/40 text-amber-300 border border-amber-800/50">
+												{rel.insurance === '6w' ? '6W Ins.' : rel.insurance === '120w' ? '120W Ins.' : 'LTI'}
+											</span>
 										{/if}
 									</div>
 								</div>

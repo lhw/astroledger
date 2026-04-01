@@ -9,7 +9,6 @@
 	let purchasing = $state<string | null>(null);
 	let error = $state('');
 	let successKey = $state<string | null>(null);
-
 	onMount(async () => {
 		try {
 			badges = await getStoreBadges();
@@ -27,7 +26,7 @@
 		error = '';
 		successKey = null;
 		try {
-			await purchaseBadge(badge.badge_key);
+			await purchaseBadge(badge.badge_key, badge.insurance ?? '');
 			badge.owned = true;
 			successKey = badge.badge_key;
 			if ($currentUser) {
@@ -148,6 +147,13 @@
 						<div class="badge-tier-label">{tierLabels[badge.tier]}</div>
 						<h3 class="badge-title">{badge.title}</h3>
 						<p class="badge-desc">{badge.description}</p>
+						{#if badge.insurance}
+							<div class="badge-ins-row">
+								<span class="badge-ins-chip ins-{badge.insurance}">
+									{badge.insurance === 'lti' ? 'LTI' : badge.insurance === '120w' ? '120W Ins.' : '6W Ins.'}
+								</span>
+							</div>
+						{/if}
 					</div>
 
 					<div class="badge-footer">
@@ -557,4 +563,90 @@
 	from { opacity: 0; transform: translateY(4px); }
 	to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ─── Insurance display chip ─────────────────────────────────────────── */
+.badge-ins-row {
+	display: flex;
+	justify-content: center;
+	margin-top: 0.4rem;
+}
+.badge-ins-chip {
+	padding: 0.18rem 0.6rem;
+	border-radius: 9999px;
+	font-size: 0.6rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	border: 1.5px solid;
+}
+.badge-ins-chip.ins-6w { background: #f3e8ff; color: #7e22ce; border-color: #c084fc; }
+.badge-ins-chip.ins-120w { background: #fff7ed; color: #c2410c; border-color: #fb923c; }
+.badge-ins-chip.ins-lti { background: #fef2f2; color: #b91c1c; border-color: #f87171; }
+
+/* ─── Dark mode overrides ─────────────────────────────────────────────── */
+:root[data-theme='dark'] .badge-card.tier-1 {
+	background: #1a1510;
+	border-color: #4a3820;
+	box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+:root[data-theme='dark'] .badge-card.tier-1 .badge-icon {
+	background: #2a1e10;
+	color: #c8904a;
+	border-color: #5a3e20;
+}
+:root[data-theme='dark'] .badge-card.tier-1 .badge-tier-label { color: #c8904a; }
+:root[data-theme='dark'] .badge-card.tier-1 .badge-title { color: #e8d5b8; }
+:root[data-theme='dark'] .badge-card.tier-2 {
+	background: linear-gradient(135deg, #1a1508 0%, #201a00 100%);
+	border-color: #5a4010;
+	box-shadow: 0 2px 10px rgba(100,70,0,0.3);
+}
+:root[data-theme='dark'] .badge-card.tier-2 .badge-tier-label { color: #d4a020; }
+:root[data-theme='dark'] .badge-card.tier-2 .badge-title { color: #e8c060; }
+:root[data-theme='dark'] .badge-card.tier-3 {
+	background: linear-gradient(135deg, #1a1500 0%, #201800 50%, #201400 100%);
+	box-shadow: 0 4px 20px rgba(120,90,0,0.35), inset 0 0 0 2px #6a5010;
+}
+:root[data-theme='dark'] .badge-card.tier-3 .badge-tier-label { color: #c89030; }
+:root[data-theme='dark'] .badge-card.tier-3 .badge-title { color: #e0b040; }
+:root[data-theme='dark'] .badge-desc { color: #a08870; }
+:root[data-theme='dark'] .badge-price { color: #c8a060; }
+:root[data-theme='dark'] .badge-owned-tag {
+	background: #07200f;
+	color: #4ade80;
+	border-color: #166534;
+}
+:root[data-theme='dark'] .badge-unavailable-tag {
+	background: #1c1c1c;
+	color: #9ca3af;
+	border-color: #374151;
+}
+:root[data-theme='dark'] .scarcity-banner.expired {
+	background: #200808;
+	color: #f87171;
+	border-color: #7f1d1d;
+}
+:root[data-theme='dark'] .scarcity-banner.soldout {
+	background: #1c1c1c;
+	color: #9ca3af;
+	border-color: #374151;
+}
+:root[data-theme='dark'] .scarcity-chip.time {
+	background: #201800;
+	border-color: #78400a;
+	color: #fcd34d;
+}
+:root[data-theme='dark'] .scarcity-chip.stock {
+	background: #061808;
+	border-color: #14532d;
+	color: #86efac;
+}
+:root[data-theme='dark'] .scarcity-chip.stock.low {
+	background: #1a0c00;
+	border-color: #9a3412;
+	color: #fb923c;
+}
+:root[data-theme='dark'] .badge-ins-chip.ins-6w { background: #1e0a38; color: #c084fc; border-color: #7e22ce; }
+:root[data-theme='dark'] .badge-ins-chip.ins-120w { background: #200c00; color: #fb923c; border-color: #c2410c; }
+:root[data-theme='dark'] .badge-ins-chip.ins-lti { background: #200808; color: #f87171; border-color: #b91c1c; }
 </style>

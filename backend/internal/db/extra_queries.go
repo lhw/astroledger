@@ -258,33 +258,52 @@ func (q *Queries) UpdateReportStatus(ctx context.Context, reportID int64, status
 type BadgeRow struct {
 	BadgeKey  string    `json:"badge_key"`
 	AwardedAt time.Time `json:"awarded_at"`
+	Insurance string    `json:"insurance"` // '6w', '120w', 'lti', or '' for pre-existing rows
 }
 
-// GetUserBadges returns all badges for a user, newest first.
+// GetUserBadges returns all non-expired badges for a user, newest first.
+// Badges with time-limited insurance ('6w' = 42 days, '120w' = 840 days) are
+// filtered out once their insurance period has elapsed from awarded_at.
 func (q *Queries) GetUserBadges(ctx context.Context, userID int64) ([]BadgeRow, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT badge_key, awarded_at FROM user_badges WHERE user_id = ? ORDER BY awarded_at DESC`,
+		`SELECT badge_key, awarded_at, insurance FROM user_badges WHERE user_id = ? ORDER BY awarded_at DESC`,
 		userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	now := time.Now()
 	items := make([]BadgeRow, 0)
 	for rows.Next() {
 		var b BadgeRow
-		if err := rows.Scan(&b.BadgeKey, &b.AwardedAt); err != nil {
+		if err := rows.Scan(&b.BadgeKey, &b.AwardedAt, &b.Insurance); err != nil {
 			return nil, err
+		}
+		switch b.Insurance {
+		case "6w":
+			if now.Sub(b.AwardedAt) > 42*24*time.Hour {
+				continue // insurance expired
+			}
+		case "120w":
+			if now.Sub(b.AwardedAt) > 840*24*time.Hour {
+				continue // insurance expired
+			}
 		}
 		items = append(items, b)
 	}
 	return items, rows.Err()
 }
 
-// AwardBadgeIfNew inserts a badge for a user, ignoring duplicates (UNIQUE constraint).
+// AwardBadgeIfNew inserts an earned badge for a user, ignoring duplicates (UNIQUE constraint).
+// Earned badges always receive LTI insurance.
 func (q *Queries) AwardBadgeIfNew(ctx context.Context, userID int64, badgeKey string) error {
-	_, err := q.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO user_badges (user_id, badge_key) VALUES (?, ?)`,
-		userID, badgeKey)
+	var stmt string
+	if q.isPG() {
+		stmt = `INSERT INTO user_badges (user_id, badge_key, insurance) VALUES ($1, $2, 'lti') ON CONFLICT DO NOTHING`
+	} else {
+		stmt = `INSERT OR IGNORE INTO user_badges (user_id, badge_key, insurance) VALUES (?, ?, 'lti')`
+	}
+	_, err := q.db.ExecContext(ctx, stmt, userID, badgeKey)
 	return err
 }
 
@@ -593,23 +612,56 @@ type BadgeReleaseRow struct {
 	Active     bool       `json:"active"`
 	Notes      *string    `json:"notes"`
 	CreatedAt  time.Time  `json:"created_at"`
+	Insurance  string     `json:"insurance"`
 }
 
-func scanBadgeRelease(row func(dest ...any) error) (BadgeReleaseRow, error) {
+func (q *Queries) scanBadgeRelease(row func(dest ...any) error) (BadgeReleaseRow, error) {
 	var r BadgeReleaseRow
 	var activeInt int64
-	err := row(
-		&r.ID, &r.BadgeKey, &r.Price, &r.Stock,
-		&r.ReleasedAt, &r.ExpiresAt, &activeInt, &r.Notes, &r.CreatedAt,
-	)
-	if err != nil {
-		return r, err
+	if q.isPG() {
+		if err := row(
+			&r.ID, &r.BadgeKey, &r.Price, &r.Stock,
+			&r.ReleasedAt, &r.ExpiresAt, &activeInt, &r.Notes, &r.CreatedAt, &r.Insurance,
+		); err != nil {
+			return r, err
+		}
+	} else {
+		// SQLite returns DATETIME columns as TEXT — scan into strings and parse.
+		var releasedAtStr, createdAtStr string
+		var expiresAtStr *string
+		if err := row(
+			&r.ID, &r.BadgeKey, &r.Price, &r.Stock,
+			&releasedAtStr, &expiresAtStr, &activeInt, &r.Notes, &createdAtStr, &r.Insurance,
+		); err != nil {
+			return r, err
+		}
+		for _, layout := range []string{"2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
+			if t, err2 := time.Parse(layout, releasedAtStr); err2 == nil {
+				r.ReleasedAt = t.UTC()
+				break
+			}
+		}
+		for _, layout := range []string{"2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
+			if t, err2 := time.Parse(layout, createdAtStr); err2 == nil {
+				r.CreatedAt = t.UTC()
+				break
+			}
+		}
+		if expiresAtStr != nil {
+			for _, layout := range []string{"2006-01-02T15:04:05Z", "2006-01-02T15:04:05", "2006-01-02 15:04:05"} {
+				if t, err2 := time.Parse(layout, *expiresAtStr); err2 == nil {
+					v := t.UTC()
+					r.ExpiresAt = &v
+					break
+				}
+			}
+		}
 	}
 	r.Active = activeInt == 1
 	return r, nil
 }
 
-const badgeReleaseSelectCols = `id, badge_key, price, stock, released_at, expires_at, active, notes, created_at`
+const badgeReleaseSelectCols = `id, badge_key, price, stock, released_at, expires_at, active, notes, created_at, insurance`
 
 // ListBadgeReleases returns all releases ordered newest-first (admin use).
 func (q *Queries) ListBadgeReleases(ctx context.Context) ([]BadgeReleaseRow, error) {
@@ -621,7 +673,7 @@ func (q *Queries) ListBadgeReleases(ctx context.Context) ([]BadgeReleaseRow, err
 	defer rows.Close()
 	items := make([]BadgeReleaseRow, 0)
 	for rows.Next() {
-		r, err := scanBadgeRelease(rows.Scan)
+		r, err := q.scanBadgeRelease(rows.Scan)
 		if err != nil {
 			return nil, err
 		}
@@ -632,7 +684,7 @@ func (q *Queries) ListBadgeReleases(ctx context.Context) ([]BadgeReleaseRow, err
 
 // GetBadgeReleaseByID returns a single release by primary key.
 func (q *Queries) GetBadgeReleaseByID(ctx context.Context, id int64) (BadgeReleaseRow, error) {
-	return scanBadgeRelease(q.db.QueryRowContext(ctx,
+	return q.scanBadgeRelease(q.db.QueryRowContext(ctx,
 		`SELECT `+badgeReleaseSelectCols+` FROM badge_releases WHERE id = ?`, id).Scan)
 }
 
@@ -652,7 +704,7 @@ ORDER BY released_at DESC`, now, now)
 	defer rows.Close()
 	items := make([]BadgeReleaseRow, 0)
 	for rows.Next() {
-		r, err := scanBadgeRelease(rows.Scan)
+		r, err := q.scanBadgeRelease(rows.Scan)
 		if err != nil {
 			return nil, err
 		}
@@ -664,7 +716,7 @@ ORDER BY released_at DESC`, now, now)
 // GetActiveBadgeReleaseForKey returns the active release for a given badge_key, if any.
 func (q *Queries) GetActiveBadgeReleaseForKey(ctx context.Context, badgeKey string) (BadgeReleaseRow, bool, error) {
 	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
-	row, err := scanBadgeRelease(q.db.QueryRowContext(ctx, `
+	row, err := q.scanBadgeRelease(q.db.QueryRowContext(ctx, `
 SELECT `+badgeReleaseSelectCols+` FROM badge_releases
 WHERE badge_key = ? AND active = 1
   AND released_at <= ?
@@ -687,6 +739,7 @@ type CreateBadgeReleaseParams struct {
 	ReleasedAt time.Time
 	ExpiresAt  *time.Time
 	Notes      *string
+	Insurance  string
 }
 
 // CreateBadgeRelease inserts a new badge release row and returns its ID.
@@ -698,9 +751,9 @@ func (q *Queries) CreateBadgeRelease(ctx context.Context, p CreateBadgeReleasePa
 		expiresAt = &s
 	}
 	res, err := q.db.ExecContext(ctx, `
-INSERT INTO badge_releases (badge_key, price, stock, released_at, expires_at, active, notes)
-VALUES (?, ?, ?, ?, ?, 1, ?)`,
-		p.BadgeKey, p.Price, p.Stock, releasedAt, expiresAt, p.Notes)
+INSERT INTO badge_releases (badge_key, price, stock, released_at, expires_at, active, notes, insurance)
+VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+		p.BadgeKey, p.Price, p.Stock, releasedAt, expiresAt, p.Notes, p.Insurance)
 	if err != nil {
 		return 0, err
 	}
@@ -716,6 +769,7 @@ type UpdateBadgeReleaseParams struct {
 	ExpiresAt  *time.Time
 	Active     bool
 	Notes      *string
+	Insurance  string
 }
 
 // UpdateBadgeRelease overwrites the mutable fields of an existing release.
@@ -732,9 +786,9 @@ func (q *Queries) UpdateBadgeRelease(ctx context.Context, p UpdateBadgeReleasePa
 	}
 	_, err := q.db.ExecContext(ctx, `
 UPDATE badge_releases
-SET price = ?, stock = ?, released_at = ?, expires_at = ?, active = ?, notes = ?
+SET price = ?, stock = ?, released_at = ?, expires_at = ?, active = ?, notes = ?, insurance = ?
 WHERE id = ?`,
-		p.Price, p.Stock, releasedAt, expiresAt, activeInt, p.Notes, p.ID)
+		p.Price, p.Stock, releasedAt, expiresAt, activeInt, p.Notes, p.Insurance, p.ID)
 	return err
 }
 
@@ -745,15 +799,16 @@ func (q *Queries) ArchiveBadgeRelease(ctx context.Context, id int64) error {
 	return err
 }
 
-// AwardBadgePurchased inserts a purchased badge with the price paid, ignoring duplicates.
-func (q *Queries) AwardBadgePurchased(ctx context.Context, userID int64, badgeKey string, price int64) error {
+// AwardBadgePurchased inserts a purchased badge with the price paid and chosen insurance tier,
+// ignoring duplicates. Insurance must be one of '6w', '120w', 'lti'.
+func (q *Queries) AwardBadgePurchased(ctx context.Context, userID int64, badgeKey string, price int64, insurance string) error {
 	var stmt string
 	if q.isPG() {
-		stmt = `INSERT INTO user_badges (user_id, badge_key, purchase_price) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`
+		stmt = `INSERT INTO user_badges (user_id, badge_key, purchase_price, insurance) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 	} else {
-		stmt = `INSERT OR IGNORE INTO user_badges (user_id, badge_key, purchase_price) VALUES (?, ?, ?)`
+		stmt = `INSERT OR IGNORE INTO user_badges (user_id, badge_key, purchase_price, insurance) VALUES (?, ?, ?, ?)`
 	}
-	_, err := q.db.ExecContext(ctx, stmt, userID, badgeKey, price)
+	_, err := q.db.ExecContext(ctx, stmt, userID, badgeKey, price, insurance)
 	return err
 }
 
@@ -908,4 +963,96 @@ LIMIT ?`
 		items = append(items, i)
 	}
 	return items, rows.Err()
+}
+
+// ─── Badge Definitions ───────────────────────────────────────────────────────
+
+// BadgeDefinitionRow represents one row from the badge_definitions table.
+type BadgeDefinitionRow struct {
+	ID          int64  `json:"id"`
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tier        int    `json:"tier"`
+	Icon        string `json:"icon"`
+	IsHardcoded bool   `json:"is_hardcoded"`
+	CreatedAt   string `json:"created_at"`
+	Insurance   string `json:"insurance"`
+}
+
+func scanBadgeDefinition(row func(dest ...any) error) (BadgeDefinitionRow, error) {
+	var d BadgeDefinitionRow
+	var hardcodedInt int64
+	err := row(&d.ID, &d.Key, &d.Title, &d.Description, &d.Tier, &d.Icon, &hardcodedInt, &d.CreatedAt, &d.Insurance)
+	if err != nil {
+		return d, err
+	}
+	d.IsHardcoded = hardcodedInt == 1
+	return d, nil
+}
+
+const badgeDefCols = `id, key, title, description, tier, icon, is_hardcoded, created_at, insurance`
+
+// GetAllBadgeDefinitions returns all badge definitions ordered by tier then title.
+func (q *Queries) GetAllBadgeDefinitions(ctx context.Context) ([]BadgeDefinitionRow, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT `+badgeDefCols+` FROM badge_definitions ORDER BY tier ASC, title ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]BadgeDefinitionRow, 0)
+	for rows.Next() {
+		d, err := scanBadgeDefinition(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, d)
+	}
+	return items, rows.Err()
+}
+
+// GetBadgeDefinitionByKey returns a single badge definition by its unique key.
+func (q *Queries) GetBadgeDefinitionByKey(ctx context.Context, key string) (BadgeDefinitionRow, error) {
+	return scanBadgeDefinition(q.db.QueryRowContext(ctx,
+		`SELECT `+badgeDefCols+` FROM badge_definitions WHERE key = ?`, key).Scan)
+}
+
+// CreateBadgeDefinitionParams holds fields for inserting a new custom badge definition.
+type CreateBadgeDefinitionParams struct {
+	Key         string
+	Title       string
+	Description string
+	Tier        int
+	Icon        string
+	Insurance   string
+}
+
+// CreateBadgeDefinition inserts a new admin-created badge definition and returns its ID.
+func (q *Queries) CreateBadgeDefinition(ctx context.Context, p CreateBadgeDefinitionParams) (int64, error) {
+	res, err := q.db.ExecContext(ctx,
+		`INSERT INTO badge_definitions (key, title, description, tier, icon, is_hardcoded, insurance) VALUES (?, ?, ?, ?, ?, 0, ?)`,
+		p.Key, p.Title, p.Description, p.Tier, p.Icon, p.Insurance)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// UpdateBadgeDefinitionParams holds the mutable fields for updating a badge definition.
+type UpdateBadgeDefinitionParams struct {
+	Key         string
+	Title       string
+	Description string
+	Tier        int
+	Icon        string
+	Insurance   string
+}
+
+// UpdateBadgeDefinition updates the editable fields of a badge definition.
+func (q *Queries) UpdateBadgeDefinition(ctx context.Context, p UpdateBadgeDefinitionParams) error {
+	_, err := q.db.ExecContext(ctx,
+		`UPDATE badge_definitions SET title = ?, description = ?, tier = ?, icon = ?, insurance = ? WHERE key = ?`,
+		p.Title, p.Description, p.Tier, p.Icon, p.Insurance, p.Key)
+	return err
 }

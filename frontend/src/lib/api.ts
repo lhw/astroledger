@@ -29,7 +29,8 @@ import type {
 	AnalyticsStats,
 	UserSearchResult,
 	BadgeCatalogEntry,
-	AdminBadgeRelease
+	AdminBadgeRelease,
+	AdminBadgeDefinition
 	,
 	BotApiToken,
 	BotApiTokenCreateResponse
@@ -213,10 +214,10 @@ export async function getStoreBadges(): Promise<StoreBadge[]> {
 	return request<StoreBadge[]>('/api/fomo');
 }
 
-export async function purchaseBadge(badge_key: string): Promise<{ status: string }> {
+export async function purchaseBadge(badge_key: string, insurance: string = ''): Promise<{ status: string }> {
 	return request<{ status: string }>('/api/fomo/purchase', {
 		method: 'POST',
-		body: JSON.stringify({ badge_key })
+		body: JSON.stringify({ badge_key, insurance })
 	});
 }
 
@@ -328,6 +329,7 @@ export async function adminCreateBadgeRelease(body: {
 	released_at: string;
 	expires_at: string | null;
 	notes: string | null;
+	insurance: string;
 }): Promise<AdminBadgeRelease> {
 	return request<AdminBadgeRelease>('/api/admin/badge-releases', {
 		method: 'POST',
@@ -344,6 +346,7 @@ export async function adminUpdateBadgeRelease(
 		expires_at: string | null;
 		active: boolean;
 		notes: string | null;
+		insurance: string;
 	}>
 ): Promise<AdminBadgeRelease> {
 	return request<AdminBadgeRelease>(`/api/admin/badge-releases/${id}`, {
@@ -354,6 +357,42 @@ export async function adminUpdateBadgeRelease(
 
 export async function adminArchiveBadgeRelease(id: number): Promise<void> {
 	await request(`/api/admin/badge-releases/${id}`, { method: 'DELETE' });
+}
+
+// --- Admin: Badge Definitions ---
+
+export async function adminListBadgeDefinitions(): Promise<AdminBadgeDefinition[]> {
+	return request<AdminBadgeDefinition[]>('/api/admin/badge-definitions');
+}
+
+export async function adminCreateBadgeDefinition(body: {
+	key: string;
+	title: string;
+	description: string;
+	tier: number;
+	icon: string;
+	insurance: string;
+}): Promise<AdminBadgeDefinition> {
+	return request<AdminBadgeDefinition>('/api/admin/badge-definitions', {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+}
+
+export async function adminUpdateBadgeDefinition(
+	key: string,
+	body: Partial<{
+		title: string;
+		description: string;
+		tier: number;
+		icon: string;
+		insurance: string;
+	}>
+): Promise<AdminBadgeDefinition> {
+	return request<AdminBadgeDefinition>(`/api/admin/badge-definitions/${key}`, {
+		method: 'PUT',
+		body: JSON.stringify(body)
+	});
 }
 
 // --- Bot API Tokens ---

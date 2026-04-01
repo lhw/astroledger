@@ -1,16 +1,15 @@
 /**
  * GoatCounter analytics integration tests.
  *
- * These tests verify that page hits from SvelteKit's hooks.server.ts actually
- * reach GoatCounter. They require the full dev stack (task dev) to be running:
- *   • Frontend at :5173
- *   • Backend at :8080
- *   • GoatCounter at :8081
+ * Tests are split into two groups:
  *
- * Run with the full stack: GOATCOUNTER_API_KEY=<key> npx playwright test analytics
+ *   1. Frontend-only (always run): intercept the browser request to verify
+ *      the analytics POST fires on navigation. No backend or GC needed.
  *
- * All tests skip gracefully when GoatCounter / backend is unreachable, so they
- * never break normal CI runs.
+ *   2. GC integration (skip-guarded): verify the GoatCounter API itself is
+ *      reachable and accepts direct hit POSTs. Requires: task dev.
+ *
+ * All skip-guarded tests never break normal CI runs.
  */
 
 import { test, expect } from '@playwright/test';
@@ -30,28 +29,6 @@ async function isReachable(url: string, apiKey?: string): Promise<boolean> {
 		return res.status < 500;
 	} catch {
 		return false;
-	}
-}
-
-/**
- * Fetch the current total page-view count from GoatCounter's stats API.
- * Returns null when unreachable or key is missing.
- */
-async function getGCHitCount(): Promise<number | null> {
-	if (!GC_KEY) return null;
-	try {
-		const today = new Date().toISOString().split('T')[0];
-		const yesterday = new Date(Date.now() - 86400 * 1000).toISOString().split('T')[0];
-		const url = `${GC_URL}/api/v0/stats/hits?start=${yesterday}&end=${today}&limit=200`;
-		const res = await fetch(url, {
-			headers: { Authorization: `Bearer ${GC_KEY}` },
-			signal: AbortSignal.timeout(3000),
-		});
-		if (!res.ok) return null;
-		const data = (await res.json()) as { hits?: { count: number }[] };
-		return (data.hits ?? []).reduce((sum, h) => sum + (h.count ?? 0), 0);
-	} catch {
-		return null;
 	}
 }
 
@@ -114,41 +91,23 @@ test.describe('GoatCounter integration', () => {
 		expect([200, 202]).toContain(res.status());
 	});
 
-	test('navigating to the home page sends a hit via hooks.server.ts', async ({
-		page,
-		request,
-	}) => {
-		if (!GC_KEY) {
-			test.skip(true, 'GOATCOUNTER_API_KEY not set');
-			return;
-		}
-		const up = await isReachable(`${GC_URL}/api/v0/me`, GC_KEY);
-		if (!up) {
-			test.skip(true, `GoatCounter not running at ${GC_URL}`);
-			return;
-		}
+	test('navigating to the home page sends a hit via the analytics proxy', async ({ page }) => {
+		// Intercept the analytics POST from the browser. This verifies the frontend
+		// fires afterNavigate → POST /api/analytics/hit without needing the backend
+		// or GoatCounter to be running.
+		let capturedHit: { path?: string; title?: string } | null = null;
+		await page.route('**/api/analytics/hit', async (route) => {
+			const body = route.request().postDataJSON() as { path?: string; title?: string };
+			capturedHit = body;
+			await route.fulfill({ status: 204 });
+		});
 
-		// Record current hit count before navigation
-		const before = await getGCHitCount();
-		if (before === null) {
-			test.skip(true, 'Could not read GoatCounter stats');
-			return;
-		}
-
-		// Navigate to the home page — this triggers hooks.server.ts → GoatCounter POST
 		await page.goto('/');
 		await page.waitForLoadState('networkidle');
 
-		// GoatCounter processes hits asynchronously; give it up to 5 s
-		let after: number | null = null;
-		for (let i = 0; i < 10; i++) {
-			await page.waitForTimeout(500);
-			after = await getGCHitCount();
-			if (after !== null && after > before) break;
-		}
-
-		expect(after).not.toBeNull();
-		expect(after!).toBeGreaterThan(before);
+		// afterNavigate should have fired and called /api/analytics/hit
+		expect(capturedHit).not.toBeNull();
+		expect(capturedHit!.path).toBe('/');
 	});
 
 	test('no analytics script tags or external analytics requests in browser', async ({ page }) => {

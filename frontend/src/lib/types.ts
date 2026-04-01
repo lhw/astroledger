@@ -225,6 +225,8 @@ export interface Badge {
 	tier: number;
 	cost: number;
 	purchasable: boolean;
+	/** Insurance tier: '6w', '120w', 'lti', or '' — only present on /me/badges */
+	insurance?: string;
 }
 
 /** A badge available in the FOMO Store */
@@ -243,6 +245,8 @@ export interface StoreBadge {
 	available_until?: string;
 	/** True if available_until has passed. */
 	expired: boolean;
+	/** Cosmetic insurance tier assigned to this release: '6w', '120w', 'lti', or ''. */
+	insurance: string;
 }
 
 /** A rank in the Admiral Rank progression */
@@ -343,6 +347,21 @@ export interface BadgeCatalogEntry {
 	title: string;
 	description: string;
 	tier: number;
+	purchasable: boolean;
+}
+
+/** A badge definition row (admin-created or hardcoded) from badge_definitions table */
+export interface AdminBadgeDefinition {
+	id: number;
+	key: string;
+	title: string;
+	description: string;
+	tier: number;
+	icon: string;
+	is_hardcoded: boolean;
+	purchasable: boolean;
+	insurance: string;
+	created_at: string;
 }
 
 /** A badge release created by an admin */
@@ -358,6 +377,7 @@ export interface AdminBadgeRelease {
 	expires_at: string | null;
 	active: boolean;
 	notes: string | null;
+	insurance: string;
 	created_at: string;
 	/** Number of users who have purchased this badge so far. */
 	sold: number;

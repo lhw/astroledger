@@ -456,6 +456,7 @@ func (h *AdminHandler) AdjustUserBalance(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
+		slog.Error("AdjustUserBalance: GetUserByID", "err", err, "target_id", targetID)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -475,6 +476,7 @@ func (h *AdminHandler) AdjustUserBalance(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
+		slog.Error("AdjustUserBalance: AdminAdjustUserBalance", "err", err, "target_id", targetID)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -507,6 +509,7 @@ type badgeReleaseResponse struct {
 	ExpiresAt   *string `json:"expires_at"`
 	Active      bool    `json:"active"`
 	Notes       *string `json:"notes"`
+	Insurance   string  `json:"insurance"`
 	CreatedAt   string  `json:"created_at"`
 	Sold        int64   `json:"sold"`
 }
@@ -517,9 +520,10 @@ type badgeCatalogEntry struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Tier        int    `json:"tier"`
+	Purchasable bool   `json:"purchasable"`
 }
 
-func toReleaseResponse(rel db.BadgeReleaseRow, sold int64) badgeReleaseResponse {
+func (h *AdminHandler) toReleaseResponse(ctx context.Context, rel db.BadgeReleaseRow, sold int64) badgeReleaseResponse {
 	r := badgeReleaseResponse{
 		ID:         rel.ID,
 		BadgeKey:   rel.BadgeKey,
@@ -539,20 +543,31 @@ func toReleaseResponse(rel db.BadgeReleaseRow, sold int64) badgeReleaseResponse 
 		r.Title = def.Title
 		r.Description = def.Description
 		r.Tier = def.Tier
+	} else if dbDef, err := h.queries.GetBadgeDefinitionByKey(ctx, rel.BadgeKey); err == nil {
+		r.Title = dbDef.Title
+		r.Description = dbDef.Description
+		r.Tier = dbDef.Tier
 	}
+	r.Insurance = rel.Insurance
 	return r
 }
 
 // GetBadgeCatalog returns all badge definitions the admin can release.
+// Merges hardcoded AllBadges (excluding admiral ranks) with custom DB definitions.
 // GET /api/admin/badge-catalog
 func (h *AdminHandler) GetBadgeCatalog(w http.ResponseWriter, r *http.Request) {
 	if h.requireAdmin(w, r) == nil {
 		return
 	}
+	ctx := r.Context()
 	entries := make([]badgeCatalogEntry, 0, len(service.AllBadges))
 	for _, b := range service.AllBadges {
 		// Exclude admiral rank badges — they're auto-awarded by spend, not released.
 		if b.SpendThreshold > 0 {
+			continue
+		}
+		// Only purchasable badges can be scheduled in the FOMO store.
+		if !b.Purchasable {
 			continue
 		}
 		entries = append(entries, badgeCatalogEntry{
@@ -560,7 +575,22 @@ func (h *AdminHandler) GetBadgeCatalog(w http.ResponseWriter, r *http.Request) {
 			Title:       b.Title,
 			Description: b.Description,
 			Tier:        b.Tier,
+			Purchasable: true,
 		})
+	}
+	// Append custom (non-hardcoded) DB definitions not already in AllBadges.
+	if dbDefs, err := h.queries.GetAllBadgeDefinitions(ctx); err == nil {
+		for _, d := range dbDefs {
+			if _, inMap := service.BadgeKeysMap[d.Key]; !inMap {
+				entries = append(entries, badgeCatalogEntry{
+					Key:         d.Key,
+					Title:       d.Title,
+					Description: d.Description,
+					Tier:        d.Tier,
+					Purchasable: true,
+				})
+			}
+		}
 	}
 	respondJSON(w, http.StatusOK, entries)
 }
@@ -574,13 +604,14 @@ func (h *AdminHandler) ListBadgeReleases(w http.ResponseWriter, r *http.Request)
 	ctx := r.Context()
 	releases, err := h.queries.ListBadgeReleases(ctx)
 	if err != nil {
+		slog.Error("ListBadgeReleases", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 	result := make([]badgeReleaseResponse, 0, len(releases))
 	for _, rel := range releases {
 		sold, _ := h.queries.CountBadgePurchases(ctx, rel.BadgeKey)
-		result = append(result, toReleaseResponse(rel, sold))
+		result = append(result, h.toReleaseResponse(ctx, rel, sold))
 	}
 	respondJSON(w, http.StatusOK, result)
 }
@@ -593,6 +624,7 @@ type createBadgeReleaseBody struct {
 	ReleasedAt string  `json:"released_at"` // RFC3339 or empty for now
 	ExpiresAt  *string `json:"expires_at"`  // RFC3339 or nil
 	Notes      *string `json:"notes"`
+	Insurance  string  `json:"insurance"` // '6w', '120w', 'lti'
 }
 
 // CreateBadgeRelease creates a new badge release.
@@ -609,8 +641,11 @@ func (h *AdminHandler) CreateBadgeRelease(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if _, ok := service.BadgeKeysMap[body.BadgeKey]; !ok {
-		respondError(w, http.StatusBadRequest, "unknown badge_key")
-		return
+		// Also allow admin-created badge definitions.
+		if _, dbErr := h.queries.GetBadgeDefinitionByKey(ctx, body.BadgeKey); dbErr != nil {
+			respondError(w, http.StatusBadRequest, "unknown badge_key")
+			return
+		}
 	}
 	if body.Price < 0 {
 		respondError(w, http.StatusBadRequest, "price must be >= 0")
@@ -618,6 +653,13 @@ func (h *AdminHandler) CreateBadgeRelease(w http.ResponseWriter, r *http.Request
 	}
 	if body.Stock != nil && *body.Stock <= 0 {
 		respondError(w, http.StatusBadRequest, "stock must be a positive integer or null for unlimited")
+		return
+	}
+	switch body.Insurance {
+	case "6w", "120w", "lti":
+		// valid
+	default:
+		respondError(w, http.StatusBadRequest, "insurance must be '6w', '120w', or 'lti'")
 		return
 	}
 
@@ -645,18 +687,21 @@ func (h *AdminHandler) CreateBadgeRelease(w http.ResponseWriter, r *http.Request
 		ReleasedAt: releasedAt,
 		ExpiresAt:  expiresAt,
 		Notes:      body.Notes,
+		Insurance:  body.Insurance,
 	})
 	if err != nil {
+		slog.Error("CreateBadgeRelease: db insert", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
 	rel, err := h.queries.GetBadgeReleaseByID(ctx, id)
 	if err != nil {
+		slog.Error("CreateBadgeRelease: fetch after insert", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	respondJSON(w, http.StatusCreated, toReleaseResponse(rel, 0))
+	respondJSON(w, http.StatusCreated, h.toReleaseResponse(ctx, rel, 0))
 }
 
 // UpdateBadgeRelease updates price, stock, dates, active flag, and notes on an existing release.
@@ -690,6 +735,7 @@ func (h *AdminHandler) UpdateBadgeRelease(w http.ResponseWriter, r *http.Request
 	body.ReleasedAt = existing.ReleasedAt.Format("2006-01-02T15:04:05Z")
 	body.Active = existing.Active
 	body.Notes = existing.Notes
+	body.Insurance = existing.Insurance
 	if existing.ExpiresAt != nil {
 		s := existing.ExpiresAt.Format("2006-01-02T15:04:05Z")
 		body.ExpiresAt = &s
@@ -738,14 +784,16 @@ func (h *AdminHandler) UpdateBadgeRelease(w http.ResponseWriter, r *http.Request
 		ExpiresAt:  expiresAt,
 		Active:     body.Active,
 		Notes:      body.Notes,
+		Insurance:  body.Insurance,
 	}); err != nil {
+		slog.Error("UpdateBadgeRelease", "err", err, "release_id", releaseID)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
 	rel, _ := h.queries.GetBadgeReleaseByID(ctx, releaseID)
 	sold, _ := h.queries.CountBadgePurchases(ctx, rel.BadgeKey)
-	respondJSON(w, http.StatusOK, toReleaseResponse(rel, sold))
+	respondJSON(w, http.StatusOK, h.toReleaseResponse(ctx, rel, sold))
 }
 
 // ArchiveBadgeRelease sets a release to inactive (soft-delete).
@@ -764,4 +812,209 @@ func (h *AdminHandler) ArchiveBadgeRelease(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "archived"})
+}
+
+// ── Badge Definitions ──────────────────────────────────────────────────────
+
+// badgeDefinitionResponse is the API shape for a badge_definitions row.
+type badgeDefinitionResponse struct {
+	ID          int64  `json:"id"`
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tier        int    `json:"tier"`
+	Icon        string `json:"icon"`
+	IsHardcoded bool   `json:"is_hardcoded"`
+	Purchasable bool   `json:"purchasable"`
+	Insurance   string `json:"insurance"`
+	CreatedAt   string `json:"created_at"`
+}
+
+func toBadgeDefResponse(d db.BadgeDefinitionRow) badgeDefinitionResponse {
+	// Determine purchasable: custom (non-hardcoded) defs are always purchasable;
+	// hardcoded defs inherit Purchasable from the Go service definition.
+	purchasable := true
+	if d.IsHardcoded {
+		if svc, ok := service.BadgeKeysMap[d.Key]; ok {
+			purchasable = svc.Purchasable
+		}
+	}
+	return badgeDefinitionResponse{
+		ID:          d.ID,
+		Key:         d.Key,
+		Title:       d.Title,
+		Description: d.Description,
+		Tier:        d.Tier,
+		Icon:        d.Icon,
+		IsHardcoded: d.IsHardcoded,
+		Purchasable: purchasable,
+		Insurance:   d.Insurance,
+		CreatedAt:   d.CreatedAt,
+	}
+}
+
+// ListBadgeDefinitions returns all rows from badge_definitions.
+// GET /api/admin/badge-definitions
+func (h *AdminHandler) ListBadgeDefinitions(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	defs, err := h.queries.GetAllBadgeDefinitions(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	result := make([]badgeDefinitionResponse, 0, len(defs))
+	for _, d := range defs {
+		result = append(result, toBadgeDefResponse(d))
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+// createBadgeDefinitionBody is the request body for creating a new custom badge.
+type createBadgeDefinitionBody struct {
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tier        int    `json:"tier"`
+	Icon        string `json:"icon"`
+	Insurance   string `json:"insurance"` // '', '6w', '120w', 'lti'
+}
+
+// CreateBadgeDefinition creates a new custom (non-hardcoded) badge definition.
+// POST /api/admin/badge-definitions
+func (h *AdminHandler) CreateBadgeDefinition(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	ctx := r.Context()
+
+	var body createBadgeDefinitionBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	body.Key = strings.TrimSpace(body.Key)
+	body.Title = strings.TrimSpace(body.Title)
+	body.Description = strings.TrimSpace(body.Description)
+	body.Icon = strings.TrimSpace(body.Icon)
+
+	if body.Key == "" || body.Title == "" || body.Description == "" {
+		respondError(w, http.StatusBadRequest, "key, title and description are required")
+		return
+	}
+	if body.Tier < 1 || body.Tier > 5 {
+		respondError(w, http.StatusBadRequest, "tier must be between 1 and 5")
+		return
+	}
+	validInsurance := map[string]bool{"": true, "6w": true, "120w": true, "lti": true}
+	if !validInsurance[body.Insurance] {
+		respondError(w, http.StatusBadRequest, "insurance must be one of: '', '6w', '120w', 'lti'")
+		return
+	}
+
+	// Reject keys that collide with hardcoded badges to avoid confusion.
+	if _, exists := service.BadgeKeysMap[body.Key]; exists {
+		respondError(w, http.StatusConflict, "key already exists as a hardcoded badge")
+		return
+	}
+
+	id, err := h.queries.CreateBadgeDefinition(ctx, db.CreateBadgeDefinitionParams{
+		Key:         body.Key,
+		Title:       body.Title,
+		Description: body.Description,
+		Tier:        body.Tier,
+		Icon:        body.Icon,
+		Insurance:   body.Insurance,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			respondError(w, http.StatusConflict, "badge key already exists")
+			return
+		}
+		slog.Error("CreateBadgeDefinition", "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	def, err := h.queries.GetBadgeDefinitionByKey(ctx, body.Key)
+	if err != nil {
+		respondJSON(w, http.StatusCreated, map[string]any{"id": id})
+		return
+	}
+	respondJSON(w, http.StatusCreated, toBadgeDefResponse(def))
+}
+
+// UpdateBadgeDefinition updates title, description, tier and icon on a badge definition.
+// Hardcoded badges can also be updated (the is_hardcoded flag is read-only).
+// PUT /api/admin/badge-definitions/:key
+func (h *AdminHandler) UpdateBadgeDefinition(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	ctx := r.Context()
+	key := chi.URLParam(r, "key")
+
+	existing, err := h.queries.GetBadgeDefinitionByKey(ctx, key)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "badge definition not found")
+		return
+	}
+
+	var body struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Tier        int    `json:"tier"`
+		Icon        string `json:"icon"`
+		Insurance   string `json:"insurance"`
+	}
+	// Seed with existing values so partial updates work.
+	body.Title = existing.Title
+	body.Description = existing.Description
+	body.Tier = existing.Tier
+	body.Icon = existing.Icon
+	body.Insurance = existing.Insurance
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	body.Title = strings.TrimSpace(body.Title)
+	body.Description = strings.TrimSpace(body.Description)
+	body.Icon = strings.TrimSpace(body.Icon)
+
+	if body.Title == "" || body.Description == "" {
+		respondError(w, http.StatusBadRequest, "title and description are required")
+		return
+	}
+	if body.Tier < 1 || body.Tier > 5 {
+		respondError(w, http.StatusBadRequest, "tier must be between 1 and 5")
+		return
+	}
+	validIns := map[string]bool{"": true, "6w": true, "120w": true, "lti": true}
+	if !validIns[body.Insurance] {
+		respondError(w, http.StatusBadRequest, "insurance must be one of: '', '6w', '120w', 'lti'")
+		return
+	}
+
+	if err := h.queries.UpdateBadgeDefinition(ctx, db.UpdateBadgeDefinitionParams{
+		Key:         key,
+		Title:       body.Title,
+		Description: body.Description,
+		Tier:        body.Tier,
+		Icon:        body.Icon,
+		Insurance:   body.Insurance,
+	}); err != nil {
+		slog.Error("UpdateBadgeDefinition", "err", err, "key", key)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	def, err := h.queries.GetBadgeDefinitionByKey(ctx, key)
+	if err != nil {
+		slog.Error("UpdateBadgeDefinition: fetch after update", "err", err, "key", key)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusOK, toBadgeDefResponse(def))
 }

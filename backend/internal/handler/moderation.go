@@ -119,7 +119,7 @@ func (h *ModerationHandler) setReportStatus(w http.ResponseWriter, r *http.Reque
 	respondJSON(w, http.StatusOK, map[string]string{"status": status})
 }
 
-// GetMyBadges returns the badge list for the authenticated user.
+// GetMyBadges returns the badge list for the authenticated user (includes insurance tier).
 // GET /api/me/badges
 func (h *ModerationHandler) GetMyBadges(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
@@ -127,10 +127,10 @@ func (h *ModerationHandler) GetMyBadges(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	h.sendBadges(w, r, claims.UserID)
+	h.sendBadges(w, r, claims.UserID, true)
 }
 
-// GetUserBadges returns the public badge list for any user by ID.
+// GetUserBadges returns the public badge list for any user by ID (insurance not included).
 // GET /api/users/:id/badges
 func (h *ModerationHandler) GetUserBadges(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -138,10 +138,10 @@ func (h *ModerationHandler) GetUserBadges(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	h.sendBadges(w, r, id)
+	h.sendBadges(w, r, id, false)
 }
 
-func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, userID int64) {
+func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, userID int64, isOwner bool) {
 	badges, err := h.queries.GetUserBadges(r.Context(), userID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
@@ -149,6 +149,7 @@ func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, u
 	}
 
 	// Enrich with static definition fields.
+	// Insurance is only included when the caller is fetching their own badges.
 	type richBadge struct {
 		BadgeKey    string `json:"badge_key"`
 		AwardedAt   string `json:"awarded_at"`
@@ -157,14 +158,33 @@ func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, u
 		Tier        int    `json:"tier"`
 		Cost        int64  `json:"cost"`
 		Purchasable bool   `json:"purchasable"`
+		Insurance   string `json:"insurance,omitempty"`
 	}
 	result := make([]richBadge, 0, len(badges))
 	for _, b := range badges {
 		def, ok := service.BadgeKeysMap[b.BadgeKey]
 		if !ok {
-			continue // skip unknown badge keys
+			// Fall back to DB definition for admin-created badges.
+			dbDef, dbErr := h.queries.GetBadgeDefinitionByKey(r.Context(), b.BadgeKey)
+			if dbErr != nil {
+				continue // skip truly unknown badge keys
+			}
+			rb := richBadge{
+				BadgeKey:    b.BadgeKey,
+				AwardedAt:   b.AwardedAt.Format("2006-01-02T15:04:05Z"),
+				Title:       dbDef.Title,
+				Description: dbDef.Description,
+				Tier:        dbDef.Tier,
+				Cost:        0,
+				Purchasable: true,
+			}
+			if isOwner {
+				rb.Insurance = b.Insurance
+			}
+			result = append(result, rb)
+			continue
 		}
-		result = append(result, richBadge{
+		rb := richBadge{
 			BadgeKey:    b.BadgeKey,
 			AwardedAt:   b.AwardedAt.Format("2006-01-02T15:04:05Z"),
 			Title:       def.Title,
@@ -172,7 +192,11 @@ func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, u
 			Tier:        def.Tier,
 			Cost:        def.Cost,
 			Purchasable: def.Purchasable,
-		})
+		}
+		if isOwner {
+			rb.Insurance = b.Insurance
+		}
+		result = append(result, rb)
 	}
 	respondJSON(w, http.StatusOK, result)
 }
@@ -206,6 +230,7 @@ func (h *ModerationHandler) GetStoreBadges(w http.ResponseWriter, r *http.Reques
 		RemainingStock *int64  `json:"remaining_stock,omitempty"`
 		AvailableUntil *string `json:"available_until,omitempty"`
 		Expired        bool    `json:"expired"`
+		Insurance      string  `json:"insurance"`
 	}
 
 	releases, err := h.queries.GetActiveBadgeReleases(ctx)
@@ -228,6 +253,7 @@ func (h *ModerationHandler) GetStoreBadges(w http.ResponseWriter, r *http.Reques
 			Tier:        def.Tier,
 			Cost:        rel.Price,
 			Owned:       owned[rel.BadgeKey],
+			Insurance:   rel.Insurance,
 		}
 		if rel.Stock != nil {
 			sb.Stock = rel.Stock
@@ -261,10 +287,16 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 
 	var body struct {
-		BadgeKey string `json:"badge_key"`
+		BadgeKey  string `json:"badge_key"`
+		Insurance string `json:"insurance"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.BadgeKey == "" {
 		respondError(w, http.StatusBadRequest, "badge_key is required")
+		return
+	}
+	validInsurance := map[string]bool{"6w": true, "120w": true, "lti": true, "": true}
+	if !validInsurance[body.Insurance] {
+		respondError(w, http.StatusBadRequest, "insurance must be one of: 6w, 120w, lti")
 		return
 	}
 
@@ -343,7 +375,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	}
 
 	// Award badge with purchase price for admiral rank tracking.
-	if err := qTx.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price); err != nil {
+	if err := qTx.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price, body.Insurance); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}

@@ -120,11 +120,13 @@ func run() error {
 
 	// Public API routes
 	r.Route("/api", func(r chi.Router) {
-		// Client-side analytics proxy — no auth, rate-limited to 60/min per IP.
+		// Client-side analytics proxy — no auth, rate-limited to 300/min per IP.
 		// Accepts navigation events from the SvelteKit frontend and forwards
 		// them to GoatCounter internally, bypassing browser extension blocklists.
+		// Higher limit here because in production each real user has a unique IP;
+		// the 60/min ceiling was too low when many Playwright workers share localhost.
 		r.Group(func(r chi.Router) {
-			r.Use(httprate.LimitByIP(60, time.Minute))
+			r.Use(httprate.LimitByIP(300, time.Minute))
 			r.Post("/analytics/hit", analyticsH.Hit)
 		})
 
@@ -255,6 +257,10 @@ func run() error {
 			r.Post("/admin/badge-releases", adminH.CreateBadgeRelease)
 			r.Put("/admin/badge-releases/{id}", adminH.UpdateBadgeRelease)
 			r.Delete("/admin/badge-releases/{id}", adminH.ArchiveBadgeRelease)
+			// Badge definition management (admin-created custom badges)
+			r.Get("/admin/badge-definitions", adminH.ListBadgeDefinitions)
+			r.Post("/admin/badge-definitions", adminH.CreateBadgeDefinition)
+			r.Put("/admin/badge-definitions/{key}", adminH.UpdateBadgeDefinition)
 		})
 	})
 
@@ -304,6 +310,9 @@ func run() error {
 
 	// Patch scraper goroutine — checks Spectrum forum every 30 minutes.
 	go patchScraper.Run(ctx)
+
+	// Analytics batching goroutine — flushes hits to GoatCounter every 10 s.
+	go analyticsH.Run(ctx)
 
 	// Weekly payout goroutine — checks every hour; idempotent so safe to run often.
 	go func() {
