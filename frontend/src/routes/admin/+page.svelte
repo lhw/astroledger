@@ -200,6 +200,25 @@
 		];
 	}
 
+	function defaultBadgeSymbol(tier: number) {
+		if (tier >= 5) return '★';
+		if (tier === 4) return '◈';
+		if (tier === 3) return '◆';
+		if (tier === 2) return '●';
+		return '▲';
+	}
+
+	function badgeDefIcon(def: AdminBadgeDefinition) {
+		return def.icon.trim() || defaultBadgeSymbol(def.tier);
+	}
+
+	function insuranceLabel(insurance: string) {
+		if (insurance === '6w') return '6 Weeks';
+		if (insurance === '120w') return '120 Weeks';
+		if (insurance === 'lti') return 'LTI';
+		return '—';
+	}
+
 	// ── Badge Releases ────────────────────────────────────────────────────
 	let catalog = $state<BadgeCatalogEntry[]>([]);
 	let releases = $state<AdminBadgeRelease[]>([]);
@@ -734,16 +753,17 @@
 			</section>
 
 			<!-- ── Definitions table ──────────────────────────────────── -->
-			<section class="bg-surface-800 border border-surface-700 rounded-xl overflow-x-auto">
-				<table class="w-full min-w-[900px] text-left">
+			<section class="bg-surface-800 border border-surface-700 rounded-xl overflow-hidden">
+				<table class="w-full table-fixed text-left admin-defs-table">
 					<thead class="bg-surface-700">
 						<tr class="text-surface-400 text-xs uppercase tracking-widest">
-							<th class="px-4 py-3">Key</th>
-							<th class="px-4 py-3">Title</th>
-							<th class="px-4 py-3">Tier</th>
-							<th class="px-4 py-3">Description</th>
-							<th class="px-4 py-3">Icon</th>
-							<th class="px-4 py-3">Source</th>						<th class="px-4 py-3">Insurance</th>							<th class="px-4 py-3"></th>
+							<th class="px-4 py-3 w-[18%]">Key</th>
+							<th class="px-4 py-3 w-[18%]">Title</th>
+							<th class="px-4 py-3 w-[8%]">Tier</th>
+							<th class="px-4 py-3 w-[28%]">Description</th>
+							<th class="px-4 py-3 w-[10%] text-center">Icon</th>
+							<th class="px-4 py-3 w-[12%]">Insurance</th>
+							<th class="px-4 py-3 w-[10%]"></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -751,25 +771,21 @@
 							<tr class="border-t border-surface-700 hover:bg-surface-700/40 transition-colors">
 								{#if editingDefKey === def.key}
 									<!-- Edit row -->
-									<td class="px-4 py-3 font-mono text-xs text-surface-400">{def.key}</td>
+									<td class="px-4 py-3 font-mono text-xs text-surface-400 break-all align-top">{def.key}</td>
 									<td class="px-4 py-3">
 										<input type="text" bind:value={editDefTitle} class="input w-full bg-surface-700 border border-primary-600 rounded px-2 py-1 text-surface-100 text-xs outline-none" />
 									</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 align-top">
 										<input type="number" min="1" max="5" bind:value={editDefTier} class="input w-16 bg-surface-700 border border-primary-600 rounded px-2 py-1 text-surface-100 text-xs outline-none" />
 									</td>
 									<td class="px-4 py-3">
 										<input type="text" bind:value={editDefDesc} class="input w-full bg-surface-700 border border-primary-600 rounded px-2 py-1 text-surface-100 text-xs outline-none" />
 									</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 align-top">
 										<input type="text" bind:value={editDefIcon} class="input w-16 bg-surface-700 border border-primary-600 rounded px-2 py-1 text-surface-100 text-xs outline-none" />
+										<p class="text-surface-500 text-[10px] mt-1 text-center">{defaultBadgeSymbol(editDefTier)}</p>
 									</td>
-									<td class="px-4 py-3">
-										<span class="text-xs px-2 py-0.5 rounded-full border {def.is_hardcoded ? 'bg-amber-950 border-amber-700 text-amber-300' : 'bg-surface-700 border-surface-600 text-surface-400'}">
-											{def.is_hardcoded ? 'hardcoded' : 'custom'}
-										</span>
-									</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 align-top">
 										<select bind:value={editDefInsurance} class="bg-surface-700 border border-primary-600 rounded px-2 py-1 text-surface-100 text-xs outline-none">
 											<option value="">None</option>
 											<option value="6w">6 Weeks</option>
@@ -777,7 +793,7 @@
 											<option value="lti">LTI</option>
 										</select>
 									</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 align-top">
 										<div class="flex gap-2 items-center">
 											{#if editDefError}<span class="text-red-400 text-xs">{editDefError}</span>{/if}
 											<button onclick={() => saveEditDef(def.key)} disabled={editDefSaving} class="btn preset-filled-primary-500 text-xs py-1 px-3 disabled:opacity-50">{editDefSaving ? '…' : 'Save'}</button>
@@ -786,28 +802,27 @@
 									</td>
 								{:else}
 									<!-- View row -->
-									<td class="px-4 py-3 font-mono text-xs text-surface-400">{def.key}</td>
-									<td class="px-4 py-3 text-surface-100 text-sm font-medium">{def.title}</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 font-mono text-xs text-surface-400 break-all align-top">{def.key}</td>
+									<td class="px-4 py-3 text-surface-100 text-sm font-medium align-top">{def.title}</td>
+									<td class="px-4 py-3 align-top">
 										<span class="def-tier-pip tier-{def.tier}">{def.tier}</span>
 									</td>
-									<td class="px-4 py-3 text-surface-400 text-xs max-w-xs truncate" title={def.description}>{def.description || '—'}</td>
-									<td class="px-4 py-3 text-lg">{def.icon || '—'}</td>
-									<td class="px-4 py-3">
-										<span class="text-xs px-2 py-0.5 rounded-full border {def.is_hardcoded ? 'bg-amber-950 border-amber-700 text-amber-300' : 'bg-surface-700 border-surface-600 text-surface-400'}">
-											{def.is_hardcoded ? 'hardcoded' : 'custom'}
-										</span>
+									<td class="px-4 py-3 text-surface-400 text-xs align-top">
+										<div class="line-clamp-2 break-words" title={def.description}>{def.description || '—'}</div>
 									</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 text-center align-top">
+										<span class="def-icon-chip" title={def.icon.trim() ? 'Custom icon' : 'Tier default icon'}>{badgeDefIcon(def)}</span>
+									</td>
+									<td class="px-4 py-3 align-top">
 										{#if def.insurance}
 											<span class="text-xs px-2 py-0.5 rounded-full bg-amber-900/40 border border-amber-800/50 text-amber-300">
-												{def.insurance === '6w' ? '6 Weeks' : def.insurance === '120w' ? '120 Weeks' : 'LTI'}
+												{insuranceLabel(def.insurance)}
 											</span>
 										{:else}
 											<span class="text-surface-600 text-xs">—</span>
 										{/if}
 									</td>
-									<td class="px-4 py-3">
+									<td class="px-4 py-3 align-top text-right">
 										{#if def.purchasable}
 											<button onclick={() => startEditDef(def)} class="text-xs text-primary-400 hover:text-primary-200 font-semibold uppercase tracking-wide">Edit</button>
 										{/if}
@@ -840,6 +855,60 @@
 	.def-tier-pip.tier-3 { background: linear-gradient(135deg, #fde047, #ea580c); color: #fff; border: 1.5px solid #f59e0b; }
 	.def-tier-pip.tier-4 { background: #fbbf24; color: #1c1008; border: 1.5px solid #fde68a; }
 	.def-tier-pip.tier-5 { background: conic-gradient(from 0deg, #ff0080, #ff8c00, #ffd700, #00ff88, #ff0080); color: #fff; border: 1.5px solid rgba(255,255,255,0.5); }
+	.def-icon-chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 9999px;
+		background: color-mix(in oklch, var(--color-primary-100) 70%, white 30%);
+		border: 1px solid color-mix(in oklch, var(--color-primary-300) 60%, var(--color-surface-300) 40%);
+		color: var(--color-surface-900);
+		font-size: 1rem;
+		line-height: 1;
+	}
+	.admin-defs-table td,
+	.admin-defs-table th {
+		vertical-align: top;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .bg-surface-800) {
+		background: var(--card-bg) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .bg-surface-700) {
+		background: color-mix(in oklch, var(--color-surface-50) 84%, var(--color-primary-100) 16%) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .border-surface-700),
+	:global(:root:not([data-theme='dark']) .admin-shell .border-surface-600) {
+		border-color: var(--color-surface-300) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .text-surface-100) {
+		color: var(--color-surface-900) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .text-surface-300) {
+		color: var(--color-surface-700) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .text-surface-400) {
+		color: var(--color-surface-500) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .text-surface-500) {
+		color: var(--color-surface-600) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .hover\:bg-surface-700:hover) {
+		background: color-mix(in oklch, var(--color-surface-100) 85%, var(--color-primary-100) 15%) !important;
+	}
+
+	:global(:root:not([data-theme='dark']) .admin-shell .hover\:text-surface-100:hover) {
+		color: var(--color-surface-900) !important;
+	}
 
 	:global(:root[data-theme='dark'] .admin-shell .bg-surface-800) {
 		background: var(--card-bg) !important;

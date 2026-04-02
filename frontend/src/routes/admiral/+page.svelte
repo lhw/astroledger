@@ -171,40 +171,40 @@
 <style>
 /* ─── Status card ───────────────────────────────────────────────────── */
 .rank-status-card {
-	background: linear-gradient(135deg, #1c1610 0%, #2d2010 100%);
-	border: 1.5px solid #a07830;
+	background: linear-gradient(135deg, #fff6df 0%, #f3e1b4 100%);
+	border: 1.5px solid #d7b15d;
 	border-radius: 1rem;
 	padding: 1.5rem;
-	color: #f5e8c0;
+	color: #3f2f12;
 }
 .rank-status-label {
 	font-size: 0.6rem;
 	text-transform: uppercase;
 	letter-spacing: 0.18em;
-	color: #a08050;
+	color: #9a6f1f;
 	font-weight: 700;
 	margin-bottom: 0.15rem;
 }
 .rank-status-title {
 	font-size: 1.4rem;
 	font-weight: 800;
-	color: #f5d060;
+	color: #8c6210;
 }
 .rank-status-title.rank-unranked {
-	color: #6b6050;
+	color: #8a7a63;
 	font-style: italic;
 }
 .rank-status-spend {
 	font-size: 1.1rem;
 	font-weight: 700;
-	color: #f5e8c0;
+	color: #4e3917;
 }
 
 /* ─── Progress bar ──────────────────────────────────────────────────── */
 .progress-track {
 	position: relative;
 	height: 10px;
-	background: #3d3020;
+	background: #d9c39a;
 	border-radius: 9999px;
 	margin-top: 1rem;
 	overflow: visible;
@@ -228,8 +228,8 @@
 	width: 10px;
 	height: 10px;
 	border-radius: 50%;
-	background: #5a4020;
-	border: 2px solid #7a6030;
+	background: #d7bf8d;
+	border: 2px solid #9f7a2c;
 	transition: all 0.3s ease;
 }
 .progress-tick.reached .progress-tick-dot {

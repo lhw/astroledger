@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mockMe, USER_LOGGED_IN } from './helpers/mock-api';
 import type { Page } from '@playwright/test';
-import type { BadgeCatalogEntry, AdminBadgeRelease } from '../src/lib/types';
+import type { BadgeCatalogEntry, AdminBadgeRelease, AdminBadgeDefinition } from '../src/lib/types';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,33 @@ const RELEASE_NO_INS: AdminBadgeRelease = {
 	insurance: ''
 };
 
+const BADGE_DEFS: AdminBadgeDefinition[] = [
+	{
+		id: 1,
+		key: 'aurora_pilot',
+		title: 'Aurora Pilot',
+		description: 'Started small, dreamed big. The Aurora is a classic.',
+		tier: 1,
+		icon: '',
+		is_hardcoded: true,
+		purchasable: true,
+		insurance: '6w',
+		created_at: '2026-01-01T00:00:00Z'
+	},
+	{
+		id: 2,
+		key: 'explorer_badge',
+		title: 'Explorer',
+		description: 'Awarded for exploring the unknown.',
+		tier: 3,
+		icon: '🔭',
+		is_hardcoded: false,
+		purchasable: true,
+		insurance: '',
+		created_at: '2026-01-02T00:00:00Z'
+	}
+];
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function mockAdminApis(
@@ -77,16 +104,21 @@ async function mockAdminApis(
 	opts: {
 		catalog?: BadgeCatalogEntry[];
 		releases?: AdminBadgeRelease[];
+		defs?: AdminBadgeDefinition[];
 	} = {}
 ) {
 	const catalog = opts.catalog ?? CATALOG;
 	const releases = opts.releases ?? [RELEASE_LTI, RELEASE_6W];
+	const defs = opts.defs ?? BADGE_DEFS;
 
 	await page.route('/api/admin/badge-catalog', (route) =>
 		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(catalog) })
 	);
 	await page.route('/api/admin/badge-releases', (route) =>
 		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(releases) })
+	);
+	await page.route('/api/admin/badge-definitions', (route) =>
+		route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(defs) })
 	);
 }
 
@@ -97,6 +129,12 @@ async function goToBadgesTab(page: Page) {
 	await page.waitForSelector('.badge-card, [class*="release"], text=No releases yet, text=All Releases', {
 		timeout: 5000
 	}).catch(() => {/* table may use different selectors */});
+}
+
+async function goToBadgeDefsTab(page: Page) {
+	await page.goto('/admin');
+	await page.getByRole('tab', { name: 'Badge Defs' }).click();
+	await expect(page.getByText('New Badge Definition')).toBeVisible();
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -221,6 +259,23 @@ test.describe('Admin Panel — Badges', () => {
 			await page.goto('/admin');
 			await page.getByRole('tab', { name: 'Badges' }).click();
 			await expect(page.getByText('Launch day drop')).toBeVisible();
+		});
+	});
+
+	test.describe('Badge Definitions', () => {
+		test('does not show a Source column', async ({ page }) => {
+			await mockMe(page, USER_ADMIN);
+			await mockAdminApis(page);
+			await goToBadgeDefsTab(page);
+			await expect(page.getByRole('columnheader', { name: 'Source' })).toHaveCount(0);
+		});
+
+		test('shows a default tier symbol when the icon is empty', async ({ page }) => {
+			await mockMe(page, USER_ADMIN);
+			await mockAdminApis(page);
+			await goToBadgeDefsTab(page);
+			const row = page.locator('tr', { hasText: 'Aurora Pilot' });
+			await expect(row.locator('.def-icon-chip')).toHaveText('▲');
 		});
 	});
 

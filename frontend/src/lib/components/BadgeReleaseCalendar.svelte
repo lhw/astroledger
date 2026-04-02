@@ -224,10 +224,10 @@
 	}
 
 	const STATUS_CHIP: Record<string, string> = {
-		active: 'bg-green-900/50 text-green-400 border-green-800',
-		scheduled: 'bg-blue-900/50 text-blue-400 border-blue-800',
-		expired: 'bg-red-900/50 text-red-400 border-red-800',
-		archived: 'bg-surface-700 text-surface-500 border-surface-600'
+		active: 'release-status-chip release-status-chip-active',
+		scheduled: 'release-status-chip release-status-chip-scheduled',
+		expired: 'release-status-chip release-status-chip-expired',
+		archived: 'release-status-chip release-status-chip-archived'
 	};
 
 	function fmtDate(iso: string) {
@@ -638,7 +638,7 @@
 										{/if}
 										{#if rel.insurance}
 											<span class="text-surface-600">·</span>
-											<span class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold bg-amber-900/40 text-amber-300 border border-amber-800/50">
+											<span class="release-insurance-chip inline-flex items-center px-1 py-0.5 rounded text-[10px] font-semibold border">
 												{rel.insurance === '6w' ? '6W Ins.' : rel.insurance === '120w' ? '120W Ins.' : 'LTI'}
 											</span>
 										{/if}
@@ -676,6 +676,41 @@
 		background: color-mix(in oklch, var(--card-bg) 82%, var(--color-primary-300) 18%);
 	}
 
+	.release-status-chip {
+		display: inline-block;
+		border-width: 1px;
+	}
+
+	.release-status-chip-active {
+		background: #dcfce7;
+		color: #166534;
+		border-color: #86efac;
+	}
+
+	.release-status-chip-scheduled {
+		background: #dbeafe;
+		color: #1d4ed8;
+		border-color: #93c5fd;
+	}
+
+	.release-status-chip-expired {
+		background: #fee2e2;
+		color: #b91c1c;
+		border-color: #fca5a5;
+	}
+
+	.release-status-chip-archived {
+		background: color-mix(in oklch, var(--color-surface-100) 86%, white 14%);
+		color: var(--color-surface-700);
+		border-color: var(--color-surface-300);
+	}
+
+	.release-insurance-chip {
+		background: #fef3c7;
+		color: #92400e;
+		border-color: #f59e0b;
+	}
+
 	:global(:root[data-theme='dark']) .badge-picker {
 		background: color-mix(in oklch, var(--card-bg) 92%, black 8%);
 		box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
@@ -683,5 +718,35 @@
 
 	:global(:root[data-theme='dark']) .badge-option {
 		border-color: var(--color-surface-300) !important;
+	}
+
+	:global(:root[data-theme='dark']) .release-status-chip-active {
+		background: rgba(20, 83, 45, 0.7);
+		color: #86efac;
+		border-color: rgba(22, 101, 52, 0.8);
+	}
+
+	:global(:root[data-theme='dark']) .release-status-chip-scheduled {
+		background: rgba(30, 64, 175, 0.5);
+		color: #93c5fd;
+		border-color: rgba(30, 64, 175, 0.8);
+	}
+
+	:global(:root[data-theme='dark']) .release-status-chip-expired {
+		background: rgba(127, 29, 29, 0.55);
+		color: #fca5a5;
+		border-color: rgba(153, 27, 27, 0.85);
+	}
+
+	:global(:root[data-theme='dark']) .release-status-chip-archived {
+		background: color-mix(in oklch, var(--card-bg) 84%, var(--color-surface-300) 16%);
+		color: var(--color-surface-500);
+		border-color: var(--color-surface-300);
+	}
+
+	:global(:root[data-theme='dark']) .release-insurance-chip {
+		background: rgba(120, 53, 15, 0.45);
+		color: #fcd34d;
+		border-color: rgba(180, 83, 9, 0.6);
 	}
 </style>
