@@ -365,6 +365,41 @@ test.describe('Admin Panel — Badges', () => {
 			expect(capturedBody.price).toBe(500);
 		});
 
+		test('creating with stock filled does not throw and sends numeric stock', async ({ page }) => {
+			await mockMe(page, USER_ADMIN);
+
+			const pageErrors: string[] = [];
+			page.on('pageerror', (error) => pageErrors.push(error.message));
+
+			const createdRelease: AdminBadgeRelease = { ...RELEASE_LTI, id: 101, stock: 25 };
+			await page.route('/api/admin/badge-releases', async (route) => {
+				if (route.request().method() === 'POST') {
+					await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(createdRelease) });
+				} else {
+					await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+				}
+			});
+			await page.route('/api/admin/badge-catalog', (route) =>
+				route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CATALOG) })
+			);
+
+			await page.goto('/admin');
+			await page.getByRole('tab', { name: 'Badges' }).click();
+			await page.getByRole('button', { name: 'Select badge to release' }).click();
+			await page.locator('.badge-picker .badge-option').first().click();
+			await page.locator('#brc-price').fill('500');
+			await page.locator('#brc-stock').fill('25');
+
+			const [request] = await Promise.all([
+				page.waitForRequest((req) => req.url().includes('/api/admin/badge-releases') && req.method() === 'POST'),
+				page.getByRole('button', { name: /create release/i }).click()
+			]);
+
+			const capturedBody = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+			expect(capturedBody.stock).toBe(25);
+			expect(pageErrors).toEqual([]);
+		});
+
 		test('newly created release appears in list', async ({ page }) => {
 			await mockMe(page, USER_ADMIN);
 

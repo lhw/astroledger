@@ -88,12 +88,18 @@
 		[...catalog].filter((e) => e.purchasable).sort((a, b) => (a.tier === b.tier ? a.title.localeCompare(b.title) : a.tier - b.tier))
 	);
 
+	function stringValue(value: string | number | null | undefined): string {
+		if (value == null) return '';
+		return String(value);
+	}
+
 	async function createRelease() {
 		cfError = null;
 		if (!cfBadgeKey) { cfError = 'Select a badge.'; return; }
 		const price = parseInt(cfPrice, 10);
 		if (!Number.isInteger(price) || price < 0) { cfError = 'Price must be a non-negative integer.'; return; }
-		const stock = cfStock.trim() ? parseInt(cfStock, 10) : null;
+		const stockRaw = stringValue(cfStock).trim();
+		const stock = stockRaw ? parseInt(stockRaw, 10) : null;
 		if (stock !== null && (!Number.isInteger(stock) || stock <= 0)) { cfError = 'Stock must be positive.'; return; }
 		const releasedAt = cfReleasedAt ? new Date(cfReleasedAt).toISOString() : new Date().toISOString();
 		const expiresAt = cfIndefinite || !cfExpiresAt ? null : new Date(cfExpiresAt).toISOString();
@@ -163,7 +169,8 @@
 		editError[rel.id] = null;
 		const price = parseInt(d.price, 10);
 		if (!Number.isInteger(price) || price < 0) { editError[rel.id] = 'Price must be a non-negative integer.'; return; }
-		const stock = d.stock.trim() ? parseInt(d.stock, 10) : null;
+		const stockRaw = stringValue(d.stock).trim();
+		const stock = stockRaw ? parseInt(stockRaw, 10) : null;
 		if (stock !== null && (!Number.isInteger(stock) || stock <= 0)) { editError[rel.id] = 'Stock must be positive.'; return; }
 		editSaving[rel.id] = true;
 		try {
