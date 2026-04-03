@@ -1,0 +1,71 @@
+# Local PostgreSQL test stack.
+#
+# Spins up PostgreSQL and a local backend build so the full test suite
+# (Go backend tests + Playwright e2e) can run against a real PG instance.
+#
+# Usage:
+#   task pg:up          # start stack
+#   task test:pg        # run Go backend tests against PG
+#   task test:pg:e2e    # run Playwright tests against PG backend
+#   task pg:down        # tear down stack + volumes
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 17 — exposed on host port 5433 to avoid clashing with any
+  # existing local PG on 5432.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: astroledger_test
+      POSTGRES_USER: astroledger
+      POSTGRES_PASSWORD: astroledger_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pg-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astroledger -d astroledger_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  # ---------------------------------------------------------------------------
+  # Backend — built from source, wired to the local PG instance.
+  # Migrations are applied automatically at startup.
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgres://astroledger:astroledger_test@postgres:5432/astroledger_test?sslmode=disable
+      SESSION_SECRET: test-session-secret-minimum-32-chars-xxxx
+      ENVIRONMENT: development
+      COOKIE_SECURE: "false"
+      CORS_ALLOWED_ORIGINS: http://localhost:5173
+      FRONTEND_URL: http://localhost:5173
+      # Dummy SCID values — auth flow won't work but all non-auth endpoints will.
+      SCID_ISSUER: https://auth.scid.my
+      SCID_CLIENT_ID: test-client-id
+      SCID_CLIENT_SECRET: test-client-secret
+      SCID_REDIRECT_URL: http://localhost:8080/auth/callback
+      GOATCOUNTER_URL: ""
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:8080/api/markets?limit=1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  pg-test-data:
+
+networks:
+  default:
+    driver: bridge

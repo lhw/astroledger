@@ -4,7 +4,7 @@ CREATE TABLE comments (
     market_id        BIGINT           NOT NULL REFERENCES markets(id),
     user_id          BIGINT           NOT NULL REFERENCES users(id),
     content          TEXT             NOT NULL,
-    hidden           BOOLEAN          NOT NULL DEFAULT FALSE,
+    hidden           INTEGER          NOT NULL DEFAULT 0,
     toxicity_score   DOUBLE PRECISION,
     moderation_flags TEXT,
     created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()

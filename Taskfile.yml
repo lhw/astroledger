@@ -182,3 +182,44 @@ tasks:
           exit 0
         fi
         goatcounter serve -listen :8081 -db "sqlite+backend/goatcounter.db" -tls none
+
+  # ── PostgreSQL local test stack ───────────────────────────────────────────
+
+  pg:up:
+    desc: Start the local PostgreSQL test stack (postgres + backend on :8080)
+    cmds:
+      - docker compose -f docker-compose.pg-test.yml up -d --build
+      - docker compose -f docker-compose.pg-test.yml wait backend || true
+      - echo "PostgreSQL test backend ready on http://localhost:8080"
+
+  pg:down:
+    desc: Tear down the local PostgreSQL test stack and remove volumes
+    cmds:
+      - docker compose -f docker-compose.pg-test.yml down -v
+
+  pg:logs:
+    desc: Follow logs from the PostgreSQL test stack
+    cmds:
+      - docker compose -f docker-compose.pg-test.yml logs -f --tail=50
+
+  test:
+    desc: Run Go backend tests against SQLite (default)
+    dir: backend
+    cmds:
+      - go test ./...
+
+  test:pg:
+    desc: |
+      Run Go backend tests against the local PostgreSQL test stack.
+      Start the stack first with: task pg:up
+    dir: backend
+    env:
+      TEST_DATABASE_URL: postgres://astroledger:astroledger_test@localhost:5433/astroledger_test?sslmode=disable
+    cmds:
+      - go test ./...
+
+  test:e2e:
+    desc: Run Playwright e2e tests (requires frontend dev server + backend on :8080)
+    dir: frontend
+    cmds:
+      - npx playwright test

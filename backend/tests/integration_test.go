@@ -1,31 +1,126 @@
 // Package tests contains integration tests that exercise the full backend stack
 // against a real SQLite database with all goose migrations applied.
+// Set TEST_DATABASE_URL to a PostgreSQL connection string to run the same
+// suite against PostgreSQL instead:
+//
+//	TEST_DATABASE_URL=postgres://astroledger:astroledger_test@localhost:5433/astroledger_test?sslmode=disable \
+//	  go test ./tests/...
 package tests
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/lhw/astroledger/internal/database"
 	"github.com/lhw/astroledger/internal/db"
 	"github.com/lhw/astroledger/internal/service"
+	pgmigrations "github.com/lhw/astroledger/migrations/postgres"
+	"github.com/pressly/goose/v3"
 )
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// newTestDB opens a fresh SQLite database in a temp directory, runs all goose
-// migrations, and registers a cleanup hook. Each call returns an isolated DB.
+// newTestDB opens an isolated database, runs all goose migrations, and
+// registers a cleanup hook. Each call returns an isolated view:
+//
+//   - SQLite (default): a fresh temp-directory database file.
+//   - PostgreSQL: a shared pool (migrations once) with all application tables
+//     truncated before and after the test so every test starts clean.
+//
+// Set TEST_DATABASE_URL to a PostgreSQL DSN to enable the PG path.
 func newTestDB(t *testing.T) (*sql.DB, *db.Queries) {
 	t.Helper()
+	if pgURL := os.Getenv("TEST_DATABASE_URL"); pgURL != "" {
+		return newTestPGDB(t, pgURL)
+	}
 	sqlDB, err := database.Open(context.Background(), t.TempDir()+"/test.db")
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	return sqlDB, db.New(sqlDB)
+}
+
+// pgPool is the shared PostgreSQL connection pool used across all PG tests.
+// Migrations are applied once on first access.
+var (
+	pgOnce sync.Once
+	pgPool *sql.DB
+)
+
+// pgAppTables is the ordered list of application tables to truncate between
+// tests. Using RESTART IDENTITY CASCADE handles FK dependencies automatically.
+// Excluded: autofilter_rules and badge_definitions — these contain seeded
+// reference data inserted by migrations and must not be wiped between tests.
+var pgAppTables = strings.Join([]string{
+	"trades",
+	"positions",
+	"market_outcomes",
+	"markets",
+	"user_badges",
+	"badge_releases",
+	"api_tokens",
+	"mod_audit",
+	"reports",
+	"resolution_request_details",
+	"comments",
+	"moderation_actions",
+	"detected_patches",
+	"admin_balance_adjustments",
+	"weekly_payout_log",
+	"users",
+}, ", ")
+
+// truncatePGTables resets all application data without touching goose version state.
+func truncatePGTables(t *testing.T) {
+	t.Helper()
+	if _, err := pgPool.ExecContext(context.Background(),
+		"TRUNCATE "+pgAppTables+" RESTART IDENTITY CASCADE",
+	); err != nil {
+		t.Fatalf("truncate pg tables: %v", err)
+	}
+}
+
+// newTestPGDB returns the shared PG pool after truncating all tables, and
+// registers a cleanup that truncates again so subsequent tests start clean.
+func newTestPGDB(t *testing.T, pgURL string) (*sql.DB, *db.Queries) {
+	t.Helper()
+	var openErr error
+	pgOnce.Do(func() {
+		pgPool, openErr = database.OpenPostgres(context.Background(), pgURL)
+		if openErr != nil {
+			return
+		}
+		// Reset and re-run all migrations so seeded reference data (autofilter
+		// rules, badge definitions) is present at the start of every test run.
+		goose.SetBaseFS(pgmigrations.FS)
+		if err := goose.SetDialect("postgres"); err != nil {
+			openErr = fmt.Errorf("goose set dialect: %w", err)
+			return
+		}
+		if err := goose.Reset(pgPool, "."); err != nil {
+			openErr = fmt.Errorf("goose reset: %w", err)
+			return
+		}
+		if err := goose.Up(pgPool, "."); err != nil {
+			openErr = fmt.Errorf("goose up after reset: %w", err)
+		}
+	})
+	if openErr != nil {
+		t.Fatalf("open pg test db: %v", openErr)
+	}
+	if pgPool == nil {
+		t.Fatal("pg test db pool is nil (init failed earlier)")
+	}
+	truncatePGTables(t)
+	t.Cleanup(func() { truncatePGTables(t) })
+	return pgPool, db.NewPostgres(pgPool)
 }
 
 // must fails the test immediately if err is non-nil.

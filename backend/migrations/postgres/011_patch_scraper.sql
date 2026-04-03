@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS detected_patches (
     patch_version TEXT        NOT NULL,
     thread_url    TEXT        NOT NULL UNIQUE,
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    notified      BOOLEAN     NOT NULL DEFAULT FALSE
+    notified      INTEGER     NOT NULL DEFAULT 0
 );
 
 -- +goose Down

@@ -183,8 +183,16 @@ type ReportRow struct {
 
 // CreateReport inserts a new report from a user about a market.
 func (q *Queries) CreateReport(ctx context.Context, reporterID, marketID int64, reason string) (int64, error) {
-	const stmt = `INSERT INTO reports (reporter_id, market_id, reason) VALUES (?, ?, ?)`
-	res, err := q.db.ExecContext(ctx, stmt, reporterID, marketID, reason)
+	if q.isPG() {
+		var id int64
+		err := q.db.QueryRowContext(ctx,
+			`INSERT INTO reports (reporter_id, market_id, reason) VALUES (?, ?, ?) RETURNING id`,
+			reporterID, marketID, reason).Scan(&id)
+		return id, err
+	}
+	res, err := q.db.ExecContext(ctx,
+		`INSERT INTO reports (reporter_id, market_id, reason) VALUES (?, ?, ?)`,
+		reporterID, marketID, reason)
 	if err != nil {
 		return 0, err
 	}
@@ -750,9 +758,15 @@ func (q *Queries) CreateBadgeRelease(ctx context.Context, p CreateBadgeReleasePa
 		s := p.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")
 		expiresAt = &s
 	}
-	res, err := q.db.ExecContext(ctx, `
-INSERT INTO badge_releases (badge_key, price, stock, released_at, expires_at, active, notes, insurance)
-VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+	const insertSQL = `INSERT INTO badge_releases (badge_key, price, stock, released_at, expires_at, active, notes, insurance)
+VALUES (?, ?, ?, ?, ?, 1, ?, ?)`
+	if q.isPG() {
+		var id int64
+		err := q.db.QueryRowContext(ctx, insertSQL+` RETURNING id`,
+			p.BadgeKey, p.Price, p.Stock, releasedAt, expiresAt, p.Notes, p.Insurance).Scan(&id)
+		return id, err
+	}
+	res, err := q.db.ExecContext(ctx, insertSQL,
 		p.BadgeKey, p.Price, p.Stock, releasedAt, expiresAt, p.Notes, p.Insurance)
 	if err != nil {
 		return 0, err
@@ -1030,8 +1044,14 @@ type CreateBadgeDefinitionParams struct {
 
 // CreateBadgeDefinition inserts a new admin-created badge definition and returns its ID.
 func (q *Queries) CreateBadgeDefinition(ctx context.Context, p CreateBadgeDefinitionParams) (int64, error) {
-	res, err := q.db.ExecContext(ctx,
-		`INSERT INTO badge_definitions (key, title, description, tier, icon, is_hardcoded, insurance) VALUES (?, ?, ?, ?, ?, 0, ?)`,
+	const insertSQL = `INSERT INTO badge_definitions (key, title, description, tier, icon, is_hardcoded, insurance) VALUES (?, ?, ?, ?, ?, 0, ?)`
+	if q.isPG() {
+		var id int64
+		err := q.db.QueryRowContext(ctx, insertSQL+` RETURNING id`,
+			p.Key, p.Title, p.Description, p.Tier, p.Icon, p.Insurance).Scan(&id)
+		return id, err
+	}
+	res, err := q.db.ExecContext(ctx, insertSQL,
 		p.Key, p.Title, p.Description, p.Tier, p.Icon, p.Insurance)
 	if err != nil {
 		return 0, err
