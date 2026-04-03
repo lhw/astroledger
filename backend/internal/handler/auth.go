@@ -218,6 +218,14 @@ func (h *AuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("failed to update user groups", "err", err)
 	}
 
+	// Reject login for banned users.
+	banStatus, banErr := h.queries.GetUserBanStatus(ctx, user.ID)
+	if banErr == nil && banStatus.IsBanned == 1 {
+		slog.Info("banned user attempted login", "user_id", user.ID)
+		http.Redirect(w, r, h.frontendURL+"?banned=1", http.StatusFound)
+		return
+	}
+
 	if err := middleware.IssueSessionCookie(w, h.sessionSecret, user.ID, h.cookieSecure); err != nil {
 		slog.Error("failed to issue session cookie", "err", err)
 		respondError(w, http.StatusInternalServerError, "session error")

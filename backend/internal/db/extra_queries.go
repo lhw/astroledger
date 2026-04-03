@@ -1078,3 +1078,34 @@ func (q *Queries) UpdateBadgeDefinition(ctx context.Context, p UpdateBadgeDefini
 		p.Title, p.Description, p.Tier, p.Icon, p.Insurance, p.Key)
 	return err
 }
+
+// ─── User bans ────────────────────────────────────────────────────────────────
+
+// UserBanStatus holds the ban flags for a user.
+type UserBanStatus struct {
+	IsBanned       int64 `json:"is_banned"`
+	IsShadowBanned int64 `json:"is_shadow_banned"`
+}
+
+// GetUserBanStatus returns the ban flags for a user by ID.
+func (q *Queries) GetUserBanStatus(ctx context.Context, id int64) (UserBanStatus, error) {
+	var s UserBanStatus
+	err := q.db.QueryRowContext(ctx,
+		`SELECT is_banned, is_shadow_banned FROM users WHERE id = ?`, id,
+	).Scan(&s.IsBanned, &s.IsShadowBanned)
+	return s, err
+}
+
+// SetUserBanned sets is_banned to 1 (ban) or 0 (unban) for a user.
+func (q *Queries) SetUserBanned(ctx context.Context, id int64, banned int64) error {
+	_, err := q.db.ExecContext(ctx,
+		`UPDATE users SET is_banned = ? WHERE id = ?`, banned, id)
+	return err
+}
+
+// SetUserShadowBanned sets is_shadow_banned to 1 or 0 for a user.
+func (q *Queries) SetUserShadowBanned(ctx context.Context, id int64, shadowBanned int64) error {
+	_, err := q.db.ExecContext(ctx,
+		`UPDATE users SET is_shadow_banned = ? WHERE id = ?`, shadowBanned, id)
+	return err
+}

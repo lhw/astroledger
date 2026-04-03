@@ -527,6 +527,66 @@ func (h *AdminHandler) AdjustUserBalance(w http.ResponseWriter, r *http.Request)
 	respondJSON(w, http.StatusOK, map[string]any{"new_balance": newBalance})
 }
 
+// BanUser bans or unbans a user.
+// POST /api/admin/users/{id}/ban   body: {"banned": true|false}
+func (h *AdminHandler) BanUser(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	targetID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	var body struct {
+		Banned bool `json:"banned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	banned := int64(0)
+	if body.Banned {
+		banned = 1
+	}
+	if err := h.queries.SetUserBanned(r.Context(), targetID, banned); err != nil {
+		slog.Error("BanUser: SetUserBanned", "err", err, "target_id", targetID)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"banned": body.Banned})
+}
+
+// ShadowBanUser shadow-bans or un-shadow-bans a user.
+// POST /api/admin/users/{id}/shadow-ban   body: {"shadow_banned": true|false}
+func (h *AdminHandler) ShadowBanUser(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	targetID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	var body struct {
+		ShadowBanned bool `json:"shadow_banned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	sb := int64(0)
+	if body.ShadowBanned {
+		sb = 1
+	}
+	if err := h.queries.SetUserShadowBanned(r.Context(), targetID, sb); err != nil {
+		slog.Error("ShadowBanUser: SetUserShadowBanned", "err", err, "target_id", targetID)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"shadow_banned": body.ShadowBanned})
+}
+
 // ─── Badge Release Management ─────────────────────────────────────────────────
 
 // badgeReleaseResponse is the shape returned to the admin UI.

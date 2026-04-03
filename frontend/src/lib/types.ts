@@ -339,6 +339,8 @@ export interface UserSearchResult {
 	display_name: string;
 	rsi_handle: string | null;
 	balance: number;
+	is_banned: number;
+	is_shadow_banned: number;
 }
 
 /** A badge definition from the catalog (admin use) */

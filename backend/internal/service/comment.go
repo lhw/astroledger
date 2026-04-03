@@ -79,6 +79,14 @@ func (s *CommentService) PostComment(ctx context.Context, inp CreateCommentInput
 		slog.Info("comment shadow-hidden by abuse detector", "market_id", inp.MarketID, "user_id", inp.UserID)
 	}
 
+	// Shadow-banned users have all their comments hidden regardless of content.
+	if hidden == 0 {
+		banStatus, banErr := s.q.GetUserBanStatus(ctx, inp.UserID)
+		if banErr == nil && banStatus.IsShadowBanned == 1 {
+			hidden = 1
+		}
+	}
+
 	// Encode moderation scores for storage.
 	var toxScore *float64
 	var flagsJSON *string

@@ -225,23 +225,25 @@ func (q *Queries) GetUserBySub(ctx context.Context, scidSub string) (GetUserBySu
 }
 
 const searchUsers = `-- name: SearchUsers :many
-SELECT id, display_name, rsi_handle, balance
+SELECT id, display_name, rsi_handle, balance, is_banned, is_shadow_banned
 FROM users
-WHERE display_name LIKE ?1
-   OR (rsi_handle IS NOT NULL AND rsi_handle LIKE ?1)
+WHERE display_name LIKE ?
+   OR (rsi_handle IS NOT NULL AND rsi_handle LIKE ?)
 ORDER BY display_name
 LIMIT 10
 `
 
 type SearchUsersRow struct {
-	ID          int64   `json:"id"`
-	DisplayName string  `json:"display_name"`
-	RsiHandle   *string `json:"rsi_handle"`
-	Balance     int64   `json:"balance"`
+	ID             int64   `json:"id"`
+	DisplayName    string  `json:"display_name"`
+	RsiHandle      *string `json:"rsi_handle"`
+	Balance        int64   `json:"balance"`
+	IsBanned       int64   `json:"is_banned"`
+	IsShadowBanned int64   `json:"is_shadow_banned"`
 }
 
 func (q *Queries) SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error) {
-	rows, err := q.db.QueryContext(ctx, searchUsers, pattern)
+	rows, err := q.db.QueryContext(ctx, searchUsers, pattern, pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +256,8 @@ func (q *Queries) SearchUsers(ctx context.Context, pattern string) ([]SearchUser
 			&i.DisplayName,
 			&i.RsiHandle,
 			&i.Balance,
+			&i.IsBanned,
+			&i.IsShadowBanned,
 		); err != nil {
 			return nil, err
 		}

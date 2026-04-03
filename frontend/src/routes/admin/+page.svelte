@@ -4,6 +4,8 @@
 		adminAdjustBalance,
 		adminGetAnalytics,
 		adminSearchUsers,
+		adminBanUser,
+		adminShadowBanUser,
 		adminGetBadgeCatalog,
 		adminListBadgeReleases,
 		adminCreateBadgeRelease,
@@ -37,6 +39,11 @@
 	let adjLoading = $state(false);
 	let adjResult = $state<string | null>(null);
 	let adjError = $state<string | null>(null);
+	let adjIsBanned = $state(false);
+	let adjIsShadowBanned = $state(false);
+	let adjBanLoading = $state(false);
+	let adjShadowBanLoading = $state(false);
+	let adjModError = $state<string | null>(null);
 
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -60,8 +67,11 @@
 
 	function selectUser(u: UserSearchResult) {
 		adjSelectedUser = u;
+		adjIsBanned = u.is_banned === 1;
+		adjIsShadowBanned = u.is_shadow_banned === 1;
 		adjSearchQuery = '';
 		adjSearchResults = [];
+		adjModError = null;
 	}
 
 	function clearSelectedUser() {
@@ -70,6 +80,37 @@
 		adjReason = '';
 		adjResult = null;
 		adjError = null;
+		adjModError = null;
+		adjIsBanned = false;
+		adjIsShadowBanned = false;
+	}
+
+	async function toggleBan() {
+		if (!adjSelectedUser) return;
+		adjBanLoading = true;
+		adjModError = null;
+		try {
+			await adminBanUser(adjSelectedUser.id, !adjIsBanned);
+			adjIsBanned = !adjIsBanned;
+		} catch (err) {
+			adjModError = err instanceof ApiClientError ? err.message : String(err);
+		} finally {
+			adjBanLoading = false;
+		}
+	}
+
+	async function toggleShadowBan() {
+		if (!adjSelectedUser) return;
+		adjShadowBanLoading = true;
+		adjModError = null;
+		try {
+			await adminShadowBanUser(adjSelectedUser.id, !adjIsShadowBanned);
+			adjIsShadowBanned = !adjIsShadowBanned;
+		} catch (err) {
+			adjModError = err instanceof ApiClientError ? err.message : String(err);
+		} finally {
+			adjShadowBanLoading = false;
+		}
 	}
 
 	// ── Analytics state ───────────────────────────────────────────────────
@@ -410,20 +451,20 @@
 				{/if}
 			</section>
 
-			<!-- Balance Adjustment -->
+			<!-- User Management -->
 			<section class="bg-surface-800 border border-surface-700 rounded-xl p-6 space-y-4">
 				<h2 class="text-sm font-semibold text-surface-100 uppercase tracking-widest">
-					Adjust User Balance
+					User Management
 				</h2>
 				<p class="text-surface-400 text-sm leading-relaxed">
-					Add or remove bUEC from a user's balance. Positive to add, negative to remove. Cannot go
-					below 0.
+					Search for a user to adjust their balance, ban them from logging in, or shadow-ban them to silently hide all their comments.
 				</p>
 				<div class="space-y-3">
 					<!-- User search / selected user -->
 					{#if adjSelectedUser}
 						<!-- Selected user chip -->
-						<div class="flex items-center justify-between gap-3 bg-surface-700 border border-primary-600 rounded-lg px-3 py-2.5">
+					<div class="bg-surface-700 border border-primary-600 rounded-lg px-3 py-2.5 space-y-2.5">
+						<div class="flex items-center justify-between gap-3">
 							<div class="flex items-center gap-3 min-w-0">
 								<div class="w-2 h-2 rounded-full bg-primary-400 shrink-0"></div>
 								<div class="min-w-0">
@@ -434,6 +475,39 @@
 								</div>
 							</div>
 							<button onclick={clearSelectedUser} class="text-surface-500 hover:text-surface-200 text-lg leading-none shrink-0" aria-label="Clear selection">×</button>
+						</div>
+						<!-- Moderation actions -->
+						<div class="flex flex-wrap items-center gap-2 pt-1 border-t border-surface-600">
+							<span class="text-surface-400 text-xs uppercase tracking-wide">Moderation:</span>
+							{#if adjIsBanned}
+								<span class="text-xs font-semibold text-red-300 bg-red-900/40 border border-red-700 rounded px-2 py-0.5">Banned</span>
+							{/if}
+							{#if adjIsShadowBanned}
+								<span class="text-xs font-semibold text-amber-300 bg-amber-900/40 border border-amber-700 rounded px-2 py-0.5">Shadow Banned</span>
+							{/if}
+							{#if !adjIsBanned && !adjIsShadowBanned}
+								<span class="text-xs text-surface-500">No restrictions</span>
+							{/if}
+							<div class="flex gap-2 ml-auto">
+								<button
+									onclick={toggleBan}
+									disabled={adjBanLoading || adjShadowBanLoading}
+									class="text-xs px-2.5 py-1 rounded font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 {adjIsBanned ? 'bg-green-800/60 hover:bg-green-700/60 text-green-300 border border-green-700' : 'bg-red-900/60 hover:bg-red-800/60 text-red-300 border border-red-700'}"
+								>
+									{adjBanLoading ? '…' : adjIsBanned ? 'Unban' : 'Ban'}
+								</button>
+								<button
+									onclick={toggleShadowBan}
+									disabled={adjBanLoading || adjShadowBanLoading}
+									class="text-xs px-2.5 py-1 rounded font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 {adjIsShadowBanned ? 'bg-surface-700 hover:bg-surface-600 text-surface-300 border border-surface-500' : 'bg-amber-900/60 hover:bg-amber-800/60 text-amber-300 border border-amber-700'}"
+								>
+									{adjShadowBanLoading ? '…' : adjIsShadowBanned ? 'Un-shadow-ban' : 'Shadow Ban'}
+								</button>
+							</div>
+						</div>
+						{#if adjModError}
+							<p class="text-red-400 text-xs">Error: {adjModError}</p>
+						{/if}
 						</div>
 					{:else}
 						<!-- Search input -->

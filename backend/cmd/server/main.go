@@ -250,6 +250,8 @@ func run() error {
 			r.Post("/admin/weekly-payout", adminH.TriggerWeeklyPayout)
 			r.Get("/admin/users/search", adminH.SearchUsers)
 			r.Post("/admin/users/{id}/balance", adminH.AdjustUserBalance)
+			r.Post("/admin/users/{id}/ban", adminH.BanUser)
+			r.Post("/admin/users/{id}/shadow-ban", adminH.ShadowBanUser)
 			r.Get("/admin/analytics", adminH.AnalyticsProxy)
 			// Badge release management
 			r.Get("/admin/badge-catalog", adminH.GetBadgeCatalog)

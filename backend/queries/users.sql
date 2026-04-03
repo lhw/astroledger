@@ -24,10 +24,10 @@ SET balance = balance + ?
 WHERE id = ?;
 
 -- name: SearchUsers :many
-SELECT id, display_name, rsi_handle, balance
+SELECT id, display_name, rsi_handle, balance, is_banned, is_shadow_banned
 FROM users
-WHERE display_name LIKE sqlc.arg(pattern)
-   OR (rsi_handle IS NOT NULL AND rsi_handle LIKE sqlc.arg(pattern))
+WHERE display_name LIKE ?
+   OR (rsi_handle IS NOT NULL AND rsi_handle LIKE ?)
 ORDER BY display_name
 LIMIT 10;
 

@@ -301,6 +301,20 @@ export async function adminSearchUsers(q: string): Promise<UserSearchResult[]> {
 	return request<UserSearchResult[]>(`/api/admin/users/search?q=${encodeURIComponent(q)}`);
 }
 
+export async function adminBanUser(userId: number, banned: boolean): Promise<void> {
+	await request(`/api/admin/users/${userId}/ban`, {
+		method: 'POST',
+		body: JSON.stringify({ banned })
+	});
+}
+
+export async function adminShadowBanUser(userId: number, shadowBanned: boolean): Promise<void> {
+	await request(`/api/admin/users/${userId}/shadow-ban`, {
+		method: 'POST',
+		body: JSON.stringify({ shadow_banned: shadowBanned })
+	});
+}
+
 // --- Patches ---
 
 export async function getPatches(): Promise<DetectedPatch[]> {

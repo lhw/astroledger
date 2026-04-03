@@ -168,6 +168,8 @@ type User struct {
 	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
 	AvatarUrl        *string   `json:"avatar_url"`
 	IsRsiVerified    int64     `json:"is_rsi_verified"`
+	IsBanned         int64     `json:"is_banned"`
+	IsShadowBanned   int64     `json:"is_shadow_banned"`
 	ActiveBadgeKey   string    `json:"active_badge_key"`
 }
 

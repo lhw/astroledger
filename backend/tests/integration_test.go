@@ -824,6 +824,188 @@ func TestUserPositionsEnriched(t *testing.T) {
 	assertEq(t, resNo.Cost, noPos.CostBasis, "NO cost basis")
 }
 
+// TestUserBanStatus verifies that ban and shadow-ban flags can be set,
+// queried, and cleared via the extra_queries helper functions.
+// This exercises the migration 018 columns on both SQLite and PostgreSQL.
+func TestUserBanStatus(t *testing.T) {
+	ctx := context.Background()
+	_, q := newTestDB(t)
+
+	user := createTestUser(t, ctx, q, "test:ban_user", "BanUser", false)
+
+	// ── Initial state: neither flag set ──────────────────────────────────────
+	status, err := q.GetUserBanStatus(ctx, user.ID)
+	must(t, err, "GetUserBanStatus initial")
+	assertEq(t, int64(0), status.IsBanned, "is_banned initial")
+	assertEq(t, int64(0), status.IsShadowBanned, "is_shadow_banned initial")
+
+	// ── Ban the user ──────────────────────────────────────────────────────────
+	must(t, q.SetUserBanned(ctx, user.ID, 1), "SetUserBanned 1")
+
+	status, err = q.GetUserBanStatus(ctx, user.ID)
+	must(t, err, "GetUserBanStatus after ban")
+	assertEq(t, int64(1), status.IsBanned, "is_banned after ban")
+	assertEq(t, int64(0), status.IsShadowBanned, "is_shadow_banned unaffected by ban")
+
+	// ── Shadow-ban the same user ──────────────────────────────────────────────
+	must(t, q.SetUserShadowBanned(ctx, user.ID, 1), "SetUserShadowBanned 1")
+
+	status, err = q.GetUserBanStatus(ctx, user.ID)
+	must(t, err, "GetUserBanStatus after shadow ban")
+	assertEq(t, int64(1), status.IsBanned, "is_banned unchanged after shadow ban")
+	assertEq(t, int64(1), status.IsShadowBanned, "is_shadow_banned after shadow ban")
+
+	// ── Unban the user ────────────────────────────────────────────────────────
+	must(t, q.SetUserBanned(ctx, user.ID, 0), "SetUserBanned 0")
+
+	status, err = q.GetUserBanStatus(ctx, user.ID)
+	must(t, err, "GetUserBanStatus after unban")
+	assertEq(t, int64(0), status.IsBanned, "is_banned after unban")
+	assertEq(t, int64(1), status.IsShadowBanned, "is_shadow_banned unchanged after unban")
+
+	// ── Remove shadow ban ─────────────────────────────────────────────────────
+	must(t, q.SetUserShadowBanned(ctx, user.ID, 0), "SetUserShadowBanned 0")
+
+	status, err = q.GetUserBanStatus(ctx, user.ID)
+	must(t, err, "GetUserBanStatus after un-shadow-ban")
+	assertEq(t, int64(0), status.IsBanned, "is_banned cleared")
+	assertEq(t, int64(0), status.IsShadowBanned, "is_shadow_banned cleared")
+}
+
+// TestShadowBannedCommentIsHidden verifies the full shadow-ban flow:
+//   - A shadow-banned user's comment is stored with hidden=1.
+//   - The author can see their own hidden comment (hidden=true in response).
+//   - Another viewer cannot see the comment at all (filtered by the SQL query).
+func TestShadowBannedCommentIsHidden(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, q := newTestDB(t)
+	marketSvc, _, _ := newServices(sqlDB, q)
+	modClient := service.NewModerationClient("") // no-op moderation
+	commentSvc := service.NewCommentService(q, modClient)
+
+	mod := createTestUser(t, ctx, q, "test:sban_mod", "SBanMod", true)
+	shadowUser := createTestUser(t, ctx, q, "test:sban_user", "SBanUser", false)
+	otherUser := createTestUser(t, ctx, q, "test:sban_other", "SBanOther", false)
+
+	m := createActiveMarket(t, ctx, marketSvc, "Will shadow bans ship in alpha 4.2?", mod.ID, mod.ID)
+
+	// Shadow-ban the user.
+	must(t, q.SetUserShadowBanned(ctx, shadowUser.ID, 1), "shadow ban user")
+
+	// Post a comment as the shadow-banned user.
+	comment, err := commentSvc.PostComment(ctx, service.CreateCommentInput{
+		MarketID: m.ID,
+		UserID:   shadowUser.ID,
+		Content:  "I totally agree with this prediction.",
+	})
+	must(t, err, "post comment as shadow-banned user")
+
+	// The DB row must have hidden=1.
+	dbRow, err := q.GetCommentByID(ctx, comment.ID)
+	must(t, err, "GetCommentByID")
+	if dbRow.Hidden != 1 {
+		t.Errorf("expected comment to have hidden=1 in DB, got %d", dbRow.Hidden)
+	}
+
+	// ── Author view: sees own hidden comment ──────────────────────────────────
+	authorComments, err := commentSvc.ListComments(ctx, m.ID, shadowUser.ID)
+	must(t, err, "ListComments as author")
+	var found bool
+	for _, c := range authorComments {
+		if c.ID == comment.ID {
+			found = true
+			if !c.Hidden {
+				t.Error("shadow-banned user should see their own comment with hidden=true")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("shadow-banned user's own comment (id=%d) not returned in author view", comment.ID)
+	}
+
+	// ── Other viewer: comment is invisible ───────────────────────────────────
+	otherComments, err := commentSvc.ListComments(ctx, m.ID, otherUser.ID)
+	must(t, err, "ListComments as other viewer")
+	for _, c := range otherComments {
+		if c.ID == comment.ID {
+			t.Errorf("shadow-banned comment (id=%d) should not be visible to other users", comment.ID)
+		}
+	}
+
+	// ── Anonymous view: comment is invisible ─────────────────────────────────
+	anonComments, err := commentSvc.ListComments(ctx, m.ID, 0)
+	must(t, err, "ListComments anonymous")
+	for _, c := range anonComments {
+		if c.ID == comment.ID {
+			t.Errorf("shadow-banned comment (id=%d) should not be visible anonymously", comment.ID)
+		}
+	}
+
+	// ── Un-shadow-ban: comment does NOT become visible retroactively ──────────
+	// (DB row stays hidden=1; un-banning only affects future comments)
+	must(t, q.SetUserShadowBanned(ctx, shadowUser.ID, 0), "un-shadow-ban user")
+
+	afterUnban, err := commentSvc.ListComments(ctx, m.ID, otherUser.ID)
+	must(t, err, "ListComments after un-shadow-ban")
+	for _, c := range afterUnban {
+		if c.ID == comment.ID {
+			t.Errorf("un-shadow-banning should not un-hide previously hidden comment (id=%d)", comment.ID)
+		}
+	}
+
+	// New comment after un-shadow-ban must be visible.
+	newComment, err := commentSvc.PostComment(ctx, service.CreateCommentInput{
+		MarketID: m.ID,
+		UserID:   shadowUser.ID,
+		Content:  "I am no longer shadow banned.",
+	})
+	must(t, err, "post comment after un-shadow-ban")
+
+	newRow, err := q.GetCommentByID(ctx, newComment.ID)
+	must(t, err, "GetCommentByID new comment")
+	if newRow.Hidden != 0 {
+		t.Errorf("comment after un-shadow-ban should have hidden=0, got %d", newRow.Hidden)
+	}
+}
+
+// TestSearchUsersIncludesBanFields verifies that SearchUsers returns the
+// is_banned and is_shadow_banned fields, and that they reflect the current
+// ban state. This is a regression test for the PostgreSQL ?1 rebind bug.
+func TestSearchUsersIncludesBanFields(t *testing.T) {
+	ctx := context.Background()
+	_, q := newTestDB(t)
+
+	u := createTestUser(t, ctx, q, "test:search_ban", "SearchBanUser", false)
+
+	// Confirm the user appears in search and ban fields are zero.
+	results, err := q.SearchUsers(ctx, "SearchBanUser")
+	must(t, err, "SearchUsers initial")
+	var found bool
+	for _, r := range results {
+		if r.ID == u.ID {
+			found = true
+			assertEq(t, int64(0), r.IsBanned, "is_banned in search result (initial)")
+			assertEq(t, int64(0), r.IsShadowBanned, "is_shadow_banned in search result (initial)")
+		}
+	}
+	if !found {
+		t.Fatalf("user %d not found in SearchUsers result", u.ID)
+	}
+
+	// Ban the user and confirm the search result reflects it.
+	must(t, q.SetUserBanned(ctx, u.ID, 1), "ban user")
+	must(t, q.SetUserShadowBanned(ctx, u.ID, 1), "shadow-ban user")
+
+	results, err = q.SearchUsers(ctx, "SearchBanUser")
+	must(t, err, "SearchUsers after ban")
+	for _, r := range results {
+		if r.ID == u.ID {
+			assertEq(t, int64(1), r.IsBanned, "is_banned in search result (after ban)")
+			assertEq(t, int64(1), r.IsShadowBanned, "is_shadow_banned in search result (after ban)")
+		}
+	}
+}
+
 // TestTrendingMarkets verifies that ListTrendingMarkets orders markets by
 // recent trade count and does not fail on GROUP BY with joined columns.
 // This validates the GROUP BY m.id, u.display_name fix for PostgreSQL.
