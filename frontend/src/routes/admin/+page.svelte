@@ -605,15 +605,15 @@
 
 								<!-- X axis labels -->
 								{#each xLabels(analyticsData.daily) as lbl}
-									<text
-										x={lbl.x}
-										y={CHART_H + 18}
-										text-anchor="middle"
-										font-size="11"
-										fill="currentColor"
-										opacity="0.5"
-									>{fmtDate(lbl.date)}</text>
-								{/each}
+								<text
+									x={lbl.x}
+									y={CHART_H + 18}
+									text-anchor="middle"
+									font-size="11"
+									fill="currentColor"
+									opacity="0.75"
+								>{fmtDate(lbl.date)}</text>
+							{/each}
 							</svg>
 						</div>
 					</div>
@@ -906,6 +906,11 @@
 		background: color-mix(in oklch, var(--color-surface-100) 85%, var(--color-primary-100) 15%) !important;
 	}
 
+	:global(:root:not([data-theme='dark']) .admin-shell .text-primary-300),
+	:global(:root:not([data-theme='dark']) .admin-shell .text-primary-400) {
+		color: var(--color-primary-700) !important;
+	}
+
 	:global(:root:not([data-theme='dark']) .admin-shell .hover\:text-surface-100:hover) {
 		color: var(--color-surface-900) !important;
 	}
@@ -923,6 +928,10 @@
 		border-color: var(--color-surface-300) !important;
 	}
 
+	:global(:root[data-theme='dark'] .admin-shell .text-surface-300) {
+		color: var(--color-surface-700) !important;
+	}
+
 	:global(:root[data-theme='dark'] .admin-shell .text-surface-100) {
 		color: var(--color-surface-900) !important;
 	}
@@ -930,6 +939,11 @@
 	:global(:root[data-theme='dark'] .admin-shell .text-surface-400),
 	:global(:root[data-theme='dark'] .admin-shell .text-surface-500) {
 		color: var(--color-surface-600) !important;
+	}
+
+	:global(:root[data-theme='dark'] .admin-shell .text-primary-300),
+	:global(:root[data-theme='dark'] .admin-shell .text-primary-400) {
+		color: var(--color-primary-500) !important;
 	}
 </style>
 

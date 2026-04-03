@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,17 +22,33 @@ import (
 	"github.com/lhw/astroledger/internal/service"
 )
 
+// analyticsTTL is how long aggregated GoatCounter responses are cached.
+const analyticsTTL = 5 * time.Minute
+
+type analyticsCacheEntry struct {
+	data     *analyticsResponse
+	cachedAt time.Time
+}
+
 // AdminHandler handles admin-only endpoints.
 type AdminHandler struct {
 	queries    *db.Queries
 	creditsSvc *service.CreditsService
 	gcURL      string // GoatCounter internal base URL
 	gcAPIKey   string // GoatCounter API Bearer token
+	cacheMu    sync.RWMutex
+	cache      map[string]*analyticsCacheEntry // keyed by period ("7d", "30d")
 }
 
 // NewAdminHandler creates an AdminHandler.
 func NewAdminHandler(queries *db.Queries, creditsSvc *service.CreditsService, gcURL, gcAPIKey string) *AdminHandler {
-	return &AdminHandler{queries: queries, creditsSvc: creditsSvc, gcURL: gcURL, gcAPIKey: gcAPIKey}
+	return &AdminHandler{
+		queries:    queries,
+		creditsSvc: creditsSvc,
+		gcURL:      gcURL,
+		gcAPIKey:   gcAPIKey,
+		cache:      make(map[string]*analyticsCacheEntry),
+	}
 }
 
 // ── GoatCounter API types ─────────────────────────────────────────────────
@@ -132,6 +149,16 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 	if period != "30d" {
 		period = "7d"
 	}
+
+	// Return cached response if still fresh — avoids hammering GoatCounter.
+	h.cacheMu.RLock()
+	cached := h.cache[period]
+	h.cacheMu.RUnlock()
+	if cached != nil && time.Since(cached.cachedAt) < analyticsTTL {
+		respondJSON(w, http.StatusOK, cached.data)
+		return
+	}
+
 	days := 7
 	if period == "30d" {
 		days = 30
@@ -300,7 +327,7 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 		return out
 	}
 
-	respondJSON(w, http.StatusOK, analyticsResponse{
+	resp := &analyticsResponse{
 		Configured:  true,
 		Period:      period,
 		TotalViews:  totalViews,
@@ -312,7 +339,13 @@ func (h *AdminHandler) AnalyticsProxy(w http.ResponseWriter, r *http.Request) {
 		Systems:     parseStatList(systemsRes.data, systemsRes.err),
 		Locations:   parseStatList(locationsRes.data, locationsRes.err),
 		Languages:   parseStatList(languagesRes.data, languagesRes.err),
-	})
+	}
+
+	h.cacheMu.Lock()
+	h.cache[period] = &analyticsCacheEntry{data: resp, cachedAt: time.Now()}
+	h.cacheMu.Unlock()
+
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // gcFetch makes an authenticated GET request to the GoatCounter API.
