@@ -881,8 +881,10 @@ LEFT JOIN trades t ON t.user_id = p.user_id
                    AND t.outcome_id = p.outcome_id
 WHERE p.user_id = ?
   AND p.shares > 0
-GROUP BY p.user_id, p.market_id, p.outcome_id
-ORDER BY m.status ASC, m.id DESC`
+GROUP BY p.user_id, p.market_id, p.outcome_id, p.shares,
+         m.title, m.status, m.liquidity_param, m.resolved_outcome_id,
+         o.label
+ORDER BY m.status ASC, p.market_id DESC`
 
 	rows, err := q.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -951,7 +953,7 @@ FROM markets m
 JOIN users u ON u.id = m.created_by
 LEFT JOIN trades t ON t.market_id = m.id AND t.created_at >= ` + window + `
 WHERE m.status = 'active'
-GROUP BY m.id
+GROUP BY m.id, u.display_name
 ORDER BY recent_trade_count DESC, recent_volume DESC
 LIMIT ?`
 
