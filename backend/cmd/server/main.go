@@ -87,7 +87,7 @@ func run() error {
 	tradeH := handler.NewTradingHandler(tradingSvc)
 	modH := handler.NewModerationHandler(queries, sqlDB, badgeSvc)
 	commentH := handler.NewCommentHandler(commentSvc)
-	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
+	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey, modClient)
 	patchH := handler.NewPatchHandler(queries)
 	botH := handler.NewBotHandler(queries, tradingSvc)
 	analyticsH := handler.NewAnalyticsHandler(cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
@@ -263,6 +263,8 @@ func run() error {
 			r.Get("/admin/badge-definitions", adminH.ListBadgeDefinitions)
 			r.Post("/admin/badge-definitions", adminH.CreateBadgeDefinition)
 			r.Put("/admin/badge-definitions/{key}", adminH.UpdateBadgeDefinition)
+			// Moderation API health check
+			r.Get("/admin/moderation/status", adminH.ModerationStatus)
 		})
 	})
 

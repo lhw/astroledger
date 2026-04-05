@@ -24,7 +24,7 @@ func TestUpdateAndArchiveBadgeRelease(t *testing.T) {
 	ctx := context.Background()
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	releaseID, err := queries.CreateBadgeRelease(ctx, db.CreateBadgeReleaseParams{
 		BadgeKey:   "aurora_pilot",
@@ -100,7 +100,7 @@ func TestCreateAndUpdateBadgeDefinition(t *testing.T) {
 	ctx := context.Background()
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	createReq := adminRequest(t, http.MethodPost, "/api/admin/badge-definitions", map[string]any{
 		"key":         "test_badge_custom",
@@ -180,7 +180,7 @@ func TestCreateBadgeDefinitionRejectsHardcodedKey(t *testing.T) {
 	ctx := context.Background()
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	req := adminRequest(t, http.MethodPost, "/api/admin/badge-definitions", map[string]any{
 		"key":         "first_blood",

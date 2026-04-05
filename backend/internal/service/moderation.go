@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -24,11 +25,16 @@ var shadowThresholds = map[string]float64{
 	"self-harm":              0.70,
 }
 
+const pingCacheTTL = 5 * time.Minute
+
 // ModerationClient calls the OpenAI Moderation API to detect abusive comments.
 // When the API key is empty the client is a no-op: all comments pass through.
 type ModerationClient struct {
-	apiKey string
-	http   *http.Client
+	apiKey   string
+	http     *http.Client
+	cacheMu  sync.Mutex
+	cached   *ModerationStatus
+	cachedAt time.Time
 }
 
 // NewModerationClient creates a ModerationClient. apiKey may be empty to
@@ -63,6 +69,92 @@ type openAIResponse struct {
 		Flagged        bool               `json:"flagged"`
 		CategoryScores map[string]float64 `json:"category_scores"`
 	} `json:"results"`
+}
+
+type openAIErrorResponse struct {
+	Error struct {
+		Code    string `json:"code"`
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// ModerationStatus describes the runtime health of the OpenAI moderation integration.
+type ModerationStatus struct {
+	// Enabled is true when an API key is configured.
+	Enabled bool `json:"enabled"`
+	// OK is true when a test moderation call returned HTTP 200.
+	OK bool `json:"ok"`
+	// CreditsOK is false only when OpenAI returned an insufficient_quota error.
+	// It is true when OK is true, and also true for non-quota failures (e.g. bad key).
+	CreditsOK bool `json:"credits_ok"`
+	// Error contains a human-readable failure description, empty on success.
+	Error string `json:"error,omitempty"`
+}
+
+// Ping makes a minimal test moderation call and returns the integration status.
+// Results are cached for pingCacheTTL to avoid burning rate-limit quota on
+// every admin page load. Safe to call regardless of whether the client is enabled.
+func (m *ModerationClient) Ping(ctx context.Context) *ModerationStatus {
+	if !m.Enabled() {
+		return &ModerationStatus{Enabled: false, CreditsOK: true}
+	}
+
+	m.cacheMu.Lock()
+	if m.cached != nil && time.Since(m.cachedAt) < pingCacheTTL {
+		result := *m.cached
+		m.cacheMu.Unlock()
+		return &result
+	}
+	m.cacheMu.Unlock()
+
+	body, err := json.Marshal(openAIRequest{Input: "test"})
+	if err != nil {
+		return &ModerationStatus{Enabled: true, Error: err.Error(), CreditsOK: true}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIModerationURL, bytes.NewReader(body))
+	if err != nil {
+		return &ModerationStatus{Enabled: true, Error: err.Error(), CreditsOK: true}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+m.apiKey)
+
+	resp, err := m.http.Do(req)
+	if err != nil {
+		return &ModerationStatus{Enabled: true, Error: err.Error(), CreditsOK: true}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return m.cacheAndReturn(&ModerationStatus{Enabled: true, OK: true, CreditsOK: true})
+	}
+
+	// HTTP 429 means the API key is valid and the service is reachable — we just
+	// hit the rate limit (likely from testing). Treat as OK so repeated status
+	// checks don't self-degrade the indicator.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return m.cacheAndReturn(&ModerationStatus{Enabled: true, OK: true, CreditsOK: true})
+	}
+
+	var oaErr openAIErrorResponse
+	_ = json.NewDecoder(resp.Body).Decode(&oaErr)
+
+	creditsOK := oaErr.Error.Code != "insufficient_quota" && oaErr.Error.Type != "insufficient_quota"
+	msg := oaErr.Error.Message
+	if msg == "" {
+		msg = fmt.Sprintf("unexpected HTTP status %d", resp.StatusCode)
+	}
+	// Don't cache failures — allow a retry on next page load.
+	return &ModerationStatus{Enabled: true, CreditsOK: creditsOK, Error: msg}
+}
+
+func (m *ModerationClient) cacheAndReturn(s *ModerationStatus) *ModerationStatus {
+	m.cacheMu.Lock()
+	m.cached = s
+	m.cachedAt = time.Now()
+	m.cacheMu.Unlock()
+	return s
 }
 
 // Moderate calls the OpenAI Moderation API and returns a ModerationResult.

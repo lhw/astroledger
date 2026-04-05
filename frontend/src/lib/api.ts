@@ -33,7 +33,8 @@ import type {
 	AdminBadgeDefinition
 	,
 	BotApiToken,
-	BotApiTokenCreateResponse
+	BotApiTokenCreateResponse,
+	ModerationStatus
 } from './types';
 
 class ApiClientError extends Error {
@@ -407,6 +408,10 @@ export async function adminUpdateBadgeDefinition(
 		method: 'PUT',
 		body: JSON.stringify(body)
 	});
+}
+
+export async function adminGetModerationStatus(): Promise<ModerationStatus> {
+	return request<ModerationStatus>('/api/admin/moderation/status');
 }
 
 // --- Bot API Tokens ---

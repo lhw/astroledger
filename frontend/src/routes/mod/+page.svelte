@@ -12,9 +12,11 @@
 		reviewReport,
 		dismissReport,
 		getPatches,
-		markPatchNotified
+		markPatchNotified,
+		adminGetModerationStatus
 	} from '$lib/api';
-	import { isModerator } from '$lib/stores/auth';
+	import { isModerator, isAdmin } from '$lib/stores/auth';
+	import type { ModerationStatus } from '$lib/types';
 	import Alert from '$lib/components/Alert.svelte';
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import ModPatchesPanel from '$lib/components/mod/ModPatchesPanel.svelte';
@@ -25,6 +27,8 @@
 	import type { Market, ResolutionRequestMarket, Report, DetectedPatch } from '$lib/types';
 	import { CATEGORY_LABELS } from '$lib/categories';
 	import TabBar from '$lib/components/TabBar.svelte';
+
+	let modStatus = $state<ModerationStatus | null>(null);
 
 	let pending = $state<(Market & { creator_name: string })[]>([]);
 	let deadlinePassed = $state<(Market & { creator_name: string })[]>([]);
@@ -116,6 +120,9 @@
 
 	onMount(async () => {
 		await load();
+		if ($isAdmin) {
+			adminGetModerationStatus().then((s) => (modStatus = s)).catch(() => {});
+		}
 	});
 
 	async function load() {
@@ -236,10 +243,18 @@
 </svelte:head>
 
 <div class="container mx-auto px-4 max-w-4xl py-10">
-	<div class="mb-7">
-		<p class="text-xs font-bold uppercase tracking-[0.15em] text-primary-600 mb-1">Moderation</p>
-		<h1 class="text-2xl font-bold text-surface-900 tracking-tight">Mod Queue</h1>
-		<p class="text-surface-500 text-sm mt-1">Review and manage markets pending approval or resolution.</p>
+	<div class="mb-7 flex items-start justify-between gap-4 flex-wrap">
+		<div>
+			<p class="text-xs font-bold uppercase tracking-[0.15em] text-primary-600 mb-1">Moderation</p>
+			<h1 class="text-2xl font-bold text-surface-900 tracking-tight">Mod Queue</h1>
+			<p class="text-surface-500 text-sm mt-1">Review and manage markets pending approval or resolution.</p>
+		</div>
+		{#if modStatus}
+			<div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide rounded-full border px-3 py-1 shrink-0 mt-1 {modStatus.enabled && modStatus.ok ? 'text-green-400 border-green-700 bg-green-950/50' : modStatus.enabled ? 'text-amber-400 border-amber-700 bg-amber-950/50' : 'text-surface-500 border-surface-600 bg-surface-800/50'}">
+				<span class="w-1.5 h-1.5 rounded-full {modStatus.enabled && modStatus.ok ? 'bg-green-400' : modStatus.enabled ? 'bg-amber-400' : 'bg-surface-500'}"></span>
+				{modStatus.enabled && modStatus.ok ? 'Auto-mod active' : modStatus.enabled ? 'Auto-mod degraded' : 'Auto-mod disabled'}
+			</div>
+		{/if}
 	</div>
 
 	{#if !$isModerator}

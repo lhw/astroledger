@@ -402,6 +402,14 @@ export interface Position {
 	resolved_outcome_id: number | null;
 }
 
+/** Health status of the OpenAI moderation integration, returned by GET /api/admin/moderation/status. */
+export interface ModerationStatus {
+	enabled: boolean;
+	ok: boolean;
+	credits_ok: boolean;
+	error?: string;
+}
+
 /** A bot API token entry (secret value is never returned in list calls). */
 export interface BotApiToken {
 	id: number;

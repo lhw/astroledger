@@ -5,9 +5,21 @@
 		adminSearchUsers,
 		adminBanUser,
 		adminShadowBanUser,
+		adminGetModerationStatus,
 		ApiClientError
 	} from '$lib/api';
-	import type { UserSearchResult } from '$lib/types';
+	import type { UserSearchResult, ModerationStatus } from '$lib/types';
+	import { onMount } from 'svelte';
+
+	let modStatus = $state<ModerationStatus | null>(null);
+	let modStatusLoading = $state(true);
+
+	onMount(() => {
+		adminGetModerationStatus()
+			.then((s) => (modStatus = s))
+			.catch(() => (modStatus = null))
+			.finally(() => (modStatusLoading = false));
+	});
 
 	let payoutLoading = $state(false);
 	let payoutResult = $state<string | null>(null);
@@ -144,6 +156,41 @@
 </script>
 
 <div class="space-y-8 max-w-2xl">
+	<section class="bg-surface-800 border border-surface-700 rounded-xl p-6 space-y-4">
+		<h2 class="text-sm font-semibold text-surface-100 uppercase tracking-widest">
+			Service Status
+		</h2>
+		<div class="space-y-2">
+			<div class="flex items-center justify-between gap-4 py-2 border-b border-surface-700 last:border-0">
+				<div>
+					<p class="text-surface-100 text-sm font-medium">OpenAI Auto-Moderation</p>
+					<p class="text-surface-500 text-xs mt-0.5">Comment abuse detection via GPT moderation API</p>
+				</div>
+				{#if modStatusLoading}
+					<span class="text-surface-500 text-xs">Checking…</span>
+				{:else if !modStatus}
+					<span class="text-surface-500 text-xs">Unavailable</span>
+				{:else}
+					<div class="flex flex-col items-end gap-1 shrink-0">
+						<div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide rounded-full border px-2.5 py-0.5 {modStatus.enabled && modStatus.ok ? 'text-green-400 border-green-700 bg-green-950/50' : modStatus.enabled ? 'text-amber-400 border-amber-700 bg-amber-950/50' : 'text-surface-500 border-surface-600 bg-surface-800/60'}">
+							<span class="w-1.5 h-1.5 rounded-full {modStatus.enabled && modStatus.ok ? 'bg-green-400' : modStatus.enabled ? 'bg-amber-400' : 'bg-surface-500'}"></span>
+							{modStatus.enabled && modStatus.ok ? 'Active' : modStatus.enabled ? 'Degraded' : 'Disabled'}
+						</div>
+						{#if modStatus.enabled}
+							<div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide rounded-full border px-2.5 py-0.5 {modStatus.credits_ok ? 'text-green-400 border-green-700 bg-green-950/50' : 'text-red-400 border-red-700 bg-red-950/50'}">
+								<span class="w-1.5 h-1.5 rounded-full {modStatus.credits_ok ? 'bg-green-400' : 'bg-red-400'}"></span>
+								{modStatus.credits_ok ? 'Credits OK' : 'Out of credits'}
+							</div>
+						{/if}
+						{#if modStatus.error}
+							<p class="text-amber-400 text-xs max-w-48 text-right">{modStatus.error}</p>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		</div>
+	</section>
+
 	<section class="bg-surface-800 border border-surface-700 rounded-xl p-6 space-y-4">
 		<h2 class="text-sm font-semibold text-surface-100 uppercase tracking-widest">
 			Weekly Payout

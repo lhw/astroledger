@@ -13,7 +13,7 @@ import (
 
 func TestAnalyticsProxyRejectsUnauthorized(t *testing.T) {
 	_, queries := newAdminHandlerTestDB(t)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/analytics", nil)
 	rec := httptest.NewRecorder()
@@ -28,7 +28,7 @@ func TestAnalyticsProxyReturnsConfiguredFalseWithoutGoatCounter(t *testing.T) {
 	ctx := context.Background()
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	rec := httptest.NewRecorder()
 	h.AnalyticsProxy(rec, adminRequest(t, http.MethodGet, "/api/admin/analytics", nil, admin.ID))
@@ -97,7 +97,7 @@ func TestAnalyticsProxyAggregatesAndCachesResponses(t *testing.T) {
 	}))
 	defer server.Close()
 
-	h := NewAdminHandler(queries, nil, server.URL, "test-api-key")
+	h := NewAdminHandler(queries, nil, server.URL, "test-api-key", nil)
 
 	firstRec := httptest.NewRecorder()
 	h.AnalyticsProxy(firstRec, adminRequest(t, http.MethodGet, "/api/admin/analytics?period=7d", nil, admin.ID))

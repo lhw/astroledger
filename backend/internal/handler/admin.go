@@ -30,6 +30,7 @@ type analyticsCacheEntry struct {
 type AdminHandler struct {
 	queries    *db.Queries
 	creditsSvc *service.CreditsService
+	modClient  *service.ModerationClient
 	gcURL      string // GoatCounter internal base URL
 	gcAPIKey   string // GoatCounter API Bearer token
 	cacheMu    sync.RWMutex
@@ -37,10 +38,11 @@ type AdminHandler struct {
 }
 
 // NewAdminHandler creates an AdminHandler.
-func NewAdminHandler(queries *db.Queries, creditsSvc *service.CreditsService, gcURL, gcAPIKey string) *AdminHandler {
+func NewAdminHandler(queries *db.Queries, creditsSvc *service.CreditsService, gcURL, gcAPIKey string, modClient *service.ModerationClient) *AdminHandler {
 	return &AdminHandler{
 		queries:    queries,
 		creditsSvc: creditsSvc,
+		modClient:  modClient,
 		gcURL:      gcURL,
 		gcAPIKey:   gcAPIKey,
 		cache:      make(map[string]*analyticsCacheEntry),
@@ -375,4 +377,18 @@ func (h *AdminHandler) requireAdmin(w http.ResponseWriter, r *http.Request) *db.
 		return nil
 	}
 	return &user
+}
+
+// ModerationStatus pings the OpenAI moderation API and returns the current
+// integration health, including whether the account has sufficient credits.
+func (h *AdminHandler) ModerationStatus(w http.ResponseWriter, r *http.Request) {
+	if h.requireAdmin(w, r) == nil {
+		return
+	}
+	if h.modClient == nil {
+		respondJSON(w, http.StatusOK, service.ModerationStatus{Enabled: false, CreditsOK: true})
+		return
+	}
+	status := h.modClient.Ping(r.Context())
+	respondJSON(w, http.StatusOK, status)
 }

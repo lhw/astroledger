@@ -71,7 +71,7 @@ func TestCreateBadgeReleasePersistsAndReturnsCreatedRow(t *testing.T) {
 	ctx := context.Background()
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	body := map[string]any{
 		"badge_key":   "aurora_pilot",
@@ -137,7 +137,7 @@ func TestCreateBadgeReleaseRejectsInvalidInsurance(t *testing.T) {
 	ctx := context.Background()
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	body := map[string]any{
 		"badge_key":   "aurora_pilot",

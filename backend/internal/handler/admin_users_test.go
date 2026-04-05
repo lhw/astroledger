@@ -32,7 +32,7 @@ func TestSearchUsersReturnsMatchesByDisplayName(t *testing.T) {
 	admin := createAdminUser(t, ctx, queries)
 	createRegularUser(t, ctx, queries, "test:user:one", "PilotAlpha", "pilot-alpha@test.example")
 	createRegularUser(t, ctx, queries, "test:user:two", "CargoMule", "cargo-mule@test.example")
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	req := adminRequest(t, http.MethodGet, "/api/admin/users/search?q=pilot", nil, admin.ID)
 	rec := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestAdjustUserBalanceRejectsOverdraw(t *testing.T) {
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
 	target := createRegularUser(t, ctx, queries, "test:user:three", "WalletLight", "wallet-light@test.example")
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	req := adminRequest(t, http.MethodPost, "/api/admin/users/2/balance", map[string]any{
 		"amount": -2000,
@@ -90,7 +90,7 @@ func TestBanAndShadowBanUserUpdateFlags(t *testing.T) {
 	_, queries := newAdminHandlerTestDB(t)
 	admin := createAdminUser(t, ctx, queries)
 	target := createRegularUser(t, ctx, queries, "test:user:four", "MutedPilot", "muted-pilot@test.example")
-	h := NewAdminHandler(queries, nil, "", "")
+	h := NewAdminHandler(queries, nil, "", "", nil)
 
 	banReq := adminRequest(t, http.MethodPost, "/api/admin/users/ban", map[string]any{"banned": true}, admin.ID)
 	banCtx := chi.NewRouteContext()
