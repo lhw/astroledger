@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -118,6 +119,7 @@ func (h *BotHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 
 	rawToken, prefix, err := generateBotToken()
 	if err != nil {
+		slog.Error("bot: generateBotToken", "user_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "failed to create token")
 		return
 	}
@@ -131,9 +133,12 @@ func (h *BotHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 		CanTrade:    boolToInt64(body.CanTrade),
 	})
 	if err != nil {
+		slog.Error("bot: CreateAPIToken", "user_id", claims.UserID, "name", name, "err", err)
 		respondError(w, http.StatusInternalServerError, "failed to save token")
 		return
 	}
+
+	slog.Info("bot token created", "user_id", claims.UserID, "token_id", row.ID, "name", name, "can_read", canRead, "can_trade", body.CanTrade)
 
 	respondJSON(w, http.StatusCreated, map[string]any{
 		"id":           row.ID,
@@ -156,6 +161,7 @@ func (h *BotHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.queries.ListUserAPITokens(r.Context(), claims.UserID)
 	if err != nil {
+		slog.Error("bot: ListUserAPITokens", "user_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -199,9 +205,12 @@ func (h *BotHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "token not found")
 			return
 		}
+		slog.Error("bot: RevokeUserAPIToken", "user_id", claims.UserID, "token_id", tokenID, "err", err)
 		respondError(w, http.StatusInternalServerError, "failed to revoke token")
 		return
 	}
+
+	slog.Info("bot token revoked", "user_id", claims.UserID, "token_id", tokenID)
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
@@ -210,6 +219,7 @@ func (h *BotHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 func (h *BotHandler) Me(w http.ResponseWriter, r *http.Request) {
 	tokenRow, err := h.authenticateToken(r)
 	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "me", "err", err)
 		respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
@@ -224,6 +234,7 @@ func (h *BotHandler) Me(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusUnauthorized, "user not found")
 			return
 		}
+		slog.Error("bot: Me: GetUserByID", "user_id", tokenRow.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -239,6 +250,7 @@ func (h *BotHandler) Me(w http.ResponseWriter, r *http.Request) {
 func (h *BotHandler) Trade(w http.ResponseWriter, r *http.Request) {
 	tokenRow, err := h.authenticateToken(r)
 	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "trade", "err", err)
 		respondError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
@@ -287,9 +299,12 @@ func (h *BotHandler) Trade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.Warn("bot trade failed", "user_id", tokenRow.UserID, "token_id", tokenRow.ID, "market_id", body.MarketID, "action", body.Action, "shares", body.Shares, "err", err)
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	slog.Info("bot trade executed", "user_id", tokenRow.UserID, "token_id", tokenRow.ID, "market_id", body.MarketID, "action", body.Action, "shares", body.Shares, "cost", result.Cost, "trade_id", result.TradeID)
 
 	respondJSON(w, http.StatusOK, result)
 }

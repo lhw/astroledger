@@ -128,6 +128,7 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 		Category: category,
 	})
 	if err != nil {
+		slog.Error("List: CountMarkets", "status", status, "category", category, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -140,6 +141,7 @@ func (h *MarketHandler) List(w http.ResponseWriter, r *http.Request) {
 		Offset:   offset,
 	})
 	if err != nil {
+		slog.Error("List: ListMarkets", "status", status, "category", category, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -185,6 +187,7 @@ func (h *MarketHandler) Trending(w http.ResponseWriter, r *http.Request) {
 
 	markets, err := h.queries.ListTrendingMarkets(r.Context(), 5)
 	if err != nil {
+		slog.Error("Trending: ListTrendingMarkets", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -223,6 +226,7 @@ func (h *MarketHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.Error("Get: GetMarketByID", "market_id", id, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -347,6 +351,7 @@ func (h *MarketHandler) GetPriceHistory(w http.ResponseWriter, r *http.Request) 
 
 	history, err := h.queries.GetMarketPriceHistory(r.Context(), id)
 	if err != nil {
+		slog.Error("GetPriceHistory: GetMarketPriceHistory", "market_id", id, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -378,6 +383,7 @@ func (h *MarketHandler) GetTrades(w http.ResponseWriter, r *http.Request) {
 		Offset:   offset,
 	})
 	if err != nil {
+		slog.Error("GetTrades: GetMarketTrades", "market_id", id, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -391,12 +397,14 @@ func (h *MarketHandler) GetTrades(w http.ResponseWriter, r *http.Request) {
 func (h *MarketHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.queries.GetEnabledAutofilterRules(r.Context())
 	if err != nil {
+		slog.Error("ListPending: GetEnabledAutofilterRules", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
 	markets, err := h.queries.ListPendingMarkets(r.Context())
 	if err != nil {
+		slog.Error("ListPending: ListPendingMarkets", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -421,6 +429,7 @@ func (h *MarketHandler) ListPending(w http.ResponseWriter, r *http.Request) {
 func (h *MarketHandler) ListDeadlinePassed(w http.ResponseWriter, r *http.Request) {
 	markets, err := h.queries.ListDeadlinePassedMarkets(r.Context())
 	if err != nil {
+		slog.Error("ListDeadlinePassed: ListDeadlinePassedMarkets", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -555,6 +564,7 @@ func (h *MarketHandler) RequestResolution(w http.ResponseWriter, r *http.Request
 func (h *MarketHandler) ListResolutionRequested(w http.ResponseWriter, r *http.Request) {
 	markets, err := h.queries.ListResolutionRequestedMarkets(r.Context())
 	if err != nil {
+		slog.Error("ListResolutionRequested: ListResolutionRequestedMarkets", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -595,6 +605,7 @@ func (h *MarketHandler) DenyResolution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.queries.UpdateMarketStatus(r.Context(), db.UpdateMarketStatusParams{Status: "active", ID: id}); err != nil {
+		slog.Error("DenyResolution: UpdateMarketStatus", "market_id", id, "mod_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}

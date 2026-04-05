@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -36,6 +37,7 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.Error("Me: GetUserByID", "user_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -62,6 +64,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.Error("GetUser: GetUserByID", "user_id", id, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -87,6 +90,7 @@ func (h *UserHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.queries.GetLeaderboard(r.Context(), limit)
 	if err != nil {
+		slog.Error("Leaderboard: GetLeaderboard", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -105,6 +109,7 @@ func (h *UserHandler) GetUserPositions(w http.ResponseWriter, r *http.Request) {
 
 	positions, err := h.queries.GetUserPositionsEnriched(r.Context(), claims.UserID)
 	if err != nil {
+		slog.Error("GetUserPositions: GetUserPositionsEnriched", "user_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -132,6 +137,7 @@ func (h *UserHandler) GetUserTrades(w http.ResponseWriter, r *http.Request) {
 		Offset: offset,
 	})
 	if err != nil {
+		slog.Error("GetUserTrades: GetUserTrades", "user_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}

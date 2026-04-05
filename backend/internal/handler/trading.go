@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/lhw/astroledger/internal/middleware"
@@ -67,9 +68,11 @@ func (h *TradingHandler) Trade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		slog.Warn("trade failed", "user_id", claims.UserID, "market_id", body.MarketID, "action", body.Action, "shares", body.Shares, "err", err)
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	slog.Info("trade executed", "user_id", claims.UserID, "market_id", body.MarketID, "action", body.Action, "shares", body.Shares, "cost", result.Cost, "trade_id", result.TradeID)
 	respondJSON(w, http.StatusOK, result)
 }

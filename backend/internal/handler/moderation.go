@@ -60,10 +60,12 @@ func (h *ModerationHandler) SubmitReport(w http.ResponseWriter, r *http.Request)
 
 	id, err := h.queries.CreateReport(r.Context(), claims.UserID, body.MarketID, body.Reason)
 	if err != nil {
+		slog.Error("SubmitReport: CreateReport", "user_id", claims.UserID, "market_id", body.MarketID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
+	slog.Info("report submitted", "user_id", claims.UserID, "market_id", body.MarketID, "report_id", id)
 	respondJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
@@ -72,6 +74,7 @@ func (h *ModerationHandler) SubmitReport(w http.ResponseWriter, r *http.Request)
 func (h *ModerationHandler) ListReports(w http.ResponseWriter, r *http.Request) {
 	reports, err := h.queries.ListPendingReports(r.Context())
 	if err != nil {
+		slog.Error("ListReports: ListPendingReports", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -144,6 +147,7 @@ func (h *ModerationHandler) GetUserBadges(w http.ResponseWriter, r *http.Request
 func (h *ModerationHandler) sendBadges(w http.ResponseWriter, r *http.Request, userID int64, isOwner bool) {
 	badges, err := h.queries.GetUserBadges(r.Context(), userID)
 	if err != nil {
+		slog.Error("sendBadges: GetUserBadges", "user_id", userID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -235,6 +239,7 @@ func (h *ModerationHandler) GetStoreBadges(w http.ResponseWriter, r *http.Reques
 
 	releases, err := h.queries.GetActiveBadgeReleases(ctx)
 	if err != nil {
+		slog.Error("GetStoreBadges: GetActiveBadgeReleases", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -310,6 +315,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	// Require an active release for this badge key.
 	release, hasRelease, err := h.queries.GetActiveBadgeReleaseForKey(ctx, body.BadgeKey)
 	if err != nil {
+		slog.Error("PurchaseBadge: GetActiveBadgeReleaseForKey", "badge_key", body.BadgeKey, "user_id", claims.UserID, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -321,6 +327,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	// Begin transaction for atomicity (prevents TOCTOU races).
 	tx, err := h.sqlDB.BeginTx(ctx, nil)
 	if err != nil {
+		slog.Error("PurchaseBadge: BeginTx", "user_id", claims.UserID, "badge_key", body.BadgeKey, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -332,6 +339,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	if release.Stock != nil {
 		sold, err := qTx.CountBadgePurchases(ctx, def.Key)
 		if err != nil {
+			slog.Error("PurchaseBadge: CountBadgePurchases", "badge_key", def.Key, "user_id", claims.UserID, "err", err)
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
@@ -344,6 +352,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	// Fetch current balance.
 	user, err := qTx.GetUserByID(ctx, claims.UserID)
 	if err != nil {
+		slog.Error("PurchaseBadge: GetUserByID", "user_id", claims.UserID, "badge_key", body.BadgeKey, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -355,6 +364,7 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	// Check already owned (within transaction).
 	badges, err := qTx.GetUserBadges(ctx, claims.UserID)
 	if err != nil {
+		slog.Error("PurchaseBadge: GetUserBadges", "user_id", claims.UserID, "badge_key", body.BadgeKey, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
@@ -370,22 +380,26 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 		Balance: -release.Price,
 		ID:      claims.UserID,
 	}); err != nil {
+		slog.Error("PurchaseBadge: UpdateUserBalance", "user_id", claims.UserID, "badge_key", def.Key, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
 	// Award badge with purchase price for admiral rank tracking.
 	if err := qTx.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price, body.Insurance); err != nil {
+		slog.Error("PurchaseBadge: AwardBadgePurchased", "user_id", claims.UserID, "badge_key", def.Key, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
 	// Commit transaction.
 	if err := tx.Commit(); err != nil {
+		slog.Error("PurchaseBadge: commit", "user_id", claims.UserID, "badge_key", def.Key, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
 
+	slog.Info("badge purchased", "user_id", claims.UserID, "badge_key", def.Key, "price", release.Price)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "purchased"})
 
 	// Non-blocking: check admiral rank milestones after the purchase.
@@ -469,6 +483,7 @@ func (h *ModerationHandler) SetActiveBadge(w http.ResponseWriter, r *http.Reques
 		}
 		owned, err := h.queries.GetUserBadges(r.Context(), claims.UserID)
 		if err != nil {
+			slog.Error("SetActiveBadge: GetUserBadges", "user_id", claims.UserID, "err", err)
 			respondError(w, http.StatusInternalServerError, "database error")
 			return
 		}
@@ -486,6 +501,7 @@ func (h *ModerationHandler) SetActiveBadge(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.queries.SetUserActiveBadge(r.Context(), claims.UserID, body.BadgeKey); err != nil {
+		slog.Error("SetActiveBadge: SetUserActiveBadge", "user_id", claims.UserID, "badge_key", body.BadgeKey, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
