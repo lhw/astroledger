@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getStoreBadges, purchaseBadge } from '$lib/api';
+	import { formatBadgeInsurance, getBadgeTierLabel, getBadgeTierSymbol } from '$lib/badges';
+	import Alert from '$lib/components/Alert.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { formatExpiry, formatSpend } from '$lib/format';
 	import { currentUser, isLoggedIn } from '$lib/stores/auth';
 	import type { StoreBadge } from '$lib/types';
 
@@ -39,25 +43,6 @@
 		}
 	}
 
-	const tierLabels: Record<number, string> = {
-		1: 'Common',
-		2: 'Uncommon',
-		3: 'Rare',
-		4: 'Epic',
-		5: 'Legendary'
-	};
-
-	function formatExpiry(iso: string): string {
-		const d = new Date(iso);
-		const now = new Date();
-		const diffMs = d.getTime() - now.getTime();
-		const diffDays = Math.ceil(diffMs / 86_400_000);
-		if (diffDays <= 0) return 'Expired';
-		if (diffDays === 1) return 'Expires tomorrow';
-		if (diffDays <= 7) return `Expires in ${diffDays} days`;
-		return `Expires ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-	}
-
 	function isSoldOut(badge: StoreBadge): boolean {
 		return badge.remaining_stock !== undefined && badge.remaining_stock <= 0;
 	}
@@ -84,17 +69,19 @@
 		{#if $isLoggedIn && $currentUser}
 			<div class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-50 border border-primary-200">
 				<span class="text-xs uppercase tracking-wider text-primary-600 font-semibold">Balance:</span>
-				<span class="text-primary-700 font-bold">{$currentUser.balance.toLocaleString()} bUEC</span>
+				<span class="text-primary-700 font-bold">{formatSpend($currentUser.balance)}</span>
 			</div>
 		{/if}
 	</div>
 
 	{#if error}
-		<div class="mb-6 px-4 py-3 rounded bg-error-100 border border-error-300 text-error-700 text-sm text-center">{error}</div>
+		<Alert type="error" message={error} />
 	{/if}
 
 	{#if loading}
-		<div class="text-center text-surface-400 py-20 text-sm">Loading store…</div>
+		<EmptyState message="Loading store…" card={false} padding="py-20" />
+	{:else if badges.length === 0}
+		<EmptyState message="No badges are currently available in the store." />
 	{:else}
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 			{#each badges as badge}
@@ -129,35 +116,25 @@
 
 					<div class="badge-icon-wrap">
 						<div class="badge-icon">
-							{#if badge.tier === 5}
-								<span class="badge-symbol">★</span>
-							{:else if badge.tier === 4}
-								<span class="badge-symbol">◈</span>
-							{:else if badge.tier === 3}
-								<span class="badge-symbol">◆</span>
-							{:else if badge.tier === 2}
-								<span class="badge-symbol">●</span>
-							{:else}
-								<span class="badge-symbol">▲</span>
-							{/if}
+							<span class="badge-symbol">{getBadgeTierSymbol(badge.tier)}</span>
 						</div>
 					</div>
 
 					<div class="badge-body">
-						<div class="badge-tier-label">{tierLabels[badge.tier]}</div>
+						<div class="badge-tier-label">{getBadgeTierLabel(badge.tier)}</div>
 						<h3 class="badge-title">{badge.title}</h3>
 						<p class="badge-desc">{badge.description}</p>
 						{#if badge.insurance}
 							<div class="badge-ins-row">
 								<span class="badge-ins-chip ins-{badge.insurance}">
-									{badge.insurance === 'lti' ? 'LTI' : badge.insurance === '120w' ? '120W Ins.' : '6W Ins.'}
+									{formatBadgeInsurance(badge.insurance)}
 								</span>
 							</div>
 						{/if}
 					</div>
 
 					<div class="badge-footer">
-						<span class="badge-price">{badge.cost.toLocaleString()} bUEC</span>
+						<span class="badge-price">{formatSpend(badge.cost)}</span>
 						{#if badge.owned}
 							<span class="badge-owned-tag">Owned</span>
 						{:else if badge.expired}
@@ -257,6 +234,7 @@
 	border-radius: 1rem;
 	padding: 2px;
 	background: linear-gradient(135deg, #f7d060, #e8a020, #f7d060, #c8800a);
+	mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
 	-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
 	-webkit-mask-composite: xor;
 	mask-composite: exclude;

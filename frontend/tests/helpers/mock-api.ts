@@ -115,16 +115,6 @@ export async function mockLeaderboard(page: Page, rows: LeaderboardRow[] = LEADE
 	});
 }
 
-/** Mock GET /api/me/positions and /api/me/trades */
-export async function mockUserData(page: Page) {
-	await page.route('/api/me/positions', (route) =>
-		route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
-	);
-	await page.route('/api/me/trades*', (route) =>
-		route.fulfill({ status: 200, contentType: 'application/json', body: '[]' })
-	);
-}
-
 export const RESOLUTION_REQUEST: ResolutionRequestMarket = {
 	id: 10,
 	title: 'Will quantum fuel fix before 4.2?',

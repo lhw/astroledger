@@ -190,7 +190,7 @@ test.describe('Admin Panel — Badges', () => {
 			await mockAdminApis(page, { releases: [RELEASE_LTI] });
 			await page.goto('/admin');
 			await page.getByRole('tab', { name: 'Badges' }).click();
-			await expect(page.getByText('Aurora Pilot')).toBeVisible();
+			await expect(page.locator('.divide-y').getByText('Aurora Pilot', { exact: true })).toBeVisible();
 		});
 
 		test('shows badge_key in release row', async ({ page }) => {
@@ -249,8 +249,8 @@ test.describe('Admin Panel — Badges', () => {
 			await mockAdminApis(page, { releases: [RELEASE_LTI, RELEASE_6W] });
 			await page.goto('/admin');
 			await page.getByRole('tab', { name: 'Badges' }).click();
-			await expect(page.getByText('Aurora Pilot')).toBeVisible();
-			await expect(page.getByText("'Verse Veteran")).toBeVisible();
+			await expect(page.locator('.divide-y').getByText('Aurora Pilot', { exact: true })).toBeVisible();
+			await expect(page.locator('.divide-y').getByText("'Verse Veteran", { exact: true })).toBeVisible();
 		});
 
 		test('shows notes in release row when set', async ({ page }) => {
@@ -343,9 +343,7 @@ test.describe('Admin Panel — Badges', () => {
 			await page.goto('/admin');
 			await page.getByRole('tab', { name: 'Badges' }).click();
 
-			// Open badge picker and select a badge (button aria-label is 'Select badge to release')
-			await page.getByRole('button', { name: 'Select badge to release' }).click();
-			await page.locator('.badge-picker .badge-option').first().click();
+			await page.locator('#brc-badge-select').selectOption('aurora_pilot');
 
 			// Fill in price
 			await page.locator('#brc-price').fill('500');
@@ -385,8 +383,7 @@ test.describe('Admin Panel — Badges', () => {
 
 			await page.goto('/admin');
 			await page.getByRole('tab', { name: 'Badges' }).click();
-			await page.getByRole('button', { name: 'Select badge to release' }).click();
-			await page.locator('.badge-picker .badge-option').first().click();
+			await page.locator('#brc-badge-select').selectOption('aurora_pilot');
 			await page.locator('#brc-price').fill('500');
 			await page.locator('#brc-stock').fill('25');
 
@@ -419,9 +416,7 @@ test.describe('Admin Panel — Badges', () => {
 			await page.getByRole('tab', { name: 'Badges' }).click();
 			await expect(page.getByText(/no releases yet/i)).toBeVisible();
 
-			// Open badge picker and select
-			await page.getByRole('button', { name: 'Select badge to release' }).click();
-			await page.locator('.badge-picker .badge-option').first().click();
+			await page.locator('#brc-badge-select').selectOption('aurora_pilot');
 
 			await page.locator('#brc-price').fill('500');
 			await page.getByRole('button', { name: /create release/i }).click();

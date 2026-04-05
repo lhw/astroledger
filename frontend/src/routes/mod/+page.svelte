@@ -15,6 +15,13 @@
 		markPatchNotified
 	} from '$lib/api';
 	import { isModerator } from '$lib/stores/auth';
+	import Alert from '$lib/components/Alert.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
+	import ModPatchesPanel from '$lib/components/mod/ModPatchesPanel.svelte';
+	import ModPendingReviewPanel from '$lib/components/mod/ModPendingReviewPanel.svelte';
+	import ModDeadlinePassedPanel from '$lib/components/mod/ModDeadlinePassedPanel.svelte';
+	import ModReportsPanel from '$lib/components/mod/ModReportsPanel.svelte';
+	import ModResolutionRequestsPanel from '$lib/components/mod/ModResolutionRequestsPanel.svelte';
 	import type { Market, ResolutionRequestMarket, Report, DetectedPatch } from '$lib/types';
 	import { CATEGORY_LABELS } from '$lib/categories';
 	import TabBar from '$lib/components/TabBar.svelte';
@@ -236,76 +243,20 @@
 	</div>
 
 	{#if !$isModerator}
-		<div class="sc-card p-8 text-center">
-			<p class="text-surface-600 text-sm">You must be a moderator to access this page.</p>
-		</div>
+		<EmptyState message="You must be a moderator to access this page." />
 	{:else if loading}
-		<div class="text-surface-400 text-center py-16 text-sm">Loading queue…</div>
+		<EmptyState message="Loading queue…" card={false} padding="py-16" />
 	{:else if error}
-		<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{error}</div>
+		<Alert type="error" message={error} />
 	{:else}
 		{#if actionError}
-			<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">{actionError}</div>
+			<Alert type="error" message={actionError} />
 		{/if}
 		{#if bulkSummary}
-			<div class="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm mb-4">{bulkSummary}</div>
+			<Alert type="success" message={bulkSummary} />
 		{/if}
 
-		<!-- New Patch Detections -->
-		<div class="mb-8">
-			<div class="flex items-center gap-2 mb-3">
-				<h2 class="text-sm font-bold uppercase tracking-[0.15em] text-surface-700">New Patch Detections</h2>
-				{#if unseenPatches.length > 0}
-					<span class="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-bold border border-green-200">
-						{unseenPatches.length} new
-					</span>
-				{/if}
-			</div>
-			{#if patches.length === 0}
-				<div class="sc-card p-5 text-center text-surface-400 text-sm">No patches detected yet — scraper runs every 30 minutes.</div>
-			{:else}
-				<div class="space-y-2">
-					{#each patches as patch}
-						<div class="sc-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3
-							{patch.notified === 0 ? 'border-l-4 border-l-green-400' : 'opacity-60'}">
-							<div class="flex-1 min-w-0">
-								<div class="flex items-center gap-2 flex-wrap">
-									<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-surface-100 text-surface-700 border border-surface-200 font-mono">
-										{patch.patch_version}
-									</span>
-									{#if patch.notified === 0}
-										<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">new</span>
-									{/if}
-								</div>
-								<p class="text-surface-800 text-sm font-medium mt-1">{patch.title}</p>
-								<p class="text-surface-400 text-xs mt-0.5">
-									Detected {new Date(patch.first_seen_at).toLocaleString()}
-								</p>
-							</div>
-							<div class="flex items-center gap-2 shrink-0">
-								<a
-									href={patch.thread_url}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="btn btn-sm border border-surface-300 text-surface-600 hover:border-surface-400 text-xs uppercase tracking-wider"
-								>
-									View Thread
-								</a>
-								{#if patch.notified === 0}
-									<button
-										onclick={() => doMarkSeen(patch.id)}
-										disabled={actingId === patch.id}
-										class="btn btn-sm bg-green-600 hover:bg-green-700 text-white text-xs uppercase tracking-wider"
-									>
-										Mark Seen
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
+		<ModPatchesPanel patches={patches} {unseenPatches} {actingId} onMarkSeen={doMarkSeen} />
 
 		<!-- Filters -->
 		<div class="sc-card p-4 mb-6 space-y-3">
@@ -374,279 +325,53 @@
 
 		<!-- Tab: Pending Review -->
 		{#if activeTab === 'review'}
-			{#if pending.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No markets pending review.</div>
-			{:else if filteredPending.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No pending markets match the current filters.</div>
-			{:else}
-				<div class="mb-3 sc-card p-3 flex flex-wrap items-center justify-between gap-3">
-					<div class="flex items-center gap-3">
-						<label class="inline-flex items-center gap-2 text-xs text-surface-600">
-							<input
-								type="checkbox"
-								checked={filteredPending.length > 0 && selectedPendingCount === filteredPending.length}
-								onchange={toggleAllFilteredPending}
-							/>
-							Select all filtered
-						</label>
-						<span class="text-xs text-surface-500">{selectedPendingCount} selected</span>
-					</div>
-					<div class="flex items-center gap-2">
-						<button
-							onclick={() => doBulkPending('approve')}
-							disabled={selectedPendingCount === 0 || bulkAction !== null || actingId !== null}
-							class="btn btn-sm bg-green-600 hover:bg-green-700 text-white text-xs uppercase tracking-wider disabled:opacity-50"
-						>
-							{bulkAction === 'approve' ? 'Approving…' : 'Bulk Approve'}
-						</button>
-						<button
-							onclick={() => doBulkPending('reject')}
-							disabled={selectedPendingCount === 0 || bulkAction !== null || actingId !== null}
-							class="btn btn-sm bg-red-600 hover:bg-red-700 text-white text-xs uppercase tracking-wider disabled:opacity-50"
-						>
-							{bulkAction === 'reject' ? 'Rejecting…' : 'Bulk Reject'}
-						</button>
-					</div>
-				</div>
-
-				<div class="space-y-3">
-					{#each filteredPending as market}
-						<div class="sc-card p-5">
-							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-2 flex-wrap">
-										<input
-											type="checkbox"
-											checked={Boolean(selectedPending[market.id])}
-											onchange={() => togglePendingSelection(market.id)}
-										/>
-										<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
-									</div>
-									<h2 class="text-surface-800 font-semibold text-base">{market.title}</h2>
-									{#if market.description}
-										<p class="text-surface-600 text-sm mt-1 line-clamp-2">{market.description}</p>
-									{/if}
-									{#if market.resolution_criteria}
-										<p class="text-surface-500 text-xs mt-1 italic">Criteria: {market.resolution_criteria}</p>
-									{/if}
-									<p class="text-surface-400 text-xs mt-2">
-										{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
-									</p>
-									{#if (market.auto_filter_matches?.length ?? 0) > 0}
-										<div class="mt-2 flex flex-wrap items-center gap-1.5">
-											<span class="text-[10px] font-bold uppercase tracking-wider text-amber-700">Auto-filter matches:</span>
-											{#each market.auto_filter_matches ?? [] as match}
-												<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">{match}</span>
-											{/each}
-										</div>
-									{:else}
-										<p class="text-[11px] text-green-700 mt-2">Auto-filter: clean</p>
-									{/if}
-								</div>
-								<div class="flex flex-col gap-2 shrink-0">
-									<button
-										onclick={() => doApprove(market.id)}
-										disabled={actingId === market.id}
-										class="btn btn-sm bg-green-600 hover:bg-green-700 text-white text-xs uppercase tracking-wider"
-									>
-										Approve
-									</button>
-									<button
-										onclick={() => doReject(market.id)}
-										disabled={actingId === market.id}
-										class="btn btn-sm bg-red-600 hover:bg-red-700 text-white text-xs uppercase tracking-wider"
-									>
-										Reject
-									</button>
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			<ModPendingReviewPanel
+				{pending}
+				{filteredPending}
+				{selectedPending}
+				{selectedPendingCount}
+				{actingId}
+				{bulkAction}
+				onTogglePendingSelection={togglePendingSelection}
+				onToggleAllFilteredPending={toggleAllFilteredPending}
+				onApprove={doApprove}
+				onReject={doReject}
+				onBulkPending={doBulkPending}
+			/>
 		{/if}
 
 		<!-- Tab: Deadline Passed -->
 		{#if activeTab === 'deadline_passed'}
-			{#if deadlinePassed.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No deadline-passed markets awaiting resolution.</div>
-			{:else if filteredDeadlinePassed.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No deadline-passed markets match the current filters.</div>
-			{:else}
-				<div class="space-y-3">
-					{#each filteredDeadlinePassed as market}
-						<div class="sc-card p-5 border-l-4 border-l-amber-500 bg-amber-50/20">
-							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-2 flex-wrap">
-										<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
-										<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Deadline Passed</span>
-									</div>
-									<h2 class="text-surface-800 font-semibold text-base">
-										<a href="/markets/{market.id}" class="hover:text-primary-600 transition-colors">{market.title}</a>
-									</h2>
-									{#if market.description}
-										<p class="text-surface-600 text-sm mt-1 line-clamp-2">{market.description}</p>
-									{/if}
-									{#if market.resolution_criteria}
-										<p class="text-surface-500 text-xs mt-1 italic">Criteria: {market.resolution_criteria}</p>
-									{/if}
-									<p class="text-surface-400 text-xs mt-2">
-										{market.creator_name} · closed {new Date(market.resolution_deadline).toLocaleDateString()}
-									</p>
-								</div>
-
-								<div class="flex flex-col gap-2 shrink-0">
-									<input
-										type="url"
-										bind:value={resolveEvidence[market.id]}
-										placeholder="Evidence link (optional)"
-										class="sc-input text-xs w-44"
-									/>
-									{#each (market.outcomes ?? []) as outcome, oi}
-										<button
-											onclick={() => doResolve(market.id, outcome.id)}
-											disabled={actingId === market.id}
-											class="btn btn-sm text-white text-xs uppercase tracking-wider {oi === 0 ? 'bg-green-600 hover:bg-green-700' : oi === 1 ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}"
-										>
-											Resolve {outcome.label}
-										</button>
-									{/each}
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			<ModDeadlinePassedPanel
+				{deadlinePassed}
+				{filteredDeadlinePassed}
+				bind:resolveEvidence
+				{actingId}
+				onResolve={doResolve}
+			/>
 		{/if}
 
 		<!-- Tab: Reports -->
 		{#if activeTab === 'reports'}
-			{#if reports.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No pending reports.</div>
-			{:else if filteredReports.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No reports match the current filters.</div>
-			{:else}
-				<div class="space-y-3">
-					{#each filteredReports as report}
-						<div class="sc-card p-5 border-l-4 border-l-red-400">
-							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-								<div class="flex-1 min-w-0">
-									<p class="text-surface-500 text-xs mb-1">
-										Reported by <span class="font-semibold text-surface-700">{report.reporter_name}</span>
-										&middot; {new Date(report.created_at).toLocaleString()}
-									</p>
-									<p class="text-surface-400 text-[11px] mb-1 uppercase tracking-wider">
-										{CATEGORY_LABELS[report.category] ?? report.category}
-									</p>
-									<h2 class="text-surface-800 font-semibold text-base">
-										<a href="/markets/{report.market_id}" class="hover:text-primary-600 transition-colors">{report.market_title}</a>
-									</h2>
-									<p class="text-surface-600 text-sm mt-2 bg-surface-50 border border-surface-200 rounded p-2 italic">
-										&ldquo;{report.reason}&rdquo;
-									</p>
-								</div>
-								<div class="flex flex-col gap-2 shrink-0">
-									<button
-										onclick={() => doReviewReport(report.id)}
-										disabled={actingId === report.id}
-										class="btn btn-sm bg-red-600 hover:bg-red-700 text-white text-xs uppercase tracking-wider"
-										title="Mark as reviewed — take action on the market separately if needed"
-									>
-										Reviewed
-									</button>
-									<button
-										onclick={() => doDismissReport(report.id)}
-										disabled={actingId === report.id}
-										class="btn btn-sm border border-surface-300 text-surface-600 hover:border-surface-400 text-xs uppercase tracking-wider"
-									>
-										Dismiss
-									</button>
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			<ModReportsPanel
+				{reports}
+				{filteredReports}
+				{actingId}
+				onReview={doReviewReport}
+				onDismiss={doDismissReport}
+			/>
 		{/if}
 
 		<!-- Tab: Resolution Requests -->
 		{#if activeTab === 'resolution'}
-			{#if resolutionRequests.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No resolution requests.</div>
-			{:else if filteredResolutionRequests.length === 0}
-				<div class="sc-card p-8 text-center text-surface-400 text-sm">No resolution requests match the current filters.</div>
-			{:else}
-				<div class="space-y-3">
-					{#each filteredResolutionRequests as rr}
-						<div class="sc-card p-5 border-l-4 border-l-amber-400 bg-amber-50/20">
-							<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-2">
-										<span class="sc-tag">{CATEGORY_LABELS[rr.category] ?? rr.category}</span>
-										<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">Resolution Requested</span>
-									</div>
-									<h2 class="text-surface-800 font-semibold text-base">
-										<a href="/markets/{rr.id}" class="hover:text-primary-600 transition-colors">{rr.title}</a>
-									</h2>
-									{#if rr.resolution_criteria}
-										<p class="text-surface-500 text-xs mt-1 italic">Criteria: {rr.resolution_criteria}</p>
-									{/if}
-									<p class="text-surface-400 text-xs mt-1">
-										Created by {rr.creator_name} · closes {new Date(rr.resolution_deadline).toLocaleDateString()}
-									</p>
-
-									<!-- Requester details -->
-									<div class="mt-3 pt-3 border-t border-amber-100 space-y-1.5">
-										<p class="text-xs text-surface-600">
-											<span class="font-semibold">Requested by:</span> {rr.requester_name}
-											· {new Date(rr.requested_at).toLocaleString()}
-										</p>
-										{#if rr.request_link}
-											<p class="text-xs">
-												<span class="font-semibold text-surface-600">Evidence:</span>
-												<a href={rr.request_link} target="_blank" rel="noopener noreferrer"
-													class="text-primary-600 hover:underline break-all ml-1">{rr.request_link}</a>
-											</p>
-										{/if}
-										{#if rr.request_note}
-											<p class="text-xs text-surface-600">
-												<span class="font-semibold">Note:</span>
-												<span class="ml-1 italic">{rr.request_note}</span>
-											</p>
-										{/if}
-									</div>
-								</div>
-
-								<div class="flex flex-col gap-2 shrink-0">
-									<input
-										type="url"
-										bind:value={resolveEvidence[rr.id]}
-										placeholder="Evidence link (optional)"
-										class="sc-input text-xs w-44"
-									/>
-									{#each (rr.outcomes ?? []) as outcome, oi}
-										<button
-											onclick={() => doResolve(rr.id, outcome.id)}
-											disabled={actingId === rr.id}
-											class="btn btn-sm text-white text-xs uppercase tracking-wider {oi === 0 ? 'bg-green-600 hover:bg-green-700' : oi === 1 ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}"
-										>
-											Resolve {outcome.label}
-										</button>
-									{/each}
-									<button
-										onclick={() => doDenyResolution(rr.id)}
-										disabled={actingId === rr.id}
-										class="btn btn-sm border border-surface-300 text-surface-600 hover:border-surface-400 text-xs uppercase tracking-wider"
-									>
-										Deny
-									</button>
-								</div>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			<ModResolutionRequestsPanel
+				resolutionRequests={resolutionRequests}
+				{filteredResolutionRequests}
+				bind:resolveEvidence
+				{actingId}
+				onResolve={doResolve}
+				onDeny={doDenyResolution}
+			/>
 		{/if}
 	{/if}
 </div>

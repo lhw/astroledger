@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockMe, mockUserData, USER_LOGGED_IN } from './helpers/mock-api';
+import { mockMe, USER_LOGGED_IN } from './helpers/mock-api';
 import type { Page } from '@playwright/test';
 
 /** Mock all API endpoints that /me calls in parallel. */

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getAdmiralRanks } from '$lib/api';
-	import { currentUser, isLoggedIn } from '$lib/stores/auth';
+	import Alert from '$lib/components/Alert.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
+	import { formatSpend } from '$lib/format';
+	import { isLoggedIn } from '$lib/stores/auth';
 	import type { AdmiralRank } from '$lib/types';
 
 	let ranks = $state<AdmiralRank[]>([]);
@@ -48,9 +51,6 @@
 		5: '🌟'
 	};
 
-	function fmtSpend(n: number): string {
-		return n.toLocaleString() + ' bUEC';
-	}
 </script>
 
 <svelte:head>
@@ -68,11 +68,13 @@
 	</div>
 
 	{#if error}
-		<div class="mb-6 px-4 py-3 rounded bg-error-100 border border-error-300 text-error-700 text-sm text-center">{error}</div>
+		<Alert type="error" message={error} />
 	{/if}
 
 	{#if loading}
-		<div class="text-center text-surface-400 py-20 text-sm">Loading ranks…</div>
+		<EmptyState message="Loading ranks…" card={false} padding="py-20" />
+	{:else if ranks.length === 0}
+		<EmptyState message="No admiral ranks are configured yet." />
 	{:else}
 		<!-- Current status card -->
 		<div class="rank-status-card mb-10">
@@ -90,7 +92,7 @@
 					<p class="rank-status-label">Lifetime Spend</p>
 					<p class="rank-status-spend">
 						{#if $isLoggedIn}
-							{fmtSpend(lifetimeSpend)}
+							{formatSpend(lifetimeSpend)}
 						{:else}
 							<a href="/auth/login" class="text-primary-600 hover:underline text-sm">Log in to see your rank</a>
 						{/if}
@@ -113,13 +115,13 @@
 				<div class="flex justify-between text-[10px] text-surface-400 mt-1.5">
 					<span>0</span>
 					{#if nextRank && !currentRank}
-						<span>{fmtSpend(nextRank.spend_threshold)} to reach {nextRank.title}</span>
+						<span>{formatSpend(nextRank.spend_threshold)} to reach {nextRank.title}</span>
 					{:else if nextRank && currentRank}
-						<span>{fmtSpend(nextRank.spend_threshold - lifetimeSpend)} more to {nextRank.title}</span>
+						<span>{formatSpend(nextRank.spend_threshold - lifetimeSpend)} more to {nextRank.title}</span>
 					{:else}
 						<span class="text-primary-600 font-bold">Maximum rank achieved!</span>
 					{/if}
-					<span>{fmtSpend(maxThreshold)}</span>
+					<span>{formatSpend(maxThreshold)}</span>
 				</div>
 			{/if}
 		</div>
@@ -152,7 +154,7 @@
 
 						<!-- Right: threshold -->
 						<div class="rank-threshold">
-							<span class="rank-threshold-amount">{fmtSpend(rank.spend_threshold)}</span>
+							<span class="rank-threshold-amount">{formatSpend(rank.spend_threshold)}</span>
 							<span class="rank-threshold-label">total spend</span>
 						</div>
 					</div>

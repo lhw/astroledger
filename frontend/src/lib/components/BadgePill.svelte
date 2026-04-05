@@ -7,6 +7,8 @@
     <BadgePill tier={5} title="Legend" showCheck />
 -->
 <script lang="ts">
+	import { getBadgeTierSymbol } from '$lib/badges';
+
 	let {
 		tier = 1,
 		title,
@@ -20,13 +22,11 @@
 		showCheck?: boolean;
 		active?: boolean;
 	} = $props();
-
-	const pips: Record<number, string> = { 1: '▲', 2: '●', 3: '◆', 4: '◈', 5: '★' };
 </script>
 
 <span class="badge-pill tier-{tier}" class:badge-pill-active={active}>
 	{#if showPip}
-		<span class="badge-pip">{pips[tier] ?? '●'}</span>
+		<span class="badge-pip">{getBadgeTierSymbol(tier)}</span>
 	{/if}
 	<span class="badge-pill-title">{title}</span>
 	{#if showCheck}

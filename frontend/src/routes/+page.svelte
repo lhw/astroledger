@@ -3,8 +3,9 @@
 	import { listMarkets, getTrendingMarkets } from '$lib/api';
 	import { isLoggedIn } from '$lib/stores/auth';
 	import { loginWithSCID } from '$lib/api';
+	import EmptyState from '$lib/components/EmptyState.svelte';
+	import MarketCard from '$lib/components/MarketCard.svelte';
 	import type { MarketList, TrendingMarket } from '$lib/types';
-	import { CATEGORY_LABELS } from '$lib/categories';
 
 	let { data } = $props<{ data: { featured: MarketList | null; trending: TrendingMarket[] | null } }>();
 
@@ -127,7 +128,7 @@
 				<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">🔥 Trending Now</h2>
 				<div class="flex-1 h-px bg-surface-200 w-16"></div>
 			</div>
-			<div class="text-surface-400 text-center py-4 text-sm">Loading…</div>
+			<EmptyState message="Loading…" card={false} padding="py-4" />
 		</section>
 	{:else if trending && trending.length > 0}
 		<section class="mb-10">
@@ -151,26 +152,9 @@
 				onpointercancel={onPointerUp}
 			>
 				{#each trending as market}
-					{@const outs = market.outcomes ?? []}
-					{@const yesPct = outs.length >= 1 ? outs[0].price : 50}
-					<a
-						href="/markets/{market.id}"
-						class="trending-card snap-start flex-shrink-0 w-56 p-3 rounded-lg border no-underline flex flex-col gap-2 transition-all"
-					>
-						<div>
-							<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
-							<div class="text-surface-800 font-medium text-xs mt-1.5 leading-snug line-clamp-3">{market.title}</div>
-						</div>
-						<div class="mt-auto">
-							<div class="flex justify-between items-center mb-1">
-								<span class="text-[11px] font-bold text-green-600">YES {yesPct}%</span>
-								<span class="text-[10px] text-surface-400">{market.recent_trade_count} trades / 24h</span>
-							</div>
-							<div class="h-1.5 w-full rounded-full bg-red-100 overflow-hidden">
-								<div class="h-full rounded-full bg-green-500 transition-all" style="width: {yesPct}%"></div>
-							</div>
-						</div>
-					</a>
+					<div class="trending-card snap-start flex-shrink-0 w-56">
+						<MarketCard {market} variant="trending" />
+					</div>
 				{/each}
 			</div>
 		</section>
@@ -189,32 +173,13 @@
 		</div>
 
 		{#if loading}
-			<div class="text-surface-400 text-center py-8 text-sm">Loading markets…</div>
+			<EmptyState message="Loading markets…" card={false} padding="py-8" />
 		{:else if !featured || featured.markets.length === 0}
-			<div class="sc-card p-8 text-center">
-				<p class="text-surface-500 text-sm">No active markets yet. Be the first to submit one!</p>
-			</div>
+			<EmptyState message="No active markets yet. Be the first to submit one!" />
 		{:else}
 			<div class="space-y-2">
 				{#each featured.markets.slice(0, 5) as market}
-					<a
-						href="/markets/{market.id}"
-						class="sc-card p-4 flex items-start justify-between gap-4 hover:border-primary-300 hover:shadow-md transition-all no-underline block"
-					>
-						<div class="flex-1 min-w-0">
-							<div class="mb-1.5">
-								<span class="sc-tag">{CATEGORY_LABELS[market.category] ?? market.category}</span>
-							</div>
-							<div class="text-surface-800 font-medium text-sm truncate">{market.title}</div>
-							<div class="text-surface-500 text-xs mt-1">
-								{market.creator_name} · closes {new Date(market.resolution_deadline).toLocaleDateString()}
-							</div>
-						</div>
-						<div class="flex-shrink-0 text-right">
-							<div class="text-primary-600 font-bold text-sm">YES</div>
-							<div class="text-surface-400 text-xs">50%</div>
-						</div>
-					</a>
+					<MarketCard {market} variant="featured" />
 				{/each}
 			</div>
 		{/if}
