@@ -181,6 +181,15 @@ type ReportRow struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+// HasPendingReport returns true if the user already has a pending report for the given market.
+func (q *Queries) HasPendingReport(ctx context.Context, reporterID, marketID int64) (bool, error) {
+	var n int64
+	err := q.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM reports WHERE reporter_id = ? AND market_id = ? AND status = 'pending'`,
+		reporterID, marketID).Scan(&n)
+	return n > 0, err
+}
+
 // CreateReport inserts a new report from a user about a market.
 func (q *Queries) CreateReport(ctx context.Context, reporterID, marketID int64, reason string) (int64, error) {
 	if q.isPG() {
@@ -512,15 +521,44 @@ func (q *Queries) WeeklyPayoutAlreadyRan(ctx context.Context, weekKey string) (b
 }
 
 // RunWeeklyPayout adds WeeklyPayoutAmount bUEC to every user and records the run.
+// The log entry is inserted first (as a distributed mutex via the UNIQUE constraint on
+// week_key); if the insert is a no-op, the payout already ran and we return 0.
 func (q *Queries) RunWeeklyPayout(ctx context.Context, weekKey string) (int64, error) {
+	// Claim the run by inserting the log row first. The UNIQUE constraint on week_key
+	// ensures only one concurrent invocation proceeds; the other sees rowsAffected==0.
+	var logInserted int64
+	if q.isPG() {
+		err := q.db.QueryRowContext(ctx,
+			`INSERT INTO weekly_payout_log (week_key, user_count) VALUES ($1, 0) ON CONFLICT (week_key) DO NOTHING RETURNING 1`,
+			weekKey).Scan(&logInserted)
+		if err == sql.ErrNoRows {
+			// Conflict path — already ran for this week.
+			return 0, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		res, err := q.db.ExecContext(ctx,
+			`INSERT OR IGNORE INTO weekly_payout_log (week_key, user_count) VALUES (?, 0)`, weekKey)
+		if err != nil {
+			return 0, err
+		}
+		logInserted, _ = res.RowsAffected()
+	}
+	if logInserted == 0 {
+		// Already ran for this week.
+		return 0, nil
+	}
+
 	res, err := q.db.ExecContext(ctx, `UPDATE users SET balance = balance + ?`, WeeklyPayoutAmount)
 	if err != nil {
 		return 0, err
 	}
 	count, _ := res.RowsAffected()
+
 	_, err = q.db.ExecContext(ctx,
-		`INSERT INTO weekly_payout_log (week_key, user_count) VALUES (?, ?)`,
-		weekKey, count)
+		`UPDATE weekly_payout_log SET user_count = ? WHERE week_key = ?`, count, weekKey)
 	if err != nil {
 		return 0, err
 	}
@@ -813,17 +851,23 @@ func (q *Queries) ArchiveBadgeRelease(ctx context.Context, id int64) error {
 	return err
 }
 
-// AwardBadgePurchased inserts a purchased badge with the price paid and chosen insurance tier,
-// ignoring duplicates. Insurance must be one of '6w', '120w', 'lti'.
-func (q *Queries) AwardBadgePurchased(ctx context.Context, userID int64, badgeKey string, price int64, insurance string) error {
+// AwardBadgePurchased inserts a purchased badge with the price paid and chosen insurance tier.
+// Returns (rowsInserted, error). rowsInserted==0 means the badge was already owned (conflict);
+// the caller MUST treat this as an error and roll back any preceding balance deduction.
+// Insurance must be one of '6w', '120w', 'lti'.
+func (q *Queries) AwardBadgePurchased(ctx context.Context, userID int64, badgeKey string, price int64, insurance string) (int64, error) {
 	var stmt string
 	if q.isPG() {
 		stmt = `INSERT INTO user_badges (user_id, badge_key, purchase_price, insurance) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 	} else {
 		stmt = `INSERT OR IGNORE INTO user_badges (user_id, badge_key, purchase_price, insurance) VALUES (?, ?, ?, ?)`
 	}
-	_, err := q.db.ExecContext(ctx, stmt, userID, badgeKey, price, insurance)
-	return err
+	res, err := q.db.ExecContext(ctx, stmt, userID, badgeKey, price, insurance)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // GetUserBadgePurchasePrices returns a map of badge_key → purchase_price for all badges owned by a user.

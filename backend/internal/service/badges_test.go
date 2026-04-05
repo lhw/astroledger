@@ -35,10 +35,10 @@ func TestComputeLifetimeSpendUsesRecordedPricesAndFallbackCosts(t *testing.T) {
 	queries, userID := newBadgeServiceTestDB(t)
 	service := NewBadgeService(queries)
 
-	if err := queries.AwardBadgePurchased(ctx, userID, "roadmap_reader", 250, "6w"); err != nil {
+	if _, err := queries.AwardBadgePurchased(ctx, userID, "roadmap_reader", 250, "6w"); err != nil {
 		t.Fatalf("AwardBadgePurchased explicit price: %v", err)
 	}
-	if err := queries.AwardBadgePurchased(ctx, userID, "aurora_pilot", 0, "lti"); err != nil {
+	if _, err := queries.AwardBadgePurchased(ctx, userID, "aurora_pilot", 0, "lti"); err != nil {
 		t.Fatalf("AwardBadgePurchased fallback price: %v", err)
 	}
 	if err := queries.AwardBadgeIfNew(ctx, userID, "first_blood"); err != nil {
@@ -62,7 +62,7 @@ func TestCheckAndAwardAdmiralRanksAwardsUnlockedRank(t *testing.T) {
 	queries, userID := newBadgeServiceTestDB(t)
 	service := NewBadgeService(queries)
 
-	if err := queries.AwardBadgePurchased(ctx, userID, "space_whale", 600, "120w"); err != nil {
+	if _, err := queries.AwardBadgePurchased(ctx, userID, "space_whale", 600, "120w"); err != nil {
 		t.Fatalf("AwardBadgePurchased: %v", err)
 	}
 

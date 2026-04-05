@@ -82,6 +82,12 @@ func (h *BotHandler) authenticateToken(r *http.Request) (*db.GetAPITokenByHashRo
 	}
 
 	_ = h.queries.TouchAPITokenLastUsed(r.Context(), row.ID)
+
+	// Reject bot requests if the token owner is banned.
+	if banStatus, banErr := h.queries.GetUserBanStatus(r.Context(), row.UserID); banErr == nil && banStatus.IsBanned == 1 {
+		return nil, fmt.Errorf("account suspended")
+	}
+
 	return &row, nil
 }
 

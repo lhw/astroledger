@@ -107,7 +107,7 @@ func run() error {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
-	r.Use(middleware.Session(cfg.SessionSecret))
+	r.Use(middleware.Session(cfg.SessionSecret, queries))
 
 	// Auth routes (rate-limited)
 	r.Group(func(r chi.Router) {

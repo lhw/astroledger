@@ -58,6 +58,12 @@ func (h *ModerationHandler) SubmitReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Deduplicate: reject if the user already has a pending report for this market.
+	if hasPending, checkErr := h.queries.HasPendingReport(r.Context(), claims.UserID, body.MarketID); checkErr == nil && hasPending {
+		respondError(w, http.StatusConflict, "you already have a pending report for this market")
+		return
+	}
+
 	id, err := h.queries.CreateReport(r.Context(), claims.UserID, body.MarketID, body.Reason)
 	if err != nil {
 		slog.Error("SubmitReport: CreateReport", "user_id", claims.UserID, "market_id", body.MarketID, "err", err)
@@ -386,9 +392,17 @@ func (h *ModerationHandler) PurchaseBadge(w http.ResponseWriter, r *http.Request
 	}
 
 	// Award badge with purchase price for admiral rank tracking.
-	if err := qTx.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price, body.Insurance); err != nil {
+	// rowsInserted==0 means a concurrent purchase won the race; roll back to avoid double-charging.
+	rowsInserted, err := qTx.AwardBadgePurchased(ctx, claims.UserID, def.Key, release.Price, body.Insurance)
+	if err != nil {
 		slog.Error("PurchaseBadge: AwardBadgePurchased", "user_id", claims.UserID, "badge_key", def.Key, "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	if rowsInserted == 0 {
+		// Race: badge was already inserted by a concurrent request; the deferred Rollback()
+		// will undo the balance deduction from this transaction.
+		respondError(w, http.StatusConflict, "badge already owned")
 		return
 	}
 

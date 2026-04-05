@@ -317,7 +317,7 @@ func (s *MarketService) RequestResolution(ctx context.Context, inp RequestResolu
 	if err != nil {
 		return fmt.Errorf("get position: %w", err)
 	}
-	if pos.Shares == 0 {
+	if pos.Shares < 1 {
 		return ErrForbidden
 	}
 	if err := validateResolutionRequestMetadata(inp.Link, inp.Note); err != nil {

@@ -25,7 +25,9 @@ type Claims struct {
 
 // Session validates the session cookie and stores Claims in the request context.
 // Requests without a valid session proceed unauthenticated (claims will be nil).
-func Session(secret string) func(http.Handler) http.Handler {
+// Banned users have their session cookie cleared and continue as unauthenticated,
+// so the ban takes effect immediately on the next request rather than at next login.
+func Session(secret string, queries *db.Queries) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie("session")
@@ -43,6 +45,13 @@ func Session(secret string) func(http.Handler) http.Handler {
 			})
 			if err != nil {
 				// Invalid or expired token — clear the cookie and continue unauthenticated.
+				http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1, Path: "/"})
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Invalidate the session immediately if the user is banned.
+			if banStatus, banErr := queries.GetUserBanStatus(r.Context(), claims.UserID); banErr == nil && banStatus.IsBanned == 1 {
 				http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1, Path: "/"})
 				next.ServeHTTP(w, r)
 				return
