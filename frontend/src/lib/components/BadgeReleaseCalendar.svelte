@@ -3,7 +3,7 @@
 	import { today, getLocalTimeZone, CalendarDate } from '@internationalized/date';
 	import type { DateValue } from '@internationalized/date';
 	import type { DateRange } from 'bits-ui';
-	import { getBadgeTierLabel } from '$lib/badges';
+	import { getBadgeTierLabel, getBadgeTierSymbol } from '$lib/badges';
 	import type { AdminBadgeRelease, BadgeCatalogEntry } from '$lib/types';
 	import { ApiClientError } from '$lib/api';
 	import AdminBadgeReleaseList from '$lib/components/admin/AdminBadgeReleaseList.svelte';
@@ -88,6 +88,33 @@
 		[...catalog].filter((e) => e.purchasable).sort((a, b) => (a.tier === b.tier ? a.title.localeCompare(b.title) : a.tier - b.tier))
 	);
 
+	// Combobox state for badge search
+	let cfBadgeSearch = $state('');
+	let cfBadgeOpen = $state(false);
+	const cfFilteredCatalog = $derived(
+		cfBadgeSearch.trim()
+			? sortedCatalog.filter(
+					(e) =>
+						e.title.toLowerCase().includes(cfBadgeSearch.toLowerCase()) ||
+						e.key.toLowerCase().includes(cfBadgeSearch.toLowerCase())
+			  )
+			: sortedCatalog
+	);
+
+	function selectBadge(entry: BadgeCatalogEntry) {
+		cfBadgeKey = entry.key;
+		cfBadgeSearch = `T${entry.tier} · ${entry.title}`;
+		cfBadgeOpen = false;
+	}
+
+	function onBadgeSearchInput() {
+		const currentLabel = selectedBadge ? `T${selectedBadge.tier} · ${selectedBadge.title}` : '';
+		if (cfBadgeKey && cfBadgeSearch !== currentLabel) {
+			cfBadgeKey = '';
+		}
+		cfBadgeOpen = true;
+	}
+
 	function stringValue(value: string | number | null | undefined): string {
 		if (value == null) return '';
 		return String(value);
@@ -115,8 +142,8 @@
 				insurance: cfInsurance
 			});
 			releases = [created, ...releases];
-			cfBadgeKey = '';
-			cfPrice = '';
+			cfBadgeKey = '';		cfBadgeSearch = '';
+		cfBadgeOpen = false;			cfPrice = '';
 			cfStock = '';
 			cfReleasedAt = '';
 			cfExpiresAt = '';
@@ -151,19 +178,53 @@
 			<h2 class="text-xs font-bold uppercase tracking-widest text-surface-400">New Release</h2>
 			<p class="text-[11px] text-surface-500">Select a date range on the calendar →, then fill in the details below.</p>
 
-			<!-- Badge selector -->
+			<!-- Badge selector (searchable combobox) -->
 			<div>
-				<label class="block text-[11px] uppercase tracking-wide text-surface-400 mb-1" for="brc-badge-select">Badge</label>
-				<select
-					id="brc-badge-select"
-					bind:value={cfBadgeKey}
-					class="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-sm text-surface-100 focus:border-primary-500 outline-none"
-				>
-					<option value="">— select a badge —</option>
-					{#each sortedCatalog as entry}
-						<option value={entry.key}>T{entry.tier} · {entry.title}</option>
-					{/each}
-				</select>
+				<label class="block text-[11px] uppercase tracking-wide text-surface-400 mb-1" for="brc-badge-search">Badge</label>
+				<div class="relative">
+					<input
+						id="brc-badge-search"
+						type="text"
+						bind:value={cfBadgeSearch}
+						onfocus={() => (cfBadgeOpen = true)}
+						onblur={() => setTimeout(() => { cfBadgeOpen = false; }, 160)}
+						oninput={onBadgeSearchInput}
+						placeholder={selectedBadge ? `T${selectedBadge.tier} · ${selectedBadge.title}` : 'Search by name or key…'}
+						autocomplete="off"
+						class="w-full bg-surface-700 border {cfBadgeKey ? 'border-primary-500' : 'border-surface-600'} rounded-lg px-3 py-2 text-sm text-surface-100 focus:border-primary-500 outline-none"
+					/>
+					{#if cfBadgeKey && !cfBadgeOpen}
+						<button
+							type="button"
+							class="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-100 text-xs px-1"
+							onclick={() => { cfBadgeKey = ''; cfBadgeSearch = ''; }}
+							aria-label="Clear selection"
+						>✕</button>
+					{/if}
+					{#if cfBadgeOpen}
+						<div class="absolute z-30 left-0 right-0 top-full mt-1 bg-surface-800 border border-surface-600 rounded-lg shadow-2xl max-h-56 overflow-y-auto">
+							{#each cfFilteredCatalog as entry (entry.key)}
+								<button
+									type="button"
+									class="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-surface-700 transition-colors border-b border-surface-700/50 last:border-0 {cfBadgeKey === entry.key ? 'bg-primary-900/30' : ''}"
+									onmousedown={() => selectBadge(entry)}
+								>
+									<span class="text-base shrink-0 w-6 text-center opacity-75">{getBadgeTierSymbol(entry.tier)}</span>
+									<div class="min-w-0 flex-1">
+										<div class="text-xs font-semibold text-surface-100 leading-tight">{entry.title}</div>
+										{#if entry.description}
+											<div class="text-[10px] text-surface-400 truncate leading-tight mt-0.5">{entry.description}</div>
+										{/if}
+									</div>
+									<span class="ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-600 text-surface-300">T{entry.tier}</span>
+								</button>
+							{/each}
+							{#if cfFilteredCatalog.length === 0}
+								<p class="px-3 py-3 text-xs text-surface-500 text-center">No badges match "{cfBadgeSearch}"</p>
+							{/if}
+						</div>
+					{/if}
+				</div>
 				{#if selectedBadge}
 					<div class="mt-2 space-y-1">
 						<BadgePill tier={selectedBadge.tier} title={selectedBadge.title} />

@@ -13,6 +13,10 @@
 	let purchasing = $state<string | null>(null);
 	let error = $state('');
 	let successKey = $state<string | null>(null);
+
+	let sortBy = $state<'default' | 'tier' | 'price_asc' | 'price_desc' | 'name'>('default');
+	let affordableOnly = $state(false);
+
 	onMount(async () => {
 		try {
 			badges = await getStoreBadges();
@@ -52,6 +56,25 @@
 		if ($currentUser && $currentUser.balance < badge.cost) return false;
 		return true;
 	}
+
+	const visibleBadges = $derived.by(() => {
+		const user = $currentUser;
+		const filtered =
+			affordableOnly && $isLoggedIn && user
+				? badges.filter(
+						(b) =>
+							!b.owned && !b.expired && !isSoldOut(b) && user.balance >= b.cost
+				  )
+				: badges;
+		if (sortBy === 'default') return [...filtered];
+		return [...filtered].sort((a, b) => {
+			if (sortBy === 'price_asc') return a.cost - b.cost;
+			if (sortBy === 'price_desc') return b.cost - a.cost;
+			if (sortBy === 'name') return a.title.localeCompare(b.title);
+			if (sortBy === 'tier') return a.tier === b.tier ? a.title.localeCompare(b.title) : a.tier - b.tier;
+			return 0;
+		});
+	});
 </script>
 
 <svelte:head>
@@ -83,8 +106,37 @@
 	{:else if badges.length === 0}
 		<EmptyState message="No badges are currently available in the store." />
 	{:else}
+		<!-- Sort + filter controls -->
+		<div class="flex flex-wrap items-center gap-3 mb-6">
+			<div class="flex items-center gap-2">
+				<label for="fomo-sort" class="text-xs uppercase tracking-wider text-surface-500 font-semibold whitespace-nowrap">Sort by</label>
+				<select
+					id="fomo-sort"
+					bind:value={sortBy}
+					class="text-xs border border-surface-200 rounded-lg px-3 py-1.5 bg-white text-surface-700 focus:outline-none focus:border-primary-400 cursor-pointer"
+				>
+					<option value="default">Newest First</option>
+					<option value="tier">By Tier</option>
+					<option value="price_asc">Price: Low → High</option>
+					<option value="price_desc">Price: High → Low</option>
+					<option value="name">Name A–Z</option>
+				</select>
+			</div>
+			{#if $isLoggedIn}
+				<button
+					class="text-xs px-3.5 py-1.5 rounded-full border-2 font-bold uppercase tracking-wider transition-all {affordableOnly ? 'bg-primary-500 border-primary-500 text-white shadow-sm' : 'bg-white border-primary-300 text-primary-600 hover:border-primary-500 hover:bg-primary-50'}"
+					onclick={() => (affordableOnly = !affordableOnly)}
+				>
+					{affordableOnly ? '✓ I Can Afford' : 'I Can Afford'}
+				</button>
+			{/if}
+			{#if visibleBadges.length === 0 && affordableOnly}
+				<span class="text-xs text-surface-400 italic">No affordable badges right now.</span>
+			{/if}
+		</div>
+
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-			{#each badges as badge}
+			{#each visibleBadges as badge (badge.badge_key)}
 				<!-- Badge card — tier determines visual treatment -->
 				<div class="badge-card tier-{badge.tier}" class:owned={badge.owned} class:unavailable={badge.expired || isSoldOut(badge)}>
 
@@ -627,4 +679,19 @@
 :root[data-theme='dark'] .badge-ins-chip.ins-6w { background: #1e0a38; color: #c084fc; border-color: #7e22ce; }
 :root[data-theme='dark'] .badge-ins-chip.ins-120w { background: #200c00; color: #fb923c; border-color: #c2410c; }
 :root[data-theme='dark'] .badge-ins-chip.ins-lti { background: #200808; color: #f87171; border-color: #b91c1c; }
+
+/* ─── Dark mode: sort/filter controls ───────────────────────────────── */
+:root[data-theme='dark'] #fomo-sort {
+	background: #1a1510;
+	border-color: #3a2e20;
+	color: #d4b896;
+}
+:root[data-theme='dark'] .fomo-afford-btn {
+	border-color: #6a4e20;
+	color: #c89040;
+}
+:root[data-theme='dark'] .fomo-afford-btn:hover {
+	border-color: #c89040;
+	background: #1a1000;
+}
 </style>

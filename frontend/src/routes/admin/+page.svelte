@@ -37,9 +37,21 @@
 		}
 	}
 
+	async function refreshCatalog() {
+		try {
+			catalog = await adminGetBadgeCatalog();
+		} catch (_) {
+			// silent failure — stale catalog is preferable to a disruptive error
+		}
+	}
+
 	function switchToBadges() {
 		activeTab = 'badges';
-		if (!catalog.length && !releases.length) loadBadges();
+		if (!catalog.length && !releases.length) {
+			loadBadges();
+		} else {
+			void refreshCatalog();
+		}
 	}
 
 	// API wrappers forwarded into BadgeReleaseCalendar
