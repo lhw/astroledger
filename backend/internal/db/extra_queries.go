@@ -508,6 +508,15 @@ VALUES (?, ?, ?)`
 
 // ─── Patch resolution helpers ─────────────────────────────────────────────────
 
+// GetPatchByID fetches a single detected patch.
+func (q *Queries) GetPatchByID(ctx context.Context, id int64) (DetectedPatch, error) {
+	var p DetectedPatch
+	err := q.db.QueryRowContext(ctx,
+		`SELECT id, title, patch_version, thread_url, first_seen_at, notified FROM detected_patches WHERE id = ?`, id,
+	).Scan(&p.ID, &p.Title, &p.PatchVersion, &p.ThreadUrl, &p.FirstSeenAt, &p.Notified)
+	return p, err
+}
+
 // PatchMarket is a minimal market summary used for patch resolution suggestions.
 type PatchMarket struct {
 	ID    int64  `json:"id"`

@@ -524,7 +524,7 @@ func (h *MarketHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"status": "resolved"})
 }
 
-// RequestResolution lets the market creator ask the mod team to resolve their market.
+// RequestResolution lets the market creator (or any mod/admin) ask the mod team to resolve their market.
 func (h *MarketHandler) RequestResolution(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -544,9 +544,16 @@ func (h *MarketHandler) RequestResolution(w http.ResponseWriter, r *http.Request
 	// Body is optional — ignore decode errors (no body is fine).
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
+	// Mods and admins may queue any active market for resolution without holding shares.
+	var isMod bool
+	if u, err := h.queries.GetUserByID(r.Context(), claims.UserID); err == nil {
+		isMod = u.IsModerator == 1 || u.IsAdmin == 1
+	}
+
 	if err := h.svc.RequestResolution(r.Context(), service.RequestResolutionInput{
 		MarketID: id,
 		CallerID: claims.UserID,
+		IsMod:    isMod,
 		Link:     body.Link,
 		Note:     body.Note,
 	}); errors.Is(err, service.ErrNotFound) {

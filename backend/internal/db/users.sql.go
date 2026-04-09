@@ -233,6 +233,11 @@ ORDER BY display_name
 LIMIT 10
 `
 
+type SearchUsersParams struct {
+	DisplayName string  `json:"display_name"`
+	RsiHandle   *string `json:"rsi_handle"`
+}
+
 type SearchUsersRow struct {
 	ID             int64   `json:"id"`
 	DisplayName    string  `json:"display_name"`
@@ -242,8 +247,8 @@ type SearchUsersRow struct {
 	IsShadowBanned int64   `json:"is_shadow_banned"`
 }
 
-func (q *Queries) SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error) {
-	rows, err := q.db.QueryContext(ctx, searchUsers, pattern, pattern)
+func (q *Queries) SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchUsers, arg.DisplayName, arg.RsiHandle)
 	if err != nil {
 		return nil, err
 	}

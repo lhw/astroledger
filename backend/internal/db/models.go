@@ -38,6 +38,18 @@ type AutofilterRule struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type BadgeDefinition struct {
+	ID          int64  `json:"id"`
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tier        int64  `json:"tier"`
+	Icon        string `json:"icon"`
+	IsHardcoded int64  `json:"is_hardcoded"`
+	CreatedAt   string `json:"created_at"`
+	Insurance   string `json:"insurance"`
+}
+
 type BadgeRelease struct {
 	ID         int64   `json:"id"`
 	BadgeKey   string  `json:"badge_key"`
@@ -48,6 +60,7 @@ type BadgeRelease struct {
 	Active     int64   `json:"active"`
 	Notes      *string `json:"notes"`
 	CreatedAt  string  `json:"created_at"`
+	Insurance  string  `json:"insurance"`
 }
 
 type Comment struct {
@@ -168,9 +181,9 @@ type User struct {
 	RsiCitizenRecord *string   `json:"rsi_citizen_record"`
 	AvatarUrl        *string   `json:"avatar_url"`
 	IsRsiVerified    int64     `json:"is_rsi_verified"`
+	ActiveBadgeKey   string    `json:"active_badge_key"`
 	IsBanned         int64     `json:"is_banned"`
 	IsShadowBanned   int64     `json:"is_shadow_banned"`
-	ActiveBadgeKey   string    `json:"active_badge_key"`
 }
 
 type UserBadge struct {
@@ -179,6 +192,7 @@ type UserBadge struct {
 	BadgeKey      string    `json:"badge_key"`
 	AwardedAt     time.Time `json:"awarded_at"`
 	PurchasePrice int64     `json:"purchase_price"`
+	Insurance     string    `json:"insurance"`
 }
 
 type WeeklyPayoutLog struct {

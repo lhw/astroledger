@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { getMarket, executeTrade, requestResolution, getMarketPriceHistory, submitReport, getMe, getComments, postComment, deleteComment } from '$lib/api';
-	import { currentUser, isLoggedIn } from '$lib/stores/auth';
+	import { currentUser, isLoggedIn, isModerator } from '$lib/stores/auth';
 	import { buyCost, sellRevenue, maxAffordable } from '$lib/amm';
 	import MarketOverviewColumn from '$lib/components/markets/MarketOverviewColumn.svelte';
 	import MarketTradeSidebar from '$lib/components/markets/MarketTradeSidebar.svelte';
@@ -265,7 +265,7 @@
 	{:else if data_}
 		{@const market = data_.market}
 		{@const myPositions = data_.my_positions ?? []}
-		{@const hasPosition = myPositions.some((p) => p.shares > 0)}
+		{@const hasPosition = myPositions.some((p) => p.shares > 0) || $isModerator}
 
 		<!-- Header -->
 		<div class="mb-8">

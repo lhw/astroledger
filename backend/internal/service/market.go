@@ -294,6 +294,7 @@ var ErrRejected = errors.New("market rejected by auto-filter")
 type RequestResolutionInput struct {
 	MarketID int64
 	CallerID int64
+	IsMod    bool // when true the shares requirement is waived
 	Link     string
 	Note     string
 }
@@ -312,13 +313,15 @@ func (s *MarketService) RequestResolution(ctx context.Context, inp RequestResolu
 	if market.Status != "active" {
 		return fmt.Errorf("market must be active to request resolution (status: %s)", market.Status)
 	}
-	// Require the caller to have a position in the market.
-	pos, err := s.queries.GetUserPositionOrZero(ctx, inp.CallerID, inp.MarketID)
-	if err != nil {
-		return fmt.Errorf("get position: %w", err)
-	}
-	if pos.Shares < 1 {
-		return ErrForbidden
+	// Require the caller to have a position in the market (waived for mods).
+	if !inp.IsMod {
+		pos, err := s.queries.GetUserPositionOrZero(ctx, inp.CallerID, inp.MarketID)
+		if err != nil {
+			return fmt.Errorf("get position: %w", err)
+		}
+		if pos.Shares < 1 {
+			return ErrForbidden
+		}
 	}
 	if err := validateResolutionRequestMetadata(inp.Link, inp.Note); err != nil {
 		return err

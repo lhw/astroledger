@@ -52,7 +52,8 @@ func (h *PatchHandler) List(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"patches": result})
 }
 
-// MarkNotified marks a patch as seen by a moderator.
+// MarkNotified marks a patch as seen by a moderator and queues any related
+// active markets for resolution.
 // POST /api/mod/patches/:id/notify
 func (h *PatchHandler) MarkNotified(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
@@ -66,10 +67,19 @@ func (h *PatchHandler) MarkNotified(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+
+	// Fetch the patch so we can look up related markets.
+	patch, err := h.queries.GetPatchByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "patch not found")
+		return
+	}
+
 	if err := h.queries.MarkPatchNotified(r.Context(), id); err != nil {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
+
 	note := "marked patch notification as seen"
 	if err := h.queries.LogModAudit(r.Context(), db.LogModAuditParams{
 		ActionType: "patch_mark_seen",
@@ -80,5 +90,30 @@ func (h *PatchHandler) MarkNotified(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		slog.Warn("mod audit log failed", "action", "patch_mark_seen", "patch_id", id, "mod_id", claims.UserID, "err", err)
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"ok": true})
+
+	// Queue related active markets for resolution.
+	related, err := h.queries.ListActiveMarketsForPatch(r.Context(), patch.PatchVersion)
+	if err != nil {
+		slog.Warn("patch mark-seen: failed to list related markets", "patch_id", id, "err", err)
+	}
+	queued := 0
+	for _, m := range related {
+		if err := h.queries.UpdateMarketStatus(r.Context(), db.UpdateMarketStatusParams{
+			Status: "resolution_requested",
+			ID:     m.ID,
+		}); err != nil {
+			slog.Warn("patch mark-seen: failed to queue market", "market_id", m.ID, "err", err)
+			continue
+		}
+		patchNote := "Auto-queued: patch " + patch.PatchVersion + " marked as seen"
+		if err := h.queries.UpsertResolutionRequestDetails(r.Context(), m.ID, claims.UserID, nil, &patchNote); err != nil {
+			slog.Warn("patch mark-seen: failed to store resolution details", "market_id", m.ID, "err", err)
+		}
+		queued++
+	}
+	if queued > 0 {
+		slog.Info("patch mark-seen: queued markets for resolution", "patch_id", id, "patch_version", patch.PatchVersion, "queued", queued)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{"ok": true, "queued_markets": queued})
 }

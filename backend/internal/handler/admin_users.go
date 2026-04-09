@@ -27,7 +27,11 @@ func (h *AdminHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := h.queries.SearchUsers(r.Context(), "%"+q+"%")
+	likePat := "%" + q + "%"
+	results, err := h.queries.SearchUsers(r.Context(), db.SearchUsersParams{
+		DisplayName: likePat,
+		RsiHandle:   &likePat,
+	})
 	if err != nil {
 		slog.Error("admin search users", "err", err)
 		respondError(w, http.StatusInternalServerError, "database error")

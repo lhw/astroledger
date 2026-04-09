@@ -10,7 +10,7 @@ import (
 )
 
 const listAllPatches = `-- name: ListAllPatches :many
-SELECT id, title, patch_version, thread_url, first_seen_at, notified FROM detected_patches ORDER BY first_seen_at DESC LIMIT 50
+SELECT id, title, patch_version, thread_url, first_seen_at, notified FROM detected_patches ORDER BY id DESC LIMIT 50
 `
 
 func (q *Queries) ListAllPatches(ctx context.Context) ([]DetectedPatch, error) {
@@ -44,7 +44,7 @@ func (q *Queries) ListAllPatches(ctx context.Context) ([]DetectedPatch, error) {
 }
 
 const listNewPatches = `-- name: ListNewPatches :many
-SELECT id, title, patch_version, thread_url, first_seen_at, notified FROM detected_patches WHERE notified = 0 ORDER BY first_seen_at DESC
+SELECT id, title, patch_version, thread_url, first_seen_at, notified FROM detected_patches WHERE notified = 0 ORDER BY id DESC
 `
 
 func (q *Queries) ListNewPatches(ctx context.Context) ([]DetectedPatch, error) {

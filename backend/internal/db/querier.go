@@ -48,7 +48,7 @@ type Querier interface {
 	LogAdminAdjustment(ctx context.Context, arg LogAdminAdjustmentParams) error
 	MarkPatchNotified(ctx context.Context, id int64) error
 	RevokeUserAPIToken(ctx context.Context, arg RevokeUserAPITokenParams) (int64, error)
-	SearchUsers(ctx context.Context, pattern string) ([]SearchUsersRow, error)
+	SearchUsers(ctx context.Context, arg SearchUsersParams) ([]SearchUsersRow, error)
 	TouchAPITokenLastUsed(ctx context.Context, id int64) error
 	UpdateMarketStatus(ctx context.Context, arg UpdateMarketStatusParams) error
 	UpdateOutcomeShares(ctx context.Context, arg UpdateOutcomeSharesParams) error
