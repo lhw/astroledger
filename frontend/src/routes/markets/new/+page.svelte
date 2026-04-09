@@ -27,7 +27,7 @@
 
 	const isValid = $derived(
 		title.trim().length > 0 &&
-			(deadlineType === 'date' ? deadlineDate.length > 0 : patchTarget.trim().length > 0) &&
+			(deadlineType === 'date' ? deadlineDate.length > 0 : /^\d+\.\d+\.\d+$/.test(patchTarget.trim())) &&
 			(resolutionType === 'binary' || resolutionThreshold.trim().length > 0)
 	);
 

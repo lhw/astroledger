@@ -11,7 +11,6 @@ require (
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/joho/godotenv v1.5.1
 	github.com/pressly/goose/v3 v3.24.2
-	golang.org/x/net v0.52.0
 	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.36.2
 )
