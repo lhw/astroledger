@@ -21,7 +21,8 @@ func NewPatchHandler(q *db.Queries) *PatchHandler {
 	return &PatchHandler{queries: q}
 }
 
-// List returns all detected patches newest-first.
+// List returns all detected patches newest-first, each enriched with any active
+// markets whose resolution criteria references that patch version.
 // GET /api/patches
 func (h *PatchHandler) List(w http.ResponseWriter, r *http.Request) {
 	patches, err := h.queries.ListAllPatches(r.Context())
@@ -29,7 +30,26 @@ func (h *PatchHandler) List(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "database error")
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"patches": patches})
+
+	type patchWithMarkets struct {
+		db.DetectedPatch
+		RelatedMarkets []db.PatchMarket `json:"related_markets"`
+	}
+
+	result := make([]patchWithMarkets, 0, len(patches))
+	for _, p := range patches {
+		markets, err := h.queries.ListActiveMarketsForPatch(r.Context(), p.PatchVersion)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "database error")
+			return
+		}
+		if markets == nil {
+			markets = []db.PatchMarket{}
+		}
+		result = append(result, patchWithMarkets{DetectedPatch: p, RelatedMarkets: markets})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{"patches": result})
 }
 
 // MarkNotified marks a patch as seen by a moderator.

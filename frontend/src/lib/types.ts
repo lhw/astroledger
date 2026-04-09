@@ -285,7 +285,7 @@ export interface PricePoint {
 	created_at: string;
 }
 
-/** A detected LIVE patch from the RSI Spectrum forum */
+/** A detected LIVE patch from the RSI status page */
 export interface DetectedPatch {
 	id: number;
 	title: string;
@@ -293,6 +293,7 @@ export interface DetectedPatch {
 	thread_url: string;
 	first_seen_at: string;
 	notified: number; // 0 = unseen, 1 = seen by mod
+	related_markets: { id: number; title: string }[];
 }
 
 // ── Analytics (GoatCounter proxy) ────────────────────────────────────────

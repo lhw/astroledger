@@ -271,7 +271,7 @@
 			<Alert type="success" message={bulkSummary} />
 		{/if}
 
-		<ModPatchesPanel patches={patches} {unseenPatches} {actingId} onMarkSeen={doMarkSeen} />
+		<ModPatchesPanel {unseenPatches} {actingId} onMarkSeen={doMarkSeen} />
 
 		<!-- Filters -->
 		<div class="sc-card p-4 mb-6 space-y-3">

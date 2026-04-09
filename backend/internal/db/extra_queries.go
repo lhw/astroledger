@@ -506,6 +506,37 @@ VALUES (?, ?, ?)`
 	return err
 }
 
+// ─── Patch resolution helpers ─────────────────────────────────────────────────
+
+// PatchMarket is a minimal market summary used for patch resolution suggestions.
+type PatchMarket struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+}
+
+// ListActiveMarketsForPatch returns active markets whose resolution_criteria
+// references the given patch version (i.e. starts with "Resolves when patch X.Y.Z ships.").
+func (q *Queries) ListActiveMarketsForPatch(ctx context.Context, patchVersion string) ([]PatchMarket, error) {
+	const stmt = `SELECT id, title FROM markets WHERE status = 'active' AND resolution_criteria LIKE ? ORDER BY created_at ASC`
+	rows, err := q.db.QueryContext(ctx, stmt, "Resolves when patch "+patchVersion+" ships.%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PatchMarket
+	for rows.Next() {
+		var m PatchMarket
+		if err := rows.Scan(&m.ID, &m.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, m)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return items, rows.Err()
+}
+
 // ─── Weekly payout ────────────────────────────────────────────────────────────
 
 // WeeklyPayoutAmount is the number of bUEC awarded to every user in the weekly payout.
