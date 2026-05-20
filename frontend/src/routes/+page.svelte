@@ -18,30 +18,55 @@
 
 	// Trending strip scroll / drag state
 	let trendingEl = $state<HTMLDivElement | null>(null);
-	let isDragging = false;
-	let dragStartX = 0;
-	let scrollStartLeft = 0;
+	let isDown = false;
+	let didDrag = false;
+	let startX = 0;
+	let scrollLeft = 0;
 
 	function onPointerDown(e: PointerEvent) {
 		if (!trendingEl) return;
-		isDragging = true;
-		dragStartX = e.clientX;
-		scrollStartLeft = trendingEl.scrollLeft;
-		trendingEl.setPointerCapture(e.pointerId);
-		trendingEl.style.cursor = 'grabbing';
+		isDown = true;
+		didDrag = false;
+		startX = e.clientX;
+		scrollLeft = trendingEl.scrollLeft;
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (!isDragging || !trendingEl) return;
-		const dx = e.clientX - dragStartX;
-		trendingEl.scrollLeft = scrollStartLeft - dx;
+		if (!isDown || !trendingEl) return;
+		const dx = Math.abs(e.clientX - startX);
+		if (dx > 5) {
+			if (!didDrag) {
+				trendingEl.setPointerCapture(e.pointerId);
+				didDrag = true;
+				trendingEl.style.cursor = 'grabbing';
+			}
+			trendingEl.scrollLeft = scrollLeft - (e.clientX - startX);
+		}
 	}
 
 	function onPointerUp(e: PointerEvent) {
 		if (!trendingEl) return;
-		isDragging = false;
+		isDown = false;
 		trendingEl.style.cursor = 'grab';
-		trendingEl.releasePointerCapture(e.pointerId);
+		if (didDrag) {
+			trendingEl.releasePointerCapture(e.pointerId);
+		}
+	}
+
+	function onPointerCancel(e: PointerEvent) {
+		if (!trendingEl) return;
+		isDown = false;
+		trendingEl.style.cursor = 'grab';
+		if (didDrag) {
+			trendingEl.releasePointerCapture(e.pointerId);
+		}
+	}
+
+	function onClickCapture(e: MouseEvent) {
+		if (didDrag) {
+			e.stopPropagation();
+			e.preventDefault();
+		}
 	}
 
 	function onWheel(e: WheelEvent) {
@@ -73,13 +98,15 @@
 		await Promise.all(fetches);
 	});
 
-	// Non-passive wheel listener so we can call preventDefault to redirect
-	// vertical scroll into horizontal scroll on the trending strip.
 	$effect(() => {
 		const el = trendingEl;
 		if (!el) return;
 		el.addEventListener('wheel', onWheel, { passive: false });
-		return () => el.removeEventListener('wheel', onWheel);
+		el.addEventListener('click', onClickCapture, { capture: true });
+		return () => {
+			el.removeEventListener('wheel', onWheel);
+			el.removeEventListener('click', onClickCapture, { capture: true });
+		};
 	});
 </script>
 
@@ -148,8 +175,8 @@
 				class="trending-strip flex gap-3 snap-x"
 				onpointerdown={onPointerDown}
 				onpointermove={onPointerMove}
-				onpointerup={onPointerUp}
-				onpointercancel={onPointerUp}
+			onpointerup={onPointerUp}
+			onpointercancel={onPointerCancel}
 			>
 				{#each trending as market}
 					<div class="trending-card snap-start flex-shrink-0 w-56">
