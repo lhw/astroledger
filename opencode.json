@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "astroledger": {
+      "type": "local",
+      "command": ["go", "run", "./cmd/mcp"],
+      "cwd": "backend",
+      "env": {
+        "ASTROLEDGER_BOT_TOKEN": "smt_8PK7WgeMbhql5o7dwKPJzzlL3BaVpIV-2VQBqS7yLHo",
+        "ASTROLEDGER_API_URL": "https://astroledger.de"
+      }
+    }
+  },
+  "agent": {
+    "market-creator": {
+      "description": "Creates prediction markets for Star Citizen by fetching trending posts and comments from r/starcitizen via Redlib. Analyzes community sentiment, identifies bettable topics, and creates well-formatted markets.",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-6",
+      "permission": {
+        "bash": {
+          "curl *red.lhw.one*": "allow",
+          "*": "ask"
+        }
+      }
+    }
+  }
+}
