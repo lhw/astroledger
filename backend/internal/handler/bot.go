@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -438,6 +439,94 @@ func (h *BotHandler) CreateMarket(w http.ResponseWriter, r *http.Request) {
 		"title":  market.Title,
 		"status": market.Status,
 	})
+}
+
+// ListPendingMarkets returns markets awaiting moderation review (requires mod/admin).
+func (h *BotHandler) ListPendingMarkets(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "list_pending", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if h.requireMod(tokenRow.UserID) != nil {
+		respondError(w, http.StatusForbidden, "moderator or admin role required")
+		return
+	}
+
+	markets, err := h.queries.ListPendingMarkets(r.Context())
+	if err != nil {
+		slog.Error("bot: ListPendingMarkets", "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	respondJSON(w, http.StatusOK, markets)
+}
+
+// ApproveMarket approves a pending market (requires mod/admin).
+func (h *BotHandler) ApproveMarket(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "approve_market", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if h.requireMod(tokenRow.UserID) != nil {
+		respondError(w, http.StatusForbidden, "moderator or admin role required")
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid market id")
+		return
+	}
+
+	if err := h.marketSvc.ApproveMarket(r.Context(), id, tokenRow.UserID); err != nil {
+		slog.Warn("bot approve failed", "user_id", tokenRow.UserID, "market_id", id, "err", err)
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "approved"})
+}
+
+// RejectMarket rejects a pending market (requires mod/admin).
+func (h *BotHandler) RejectMarket(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "reject_market", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if h.requireMod(tokenRow.UserID) != nil {
+		respondError(w, http.StatusForbidden, "moderator or admin role required")
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid market id")
+		return
+	}
+
+	if err := h.marketSvc.RejectMarket(r.Context(), id, tokenRow.UserID); err != nil {
+		slog.Warn("bot reject failed", "user_id", tokenRow.UserID, "market_id", id, "err", err)
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
+}
+
+// requireMod checks if the user has moderator or admin role. Returns error if not.
+func (h *BotHandler) requireMod(userID int64) error {
+	user, err := h.queries.GetUserByID(context.Background(), userID)
+	if err != nil {
+		return fmt.Errorf("database error")
+	}
+	if user.IsModerator != 1 && user.IsAdmin != 1 {
+		return fmt.Errorf("moderator or admin role required")
+	}
+	return nil
 }
 
 func boolToInt64(v bool) int64 {

@@ -206,6 +206,9 @@ func run() error {
 			r.Get("/bot/me", botH.Me)
 			r.Post("/bot/trades", botH.Trade)
 			r.Post("/bot/markets", botH.CreateMarket)
+			r.Get("/bot/mod/markets", botH.ListPendingMarkets)
+			r.Post("/bot/mod/markets/{id}/approve", botH.ApproveMarket)
+			r.Post("/bot/mod/markets/{id}/reject", botH.RejectMarket)
 		})
 
 		// Comment submission (rate-limited to 10/min)

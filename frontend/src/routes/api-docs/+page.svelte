@@ -58,6 +58,33 @@
   }`}'</pre>
 			</div>
 
+			<div class="border-t border-surface-200 pt-6 mt-6">
+				<h3 class="text-sm font-bold text-surface-800 mb-2">Moderation Endpoints</h3>
+				<p class="text-xs text-surface-600 mb-4">All require mod/admin role.</p>
+
+				<div class="space-y-4">
+					<div>
+						<h4 class="text-xs font-bold text-surface-700 mb-1">GET /api/bot/mod/markets</h4>
+						<p class="text-xs text-surface-600 mb-1">List all pending markets awaiting review.</p>
+						<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -H "Authorization: Bearer $TOKEN" https://astroledger.de/api/bot/mod/markets</pre>
+					</div>
+
+					<div>
+						<h4 class="text-xs font-bold text-surface-700 mb-1">POST /api/bot/mod/markets/{`{id}`}/approve</h4>
+						<p class="text-xs text-surface-600 mb-1">Approve a pending market (moves to active).</p>
+						<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -X POST https://astroledger.de/api/bot/mod/markets/10/approve \
+  -H "Authorization: Bearer $TOKEN"</pre>
+					</div>
+
+					<div>
+						<h4 class="text-xs font-bold text-surface-700 mb-1">POST /api/bot/mod/markets/{`{id}`}/reject</h4>
+						<p class="text-xs text-surface-600 mb-1">Reject a pending market (moves to cancelled).</p>
+						<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -X POST https://astroledger.de/api/bot/mod/markets/10/reject \
+  -H "Authorization: Bearer $TOKEN"</pre>
+					</div>
+				</div>
+			</div>
+
 			<div>
 				<h3 class="text-sm font-bold text-surface-800 mb-2">Token Scopes</h3>
 				<table class="w-full text-xs text-surface-600">
@@ -76,10 +103,13 @@
 							<td class="py-1"><code class="bg-surface-100 px-1 rounded">can_trade</code></td>
 							<td class="py-1"><code class="bg-surface-100 px-1 rounded">POST /api/bot/trades</code></td>
 						</tr>
-						<tr>
-							<td class="py-1"><code class="bg-surface-100 px-1 rounded">can_create_markets</code></td>
-							<td class="py-1"><code class="bg-surface-100 px-1 rounded">POST /api/bot/markets</code> (mod/admin only)</td>
-						</tr>
+					<tr>
+						<td class="py-1"><code class="bg-surface-100 px-1 rounded">can_create_markets</code></td>
+						<td class="py-1"><code class="bg-surface-100 px-1 rounded">POST /api/bot/markets</code> (mod/admin only)</td>
+					</tr>
+					<tr>
+						<td class="py-1" colspan="2"><span class="text-surface-400">Moderation endpoints require mod/admin role (no separate scope)</span></td>
+					</tr>
 					</tbody>
 				</table>
 			</div>

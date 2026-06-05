@@ -166,6 +166,95 @@ paths:
         '403':
           description: Token missing create_markets scope or user is not mod/admin
 
+  /api/bot/mod/markets:
+    get:
+      summary: List pending markets
+      description: Returns all markets in `pending_review` status. Requires moderator or admin role.
+      tags: [Moderation]
+      operationId: listPendingMarkets
+      responses:
+        '200':
+          description: List of pending markets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    title:
+                      type: string
+                    status:
+                      type: string
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: User is not mod/admin
+
+  /api/bot/mod/markets/{id}/approve:
+    post:
+      summary: Approve a pending market
+      description: Approves a market from `pending_review` to `active` status. Requires moderator or admin role.
+      tags: [Moderation]
+      operationId: approveMarket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Market ID
+      responses:
+        '200':
+          description: Market approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: approved
+        '400':
+          description: Market not found or not in pending_review status
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: User is not mod/admin
+
+  /api/bot/mod/markets/{id}/reject:
+    post:
+      summary: Reject a pending market
+      description: Rejects a market from `pending_review` to `cancelled` status. Requires moderator or admin role.
+      tags: [Moderation]
+      operationId: rejectMarket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Market ID
+      responses:
+        '200':
+          description: Market rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: rejected
+        '400':
+          description: Market not found or not in pending_review status
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: User is not mod/admin
+
 components:
   securitySchemes:
     bearerAuth:
