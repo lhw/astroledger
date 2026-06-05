@@ -7,6 +7,7 @@
 		botError,
 		botName = $bindable(),
 		botCanTrade = $bindable(),
+		botCanCreateMarkets = $bindable(),
 		createdTokenValue,
 		botTokens,
 		onCreateToken,
@@ -18,6 +19,7 @@
 		botError: string;
 		botName: string;
 		botCanTrade: boolean;
+		botCanCreateMarkets: boolean;
 		createdTokenValue: string;
 		botTokens: BotApiToken[];
 		onCreateToken: () => Promise<void>;
@@ -29,9 +31,10 @@
 <section class="mb-8">
 	<div class="flex items-center justify-between mb-2">
 		<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">Bot API Tokens</h2>
+		<a href="/api-docs" target="_blank" rel="noopener noreferrer" class="text-[10px] text-surface-500 hover:text-primary-500 uppercase tracking-wider">API Docs ↗</a>
 	</div>
 	<p class="text-[11px] text-surface-500 mb-3">
-		Create scoped tokens for read/trade bot access. Tokens are shown once at creation.
+		Create scoped tokens for bot access. Tokens are shown once at creation.
 	</p>
 
 	<div class="sc-card p-4 mb-3 space-y-3">
@@ -43,6 +46,12 @@
 		<label class="flex items-center gap-2 text-sm text-surface-600">
 			<input type="checkbox" bind:checked={botCanTrade} />
 			Allow trading scope
+		</label>
+
+		<label class="flex items-center gap-2 text-sm text-surface-600">
+			<input type="checkbox" bind:checked={botCanCreateMarkets} />
+			Allow market creation scope
+			<span class="text-[10px] text-surface-400">(mod/admin only)</span>
 		</label>
 
 		<div class="flex items-center gap-2">
@@ -76,7 +85,14 @@
 						<p class="text-sm font-semibold text-surface-800 truncate">{token.name}</p>
 						<p class="text-[11px] text-surface-500 font-mono">{token.token_prefix}...</p>
 						<p class="text-[11px] text-surface-500 mt-1">
-							{token.can_trade ? 'read + trade' : 'read only'} · created {new Date(token.created_at).toLocaleDateString()}
+							{#if token.can_create_markets}
+								read + trade + create markets
+							{:else if token.can_trade}
+								read + trade
+							{:else}
+								read only
+							{/if}
+							· created {new Date(token.created_at).toLocaleDateString()}
 							{#if token.last_used_at} · used {new Date(token.last_used_at).toLocaleDateString()}{/if}
 						</p>
 					</div>

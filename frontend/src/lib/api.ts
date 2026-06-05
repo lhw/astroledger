@@ -424,6 +424,7 @@ export async function createBotToken(body: {
 	name: string;
 	can_read?: boolean;
 	can_trade: boolean;
+	can_create_markets: boolean;
 }): Promise<BotApiTokenCreateResponse> {
 	return request<BotApiTokenCreateResponse>('/api/bot/tokens', {
 		method: 'POST',

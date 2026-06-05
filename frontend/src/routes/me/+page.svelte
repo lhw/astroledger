@@ -33,6 +33,7 @@
 	let botError = $state('');
 	let botName = $state('');
 	let botCanTrade = $state(true);
+	let botCanCreateMarkets = $state(false);
 	let createdTokenValue = $state('');
 	let error = $state('');
 
@@ -130,10 +131,11 @@
 
 		botCreateLoading = true;
 		try {
-			const created = await createBotToken({
-				name,
-				can_trade: botCanTrade
-			});
+		const created = await createBotToken({
+			name,
+			can_trade: botCanTrade,
+			can_create_markets: botCanCreateMarkets
+		});
 			createdTokenValue = created.token;
 			botName = '';
 			botTokens = await listBotTokens();
@@ -203,6 +205,7 @@
 			{botError}
 			bind:botName
 			bind:botCanTrade
+			bind:botCanCreateMarkets
 			{createdTokenValue}
 			{botTokens}
 			onCreateToken={createToken}
