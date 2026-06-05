@@ -44,6 +44,20 @@ tasks:
       - mkdir -p bin
       - go build -ldflags="-s -w" -o {{.BINARY}} ./cmd/server
 
+  build:mcp:
+    desc: Build the MCP server binary
+    cmds:
+      - mkdir -p bin
+      - go build -ldflags="-s -w" -o bin/astroledger-mcp ./cmd/mcp
+
+  run:mcp:
+    desc: Run the MCP server (for testing)
+    cmds:
+      - go run ./cmd/mcp
+    env:
+      ASTROLEDGER_BOT_TOKEN: '{{.ASTROLEDGER_BOT_TOKEN | default ""}}'
+      ASTROLEDGER_API_URL: '{{.ASTROLEDGER_API_URL | default "https://astroledger.de"}}'
+
   test:
     desc: Run all tests
     cmds:
