@@ -7,9 +7,9 @@
 	<h1 class="text-3xl font-bold text-surface-900 tracking-tight mb-2">Bot API</h1>
 	<div class="w-10 h-px bg-primary-400 mb-6"></div>
 	<p class="text-surface-600 mb-10 max-w-xl">
-		AstroLedger exposes a small HTTP API so you can read market data and place trades
-		programmatically. All bot endpoints live under <code>/api/bot/</code> and are
-		authenticated with a Bearer token you generate on your <a href="/me" class="text-primary-600 hover:underline">profile page</a>.
+		AstroLedger exposes a small HTTP API so you can read market data, place trades,
+		and manage markets programmatically. Bot tokens work on all existing endpoints —
+		generate one on your <a href="/me" class="text-primary-600 hover:underline">profile page</a>.
 	</p>
 
 	<!-- Authentication -->
@@ -20,7 +20,7 @@
 		</p>
 		<pre class="doc-code">Authorization: Bearer smt_&lt;your token&gt;</pre>
 		<p class="doc-body mt-4">
-			Tokens have two optional scopes that you set when you create them:
+			Tokens have optional scopes that you set when you create them:
 		</p>
 		<div class="overflow-x-auto mt-3">
 			<table class="doc-table">
@@ -28,11 +28,17 @@
 					<tr><th>Scope</th><th>Grants</th></tr>
 				</thead>
 				<tbody>
-					<tr><td><code>read</code></td><td>Read your account info. Enabled by default.</td></tr>
-					<tr><td><code>trade</code></td><td>Place buy/sell orders. Implies <code>read</code>.</td></tr>
+					<tr><td><code>read</code></td><td>Read account info and market data. Enabled by default.</td></tr>
+					<tr><td><code>trade</code></td><td>Place buy/sell orders via <code>POST /api/trades</code>.</td></tr>
+					<tr><td><code>create_markets</code></td><td>Create new markets via <code>POST /api/markets</code>. Mod/admin only.</td></tr>
 				</tbody>
 			</table>
 		</div>
+		<p class="doc-body mt-4">
+			Bot tokens work on the same endpoints as the web app — session cookies and
+			Bearer tokens are interchangeable. Session auth has full access; bot tokens
+			are restricted to their granted scopes.
+		</p>
 	</section>
 
 	<!-- Rate limits -->
@@ -47,8 +53,9 @@
 					<tr><th>Endpoint</th><th>Limit</th></tr>
 				</thead>
 				<tbody>
-					<tr><td><code>GET /api/bot/me</code></td><td>60 req / min</td></tr>
-					<tr><td><code>POST /api/bot/trades</code></td><td>60 req / min</td></tr>
+					<tr><td><code>GET /api/me</code></td><td>60 req / min</td></tr>
+					<tr><td><code>POST /api/trades</code></td><td>30 req / min</td></tr>
+					<tr><td><code>POST /api/markets</code></td><td>5 req / min</td></tr>
 				</tbody>
 			</table>
 		</div>
@@ -63,11 +70,11 @@
 		<pre class="doc-code">{`{ "error": "token missing trade scope" }`}</pre>
 	</section>
 
-	<!-- GET /api/bot/me -->
+	<!-- GET /api/me -->
 	<section class="mb-10">
 		<div class="flex items-center gap-3 mb-3">
 			<span class="method-badge method-get">GET</span>
-			<h3 class="font-mono text-sm font-semibold text-surface-800">/api/bot/me</h3>
+			<h3 class="font-mono text-sm font-semibold text-surface-800">/api/me</h3>
 			<span class="scope-badge">read</span>
 		</div>
 		<p class="doc-body mb-4">Returns your account balance and display name.</p>
@@ -79,11 +86,11 @@
 }`}</pre>
 	</section>
 
-	<!-- POST /api/bot/trades -->
+	<!-- POST /api/trades -->
 	<section class="mb-10">
 		<div class="flex items-center gap-3 mb-3">
 			<span class="method-badge method-post">POST</span>
-			<h3 class="font-mono text-sm font-semibold text-surface-800">/api/bot/trades</h3>
+			<h3 class="font-mono text-sm font-semibold text-surface-800">/api/trades</h3>
 			<span class="scope-badge scope-trade">trade</span>
 		</div>
 		<p class="doc-body mb-4">
@@ -109,6 +116,39 @@
 			<strong>Tip:</strong> fetch <code>GET /api/markets/&#123;id&#125;</code> first to read the current
 			<code>outcomes[].id</code> and <code>outcomes[].price</code> before submitting a trade.
 		</div>
+	</section>
+
+	<!-- POST /api/markets -->
+	<section class="mb-10">
+		<div class="flex items-center gap-3 mb-3">
+			<span class="method-badge method-post">POST</span>
+			<h3 class="font-mono text-sm font-semibold text-surface-800">/api/markets</h3>
+			<span class="scope-badge scope-create">create_markets</span>
+		</div>
+		<p class="doc-body mb-4">
+			Create a new prediction market. Only moderators and admins can create markets
+			via the bot API. Markets are created in <code>pending_review</code> status.
+		</p>
+		<p class="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-2">Request body</p>
+		<pre class="doc-code">{`{
+  "title":               "Will X happen in patch 4.9?",
+  "description":         "Details about the market...",
+  "category":            "bug_fixes",       // bug_fixes | feature_delivery | patch_timing | community_events | meta
+  "resolution_criteria": "YES if... NO if...",
+  "deadline":            "4.9.0",           // patch version or RFC3339 date
+  "outcomes":            ["YES", "NO"]      // optional, defaults to ["YES", "NO"]
+}`}</pre>
+		<p class="doc-body mt-4">
+			<strong>Deadline formats:</strong> Patch version (e.g., <code>"4.9.0"</code>) sets deadline
+			2 years out and prepends "Resolves when patch X ships." to resolution criteria.
+			RFC3339 dates (e.g., <code>"2026-12-31T23:59:59Z"</code>) set an exact deadline.
+		</p>
+		<p class="text-xs font-semibold uppercase tracking-wider text-surface-500 mt-5 mb-2">Response 201</p>
+		<pre class="doc-code">{`{
+  "id":     17,
+  "title":  "Will X happen in patch 4.9?",
+  "status": "pending_review"
+}`}</pre>
 	</section>
 
 	<!-- Public endpoints -->
@@ -163,13 +203,21 @@
 		<h2 class="doc-heading">Quick example</h2>
 		<p class="doc-body mb-4">Buy 5 YES shares on market 42, outcome 1, using <code>curl</code>:</p>
 		<pre class="doc-code">{`# 1. Check current price
-curl https://astroledger.example.com/api/markets/42
+curl https://astroledger.de/api/markets/42
 
 # 2. Buy shares
-curl -X POST https://astroledger.example.com/api/bot/trades \\
+curl -X POST https://astroledger.de/api/trades \\
   -H "Authorization: Bearer smt_YOUR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"market_id":42,"outcome_id":1,"action":"buy","shares":5}'`}</pre>
+	</section>
+
+	<!-- OpenAPI spec -->
+	<section class="mb-4">
+		<h2 class="doc-heading">OpenAPI spec</h2>
+		<p class="doc-body">
+			<a href="/openapi.yaml" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:underline">Download OpenAPI spec (YAML)</a>
+		</p>
 	</section>
 </div>
 
@@ -179,7 +227,6 @@ curl -X POST https://astroledger.example.com/api/bot/trades \\
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.12em;
-		/* surface-500 is mid-tone in both themes — good for muted section labels */
 		color: var(--color-surface-500);
 		border-bottom: 1px solid var(--color-surface-200);
 		padding-bottom: 0.5rem;
@@ -187,12 +234,10 @@ curl -X POST https://astroledger.example.com/api/bot/trades \\
 	}
 	.doc-body {
 		font-size: 0.875rem;
-		/* --app-text flips correctly: near-black in light, near-white in dark */
 		color: var(--app-text);
 		line-height: 1.65;
 	}
 	.doc-code {
-		/* --card-bg: white in light, oklch(15%) in dark — perfect code-block surface */
 		background: var(--card-bg);
 		color: var(--app-text);
 		border: 1px solid var(--color-surface-200);
@@ -212,7 +257,6 @@ curl -X POST https://astroledger.example.com/api/bot/trades \\
 	.doc-table th {
 		text-align: left;
 		padding: 0.5rem 0.75rem;
-		/* surface-100: warm paper in light, near-black in dark — correct stripe */
 		background: var(--color-surface-100);
 		color: var(--color-surface-500);
 		font-weight: 600;
@@ -265,8 +309,12 @@ curl -X POST https://astroledger.example.com/api/bot/trades \\
 		color: #a16207;
 		border-color: #fde047;
 	}
+	.scope-create {
+		background: #fce7f3;
+		color: #9d174d;
+		border-color: #fbcfe8;
+	}
 
-	/* Only truly hardcoded-color elements need explicit dark overrides */
 	.doc-tip {
 		border: 1px solid #fde047;
 		background: #fef9c3;
@@ -292,5 +340,10 @@ curl -X POST https://astroledger.example.com/api/bot/trades \\
 		background: #422006;
 		color: #fbbf24;
 		border-color: #92400e;
+	}
+	:global(:root[data-theme='dark']) .scope-create {
+		background: #4a1942;
+		color: #f9a8d4;
+		border-color: #9d174d;
 	}
 </style>

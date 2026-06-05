@@ -31,7 +31,7 @@
 <section class="mb-8">
 	<div class="flex items-center justify-between mb-2">
 		<h2 class="text-xs font-bold uppercase tracking-[0.15em] text-surface-600">Bot API Tokens</h2>
-		<a href="/api-docs" target="_blank" rel="noopener noreferrer" class="text-[10px] text-surface-500 hover:text-primary-500 uppercase tracking-wider">API Docs ↗</a>
+		<a href="/docs/api" target="_blank" rel="noopener noreferrer" class="text-[10px] text-surface-500 hover:text-primary-500 uppercase tracking-wider">API Docs ↗</a>
 	</div>
 	<p class="text-[11px] text-surface-500 mb-3">
 		Create scoped tokens for bot access. Tokens are shown once at creation.
