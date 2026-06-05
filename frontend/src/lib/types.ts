@@ -418,6 +418,7 @@ export interface BotApiToken {
 	token_prefix: string;
 	can_read: boolean;
 	can_trade: boolean;
+	can_create_markets: boolean;
 	created_at: string;
 	last_used_at: string | null;
 }

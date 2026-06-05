@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -21,15 +23,16 @@ import (
 	"github.com/lhw/astroledger/internal/service"
 )
 
-// BotHandler manages API tokens and bot-scoped read/trade endpoints.
+// BotHandler manages API tokens and bot-scoped read/trade/create endpoints.
 type BotHandler struct {
-	queries *db.Queries
-	trading *service.TradingService
+	queries   *db.Queries
+	trading   *service.TradingService
+	marketSvc *service.MarketService
 }
 
 // NewBotHandler creates a BotHandler.
-func NewBotHandler(q *db.Queries, trading *service.TradingService) *BotHandler {
-	return &BotHandler{queries: q, trading: trading}
+func NewBotHandler(q *db.Queries, trading *service.TradingService, marketSvc *service.MarketService) *BotHandler {
+	return &BotHandler{queries: q, trading: trading, marketSvc: marketSvc}
 }
 
 func hashToken(token string) string {
@@ -100,9 +103,10 @@ func (h *BotHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name     string `json:"name"`
-		CanRead  *bool  `json:"can_read"`
-		CanTrade bool   `json:"can_trade"`
+		Name             string `json:"name"`
+		CanRead          *bool  `json:"can_read"`
+		CanTrade         bool   `json:"can_trade"`
+		CanCreateMarkets bool   `json:"can_create_markets"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
@@ -122,6 +126,10 @@ func (h *BotHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 	if !canRead && body.CanTrade {
 		canRead = true
 	}
+	// Create markets scope requires read scope.
+	if body.CanCreateMarkets && !canRead {
+		canRead = true
+	}
 
 	rawToken, prefix, err := generateBotToken()
 	if err != nil {
@@ -131,12 +139,13 @@ func (h *BotHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	row, err := h.queries.CreateAPIToken(r.Context(), db.CreateAPITokenParams{
-		UserID:      claims.UserID,
-		Name:        name,
-		TokenHash:   hashToken(rawToken),
-		TokenPrefix: prefix,
-		CanRead:     boolToInt64(canRead),
-		CanTrade:    boolToInt64(body.CanTrade),
+		UserID:           claims.UserID,
+		Name:             name,
+		TokenHash:        hashToken(rawToken),
+		TokenPrefix:      prefix,
+		CanRead:          boolToInt64(canRead),
+		CanTrade:         boolToInt64(body.CanTrade),
+		CanCreateMarkets: boolToInt64(body.CanCreateMarkets),
 	})
 	if err != nil {
 		slog.Error("bot: CreateAPIToken", "user_id", claims.UserID, "name", name, "err", err)
@@ -144,16 +153,17 @@ func (h *BotHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("bot token created", "user_id", claims.UserID, "token_id", row.ID, "name", name, "can_read", canRead, "can_trade", body.CanTrade)
+	slog.Info("bot token created", "user_id", claims.UserID, "token_id", row.ID, "name", name, "can_read", canRead, "can_trade", body.CanTrade, "can_create_markets", body.CanCreateMarkets)
 
 	respondJSON(w, http.StatusCreated, map[string]any{
-		"id":           row.ID,
-		"name":         row.Name,
-		"token_prefix": row.TokenPrefix,
-		"can_read":     row.CanRead == 1,
-		"can_trade":    row.CanTrade == 1,
-		"created_at":   row.CreatedAt,
-		"token":        rawToken,
+		"id":                 row.ID,
+		"name":               row.Name,
+		"token_prefix":       row.TokenPrefix,
+		"can_read":           row.CanRead == 1,
+		"can_trade":          row.CanTrade == 1,
+		"can_create_markets": row.CanCreateMarkets == 1,
+		"created_at":         row.CreatedAt,
+		"token":              rawToken,
 	})
 }
 
@@ -175,13 +185,14 @@ func (h *BotHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, map[string]any{
-			"id":           row.ID,
-			"name":         row.Name,
-			"token_prefix": row.TokenPrefix,
-			"can_read":     row.CanRead == 1,
-			"can_trade":    row.CanTrade == 1,
-			"created_at":   row.CreatedAt,
-			"last_used_at": row.LastUsedAt,
+			"id":                 row.ID,
+			"name":               row.Name,
+			"token_prefix":       row.TokenPrefix,
+			"can_read":           row.CanRead == 1,
+			"can_trade":          row.CanTrade == 1,
+			"can_create_markets": row.CanCreateMarkets == 1,
+			"created_at":         row.CreatedAt,
+			"last_used_at":       row.LastUsedAt,
 		})
 	}
 
@@ -313,6 +324,120 @@ func (h *BotHandler) Trade(w http.ResponseWriter, r *http.Request) {
 	slog.Info("bot trade executed", "user_id", tokenRow.UserID, "token_id", tokenRow.ID, "market_id", body.MarketID, "action", body.Action, "shares", body.Shares, "cost", result.Cost, "trade_id", result.TradeID)
 
 	respondJSON(w, http.StatusOK, result)
+}
+
+// CreateMarket creates a new market using a bot API token (requires can_create_markets scope).
+// Only moderators and admins can create markets via the bot API.
+func (h *BotHandler) CreateMarket(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "create_market", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if tokenRow.CanCreateMarkets != 1 {
+		respondError(w, http.StatusForbidden, "token missing create_markets scope")
+		return
+	}
+
+	// Only moderators and admins can create markets via bot API.
+	user, err := h.queries.GetUserByID(r.Context(), tokenRow.UserID)
+	if err != nil {
+		slog.Error("bot: CreateMarket: GetUserByID", "user_id", tokenRow.UserID, "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+	if user.IsModerator != 1 && user.IsAdmin != 1 {
+		respondError(w, http.StatusForbidden, "only moderators and admins can create markets via bot API")
+		return
+	}
+
+	var body struct {
+		Title              string   `json:"title"`
+		Description        string   `json:"description"`
+		Category           string   `json:"category"`
+		ResolutionCriteria string   `json:"resolution_criteria"`
+		Deadline           string   `json:"deadline"` // patch version (e.g. "4.9.0") or RFC3339 date
+		Outcomes           []string `json:"outcomes"` // optional; defaults to ["YES", "NO"]
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	// Validate required fields.
+	if strings.TrimSpace(body.Title) == "" {
+		respondError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if strings.TrimSpace(body.Description) == "" {
+		respondError(w, http.StatusBadRequest, "description is required")
+		return
+	}
+	if strings.TrimSpace(body.Category) == "" {
+		respondError(w, http.StatusBadRequest, "category is required")
+		return
+	}
+	if strings.TrimSpace(body.ResolutionCriteria) == "" {
+		respondError(w, http.StatusBadRequest, "resolution_criteria is required")
+		return
+	}
+	if strings.TrimSpace(body.Deadline) == "" {
+		respondError(w, http.StatusBadRequest, "deadline is required")
+		return
+	}
+
+	// Parse deadline: try patch version first, then RFC3339.
+	deadlineStr := strings.TrimSpace(body.Deadline)
+	var deadline time.Time
+	isPatchVersion := false
+
+	if t, err := time.Parse(time.RFC3339, deadlineStr); err == nil {
+		deadline = t
+	} else if matched, _ := regexp.MatchString(`^\d+\.\d+\.\d+$`, deadlineStr); matched {
+		// Patch version — set deadline 2 years out; resolution criteria records the target patch.
+		isPatchVersion = true
+		deadline = time.Now().Add(2 * 365 * 24 * time.Hour)
+	} else {
+		respondError(w, http.StatusBadRequest, "deadline must be an RFC3339 date or patch version (e.g. '4.9.0')")
+		return
+	}
+
+	// Build resolution criteria with patch prefix if needed.
+	resolutionCriteria := strings.TrimSpace(body.ResolutionCriteria)
+	if isPatchVersion {
+		resolutionCriteria = fmt.Sprintf("Resolves when patch %s ships. %s", deadlineStr, resolutionCriteria)
+	}
+
+	// Default to binary YES/NO.
+	outcomes := body.Outcomes
+	if len(outcomes) == 0 {
+		outcomes = []string{"YES", "NO"}
+	}
+
+	// Create the market using the MarketService.
+	market, err := h.marketSvc.CreateMarket(r.Context(), service.CreateMarketInput{
+		Title:              strings.TrimSpace(body.Title),
+		Description:        strings.TrimSpace(body.Description),
+		Category:           strings.TrimSpace(body.Category),
+		ResolutionCriteria: resolutionCriteria,
+		Deadline:           deadline,
+		CreatedBy:          tokenRow.UserID,
+		Outcomes:           outcomes,
+	})
+	if err != nil {
+		slog.Warn("bot create market failed", "user_id", tokenRow.UserID, "token_id", tokenRow.ID, "err", err)
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	slog.Info("bot market created", "user_id", tokenRow.UserID, "token_id", tokenRow.ID, "market_id", market.ID, "title", market.Title)
+
+	respondJSON(w, http.StatusCreated, map[string]any{
+		"id":     market.ID,
+		"title":  market.Title,
+		"status": market.Status,
+	})
 }
 
 func boolToInt64(v bool) int64 {

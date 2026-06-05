@@ -1,4 +1,4 @@
-# AstroLedger — Copilot Instructions
+# AGENTS.md
 
 ## Project Overview
 
@@ -9,6 +9,56 @@ AstroLedger is a satirical prediction market web app for betting fake credits on
 - **Backend:** Go 1.26 with chi router. SQLite database via sqlc (type-safe SQL codegen). OIDC auth via scid.my.
 - **Frontend:** SvelteKit 2 + Svelte 5, Tailwind CSS v4, TypeScript, Vite. RSI-ship-page-inspired light/dark theme with warm gold accents.
 - **Monorepo:** `backend/` and `frontend/` directories at the repo root.
+
+## Bot API
+
+Bot tokens authenticate via `Authorization: Bearer <token>` header.
+
+Available endpoints:
+- `GET /api/bot/me` - Get authenticated user info
+- `POST /api/bot/trades` - Execute buy/sell orders
+- `POST /api/bot/markets` - Create new markets (requires `can_create_markets` scope)
+
+### Creating a Market via Bot API
+
+Only moderators and admins can create markets via the bot API. The token must have `can_create_markets` scope enabled.
+
+```bash
+curl -X POST https://astroledger.de/api/bot/markets \
+  -H "Authorization: Bearer $ASTROLEDGER_BOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Will X happen in patch Y?",
+    "description": "Details about the market...",
+    "category": "bug_fixes",
+    "resolution_criteria": "Resolves when patch Y ships. YES if...",
+    "deadline": "4.9.0",
+    "outcomes": ["YES", "NO"]
+  }'
+```
+
+Valid categories: `bug_fixes`, `feature_delivery`, `patch_timing`, `community_events`, `meta`
+
+### Trading via Bot API
+
+```bash
+curl -X POST https://astroledger.de/api/bot/trades \
+  -H "Authorization: Bearer $ASTROLEDGER_BOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "market_id": 1,
+    "outcome_id": 1,
+    "action": "buy",
+    "shares": 10
+  }'
+```
+
+## Environment Variables
+
+Backend `.env` file contains:
+- `ASTROLEDGER_BOT_TOKEN` - Bot API token for automated operations
+- Standard SCID/OIDC credentials
+- Database configuration
 
 ## Code Conventions
 
@@ -86,7 +136,7 @@ AstroLedger is a satirical prediction market web app for betting fake credits on
 - **Admiral Rank (`/admiral`):** 5 military rank tiers (Ensign → Coin Admiral) awarded by cumulative FOMO store lifetime spend.
 - **RSI Profile:** SCID OIDC claims (`rsi_handle`, `rsi_verified`, `rsi_enlisted`, `rsi_citizen_record`, `picture`) are stored on login and displayed on profiles.
 - **Patch Scraper:** Background job scrapes SC patch notes to auto-detect resolution candidates and surface them to mods.
-- **Bot API:** Scoped API tokens allow community bots to read and trade. Tokens are rate-limited and grant no admin/mod access.
+- **Bot API:** Scoped API tokens allow community bots to read, trade, and create markets. Tokens are rate-limited and grant no admin/mod access.
 - **Analytics:** Goatcounter analytics proxied through `/api/analytics/hit` — no third-party scripts on the frontend.
 
 ## Security Notes

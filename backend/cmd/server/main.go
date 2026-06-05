@@ -89,7 +89,7 @@ func run() error {
 	commentH := handler.NewCommentHandler(commentSvc)
 	adminH := handler.NewAdminHandler(queries, creditsSvc, cfg.GoatCounterURL, cfg.GoatCounterAPIKey, modClient)
 	patchH := handler.NewPatchHandler(queries)
-	botH := handler.NewBotHandler(queries, tradingSvc)
+	botH := handler.NewBotHandler(queries, tradingSvc, marketSvc)
 	analyticsH := handler.NewAnalyticsHandler(cfg.GoatCounterURL, cfg.GoatCounterAPIKey)
 
 	r := chi.NewRouter()
@@ -205,6 +205,7 @@ func run() error {
 			r.Use(httprate.LimitByIP(60, time.Minute))
 			r.Get("/bot/me", botH.Me)
 			r.Post("/bot/trades", botH.Trade)
+			r.Post("/bot/markets", botH.CreateMarket)
 		})
 
 		// Comment submission (rate-limited to 10/min)
