@@ -1,12 +1,11 @@
 # =============================================================================
-# Build and push AstroLedger container image to registry.ring0.de
+# Build and push AstroLedger container images to registry.ring0.de
 # =============================================================================
-# Runs on every push to main and on semver tags (v*).
-# The single image bundles the Go backend + embedded SvelteKit static frontend.
-# Image: registry.ring0.de/lhw/astroledger/backend
+# Natively builds on amd64 + arm64 runners, combines into multi-arch
+# manifests, and pushes to registry.ring0.de/lhw/astroledger/{backend,frontend}.
 #
 # Required secrets (set in Forgejo repository settings → Secrets):
-#   REGISTRY_USERNAME    — registry login (Forgejo username or token name)
+#   REGISTRY_USERNAME    — registry login ("lhw")
 #   REGISTRY_PASSWORD    — registry password or access token
 # =============================================================================
 
@@ -30,15 +29,12 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Single image: Go backend + embedded SvelteKit static frontend
-  # The Dockerfile multi-stage build: Node (frontend) → Go (embed + compile)
+  # Backend (Go + embedded SvelteKit frontend)
   # ---------------------------------------------------------------------------
-  backend:
-    name: Backend (with embedded frontend)
-    runs-on: ubuntu-latest
+  build-backend-amd64:
+    runs-on: ubuntu-latest-amd64
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -50,24 +46,156 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_PREFIX }}/backend
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push
+      - name: Build and push (amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/backend:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}/backend:buildcache,mode=max
+          tags: ${{ env.IMAGE_PREFIX }}/backend:linux-amd64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  build-backend-arm64:
+    runs-on: ubuntu-latest-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/backend:linux-arm64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  manifest-backend:
+    needs: [build-backend-amd64, build-backend-arm64]
+    runs-on: ubuntu-latest-amd64
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Generate tags
+        id: tags
+        run: |
+          TAGS="latest"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            TAGS="$TAGS $VERSION ${VERSION%%.*}"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push multi-arch manifest
+        run: |
+          for TAG in ${{ steps.tags.outputs.tags }}; do
+            docker buildx imagetools create \
+              -t ${{ env.IMAGE_PREFIX }}/backend:$TAG \
+              ${{ env.IMAGE_PREFIX }}/backend:linux-amd64 \
+              ${{ env.IMAGE_PREFIX }}/backend:linux-arm64
+          done
+
+  # ---------------------------------------------------------------------------
+  # Frontend (SvelteKit standalone)
+  # ---------------------------------------------------------------------------
+  build-frontend-amd64:
+    runs-on: ubuntu-latest-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/frontend:linux-amd64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  build-frontend-arm64:
+    runs-on: ubuntu-latest-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/frontend:linux-arm64
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+  manifest-frontend:
+    needs: [build-frontend-amd64, build-frontend-arm64]
+    runs-on: ubuntu-latest-amd64
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Generate tags
+        id: tags
+        run: |
+          TAGS="latest"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            TAGS="$TAGS $VERSION ${VERSION%%.*}"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push multi-arch manifest
+        run: |
+          for TAG in ${{ steps.tags.outputs.tags }}; do
+            docker buildx imagetools create \
+              -t ${{ env.IMAGE_PREFIX }}/frontend:$TAG \
+              ${{ env.IMAGE_PREFIX }}/frontend:linux-amd64 \
+              ${{ env.IMAGE_PREFIX }}/frontend:linux-arm64
+          done
