@@ -21,10 +21,17 @@ func NewTradingHandler(svc *service.TradingService) *TradingHandler {
 }
 
 // Trade handles both buy and sell requests via POST /api/trades.
+// Works with both session cookies and bot tokens (requires can_trade scope for bots).
 func (h *TradingHandler) Trade(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Bot tokens need can_trade scope.
+	if !middleware.RequireScope(r, "trade") {
+		respondError(w, http.StatusForbidden, "token missing trade scope")
 		return
 	}
 

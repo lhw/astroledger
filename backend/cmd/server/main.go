@@ -107,7 +107,7 @@ func run() error {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
-	r.Use(middleware.Session(cfg.SessionSecret, queries))
+	r.Use(middleware.SessionOrToken(cfg.SessionSecret, queries))
 
 	// Auth routes (rate-limited)
 	r.Group(func(r chi.Router) {
@@ -121,10 +121,6 @@ func run() error {
 	// Public API routes
 	r.Route("/api", func(r chi.Router) {
 		// Client-side analytics proxy — no auth, rate-limited to 300/min per IP.
-		// Accepts navigation events from the SvelteKit frontend and forwards
-		// them to GoatCounter internally, bypassing browser extension blocklists.
-		// Higher limit here because in production each real user has a unique IP;
-		// the 60/min ceiling was too low when many Playwright workers share localhost.
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitByIP(300, time.Minute))
 			r.Post("/analytics/hit", analyticsH.Hit)
@@ -135,7 +131,7 @@ func run() error {
 		r.Get("/users/{id}", userH.GetUser)
 		r.Get("/leaderboard", userH.Leaderboard)
 
-		// Authenticated user routes
+		// Authenticated user routes (session OR bot token)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Get("/me/positions", userH.GetUserPositions)
@@ -167,7 +163,7 @@ func run() error {
 		r.Get("/markets/{id}/trades", marketH.GetTrades)
 		r.Get("/markets/{id}/comments", commentH.List)
 
-		// Authenticated market creation (rate-limited to 5/min)
+		// Authenticated market creation (session OR bot token with can_create_markets)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -182,7 +178,7 @@ func run() error {
 			r.Post("/markets/{id}/request-resolution", marketH.RequestResolution)
 		})
 
-		// Trading (rate-limited to 30/min)
+		// Trading (session OR bot token with can_trade)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -200,22 +196,7 @@ func run() error {
 			r.Delete("/bot/tokens/{id}", botH.RevokeToken)
 		})
 
-		// Bot runtime endpoints (token-authenticated via Bearer)
-		r.Group(func(r chi.Router) {
-			r.Use(httprate.LimitByIP(60, time.Minute))
-			r.Get("/bot/me", botH.Me)
-			r.Get("/bot/markets", botH.ListMarkets)
-			r.Get("/bot/markets/{id}", botH.GetMarket)
-			r.Post("/bot/markets", botH.CreateMarket)
-			r.Get("/bot/trades", botH.GetUserTrades)
-			r.Post("/bot/trades", botH.Trade)
-			r.Get("/bot/positions", botH.GetUserPositions)
-			r.Get("/bot/mod/markets", botH.ListPendingMarkets)
-			r.Post("/bot/mod/markets/{id}/approve", botH.ApproveMarket)
-			r.Post("/bot/mod/markets/{id}/reject", botH.RejectMarket)
-		})
-
-		// Comment submission (rate-limited to 10/min)
+		// Comment submission (session OR bot token)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -223,7 +204,7 @@ func run() error {
 			r.Post("/markets/{id}/comments", commentH.Post)
 		})
 
-		// Report submission (rate-limited to 10/min)
+		// Report submission (session OR bot token)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireTrustedOrigin(cfg.CORSAllowedOrigins))
@@ -231,7 +212,7 @@ func run() error {
 			r.Post("/reports", modH.SubmitReport)
 		})
 
-		// Moderation routes (mod-only; includes comment deletion)
+		// Moderation routes (session OR bot token, mod-only)
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth)
 			r.Use(middleware.RequireMod(queries))

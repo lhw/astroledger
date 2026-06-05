@@ -2,9 +2,12 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -60,6 +63,148 @@ func Session(secret string, queries *db.Queries) func(http.Handler) http.Handler
 			ctx := context.WithValue(r.Context(), UserClaimsKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
+	}
+}
+
+// SessionOrToken is like Session but also accepts a Bearer token in the Authorization header.
+// If a session cookie is present, it takes precedence. Otherwise, the Bearer token is validated
+// and the same Claims structure is set in the context. This allows a single handler to work
+// with both browser (session) and API (token) authentication.
+func SessionOrToken(secret string, queries *db.Queries) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Try session cookie first.
+			cookie, err := r.Cookie("session")
+			if err == nil {
+				claims := &Claims{}
+				_, err = jwt.ParseWithClaims(cookie.Value, claims, func(t *jwt.Token) (interface{}, error) {
+					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+					}
+					return []byte(secret), nil
+				})
+				if err == nil {
+					// Invalidate the session immediately if the user is banned.
+					if banStatus, banErr := queries.GetUserBanStatus(r.Context(), claims.UserID); banErr == nil && banStatus.IsBanned == 1 {
+						http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1, Path: "/"})
+					} else {
+						ctx := context.WithValue(r.Context(), UserClaimsKey, claims)
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+				} else {
+					// Invalid or expired token — clear the cookie.
+					http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1, Path: "/"})
+				}
+			}
+
+			// No valid session — try Bearer token.
+			if tokenRow, err := authenticateBearerToken(r, queries); err == nil {
+				claims := &Claims{UserID: tokenRow.UserID}
+				ctx := context.WithValue(r.Context(), UserClaimsKey, claims)
+				botInfo := &BotTokenInfo{
+					TokenID:          tokenRow.ID,
+					UserID:           tokenRow.UserID,
+					CanRead:          tokenRow.CanRead == 1,
+					CanTrade:         tokenRow.CanTrade == 1,
+					CanCreateMarkets: tokenRow.CanCreateMarkets == 1,
+				}
+				ctx = context.WithValue(ctx, BotTokenInfoCtxKey, botInfo)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			// No auth — proceed unauthenticated.
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// authenticateBearerToken parses and validates a Bearer token from the Authorization header.
+func authenticateBearerToken(r *http.Request, queries *db.Queries) (*db.GetAPITokenByHashRow, error) {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if auth == "" {
+		return nil, fmt.Errorf("missing Authorization header")
+	}
+	parts := strings.SplitN(auth, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return nil, fmt.Errorf("Authorization must be Bearer <token>")
+	}
+	token := strings.TrimSpace(parts[1])
+	if token == "" {
+		return nil, fmt.Errorf("empty bearer token")
+	}
+
+	hash := hashTokenString(token)
+	row, err := queries.GetAPITokenByHash(r.Context(), hash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("invalid token")
+		}
+		return nil, fmt.Errorf("token lookup: %w", err)
+	}
+
+	// Check if revoked.
+	if row.RevokedAt != nil {
+		return nil, fmt.Errorf("token revoked")
+	}
+
+	// Touch last_used_at (fire-and-forget).
+	_ = queries.TouchAPITokenLastUsed(r.Context(), row.ID)
+
+	return &row, nil
+}
+
+// hashTokenString computes the SHA-256 hex digest of a token string.
+func hashTokenString(token string) string {
+	digest := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(digest[:])
+}
+
+// BotTokenInfo holds the bot token row when authenticated via Bearer token.
+// Set by SessionOrToken when a bot token is used.
+type BotTokenInfo struct {
+	TokenID          int64
+	UserID           int64
+	CanRead          bool
+	CanTrade         bool
+	CanCreateMarkets bool
+}
+
+type botTokenInfoKey contextKey
+
+const BotTokenInfoCtxKey contextKey = "bot_token_info"
+
+// SetBotTokenInfo stores bot token info in the request context.
+func SetBotTokenInfo(r *http.Request, info *BotTokenInfo) *http.Request {
+	ctx := context.WithValue(r.Context(), BotTokenInfoCtxKey, info)
+	return r.WithContext(ctx)
+}
+
+// GetBotTokenInfo retrieves bot token info from the context. Returns nil if not a bot token request.
+func GetBotTokenInfo(r *http.Request) *BotTokenInfo {
+	v, _ := r.Context().Value(BotTokenInfoCtxKey).(*BotTokenInfo)
+	return v
+}
+
+// RequireScope checks that the current auth has the required scope.
+// For session cookies, this always passes (session users have full access).
+// For bot tokens, it checks the specific scope.
+func RequireScope(r *http.Request, scope string) bool {
+	info := GetBotTokenInfo(r)
+	if info == nil {
+		// Session auth — full access.
+		return true
+	}
+	switch scope {
+	case "read":
+		return info.CanRead
+	case "trade":
+		return info.CanTrade
+	case "create_markets":
+		return info.CanCreateMarkets
+	default:
+		return false
 	}
 }
 

@@ -280,10 +280,17 @@ func (h *MarketHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create submits a new market for moderation review.
+// Works with both session cookies and bot tokens (requires can_create_markets scope for bots).
 func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		respondError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// Bot tokens need can_create_markets scope.
+	if !middleware.RequireScope(r, "create_markets") {
+		respondError(w, http.StatusForbidden, "token missing create_markets scope")
 		return
 	}
 
@@ -292,7 +299,7 @@ func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Description         string   `json:"description"`
 		Category            string   `json:"category"`
 		ResolutionCriteria  string   `json:"resolution_criteria"`
-		Deadline            string   `json:"deadline"`             // RFC3339
+		Deadline            string   `json:"deadline"`             // patch version or RFC3339
 		ResolutionType      string   `json:"resolution_type"`      // binary|date|numeric
 		ResolutionThreshold *string  `json:"resolution_threshold"` // ISO date or numeric value
 		Outcomes            []string `json:"outcomes"`             // optional; defaults to [YES, NO]
@@ -302,17 +309,33 @@ func (h *MarketHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deadline, err := time.Parse(time.RFC3339, body.Deadline)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "deadline must be RFC3339 format")
+	// Parse deadline: try patch version first, then RFC3339.
+	deadlineStr := strings.TrimSpace(body.Deadline)
+	var deadline time.Time
+	isPatchVersion := false
+
+	if t, err := time.Parse(time.RFC3339, deadlineStr); err == nil {
+		deadline = t
+	} else if matched, _ := regexp.MatchString(`^\d+\.\d+\.\d+$`, deadlineStr); matched {
+		// Patch version — set deadline 2 years out; resolution criteria records the target patch.
+		isPatchVersion = true
+		deadline = time.Now().Add(2 * 365 * 24 * time.Hour)
+	} else {
+		respondError(w, http.StatusBadRequest, "deadline must be an RFC3339 date or patch version (e.g. '4.9.0')")
 		return
+	}
+
+	// Build resolution criteria with patch prefix if needed.
+	resolutionCriteria := strings.TrimSpace(body.ResolutionCriteria)
+	if isPatchVersion {
+		resolutionCriteria = fmt.Sprintf("Resolves when patch %s ships. %s", deadlineStr, resolutionCriteria)
 	}
 
 	market, err := h.svc.CreateMarket(r.Context(), service.CreateMarketInput{
 		Title:               body.Title,
 		Description:         body.Description,
 		Category:            body.Category,
-		ResolutionCriteria:  body.ResolutionCriteria,
+		ResolutionCriteria:  resolutionCriteria,
 		Deadline:            deadline,
 		CreatedBy:           claims.UserID,
 		ResolutionType:      body.ResolutionType,
