@@ -1,0 +1,373 @@
+openapi: 3.0.3
+info:
+  title: AstroLedger Bot API
+  description: |
+    API for AstroLedger prediction market bots. Authenticate with a Bearer token.
+    
+    ## Creating a Market
+    
+    Only moderators and admins can create markets via the bot API. The token must have `can_create_markets` scope.
+    
+    Deadlines can be:
+    - A patch version (e.g., `"4.9.0"`) — resolves when that patch ships
+    - An RFC3339 date (e.g., `"2026-12-31T23:59:59Z"`)
+    
+    Valid categories: `bug_fixes`, `feature_delivery`, `patch_timing`, `community_events`, `meta`
+  version: 1.0.0
+  contact:
+    name: AstroLedger
+    url: https://astroledger.de
+
+servers:
+  - url: https://astroledger.de
+    description: Production
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/bot/me:
+    get:
+      summary: Get authenticated user info
+      description: Returns the user ID, display name, and balance for the token owner.
+      tags: [Bot]
+      operationId: getBotMe
+      responses:
+        '200':
+          description: User info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  display_name:
+                    type: string
+                  balance:
+                    type: integer
+        '401':
+          description: Invalid or missing token
+
+  /api/bot/markets:
+    get:
+      summary: List active markets
+      description: Returns active markets with pagination. Requires `can_read` scope.
+      tags: [Bot]
+      operationId: listMarkets
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [bug_fixes, feature_delivery, patch_timing, community_events, meta]
+          description: Filter by category
+        - name: offset
+          in: query
+          schema:
+            type: integer
+          description: Pagination offset
+      responses:
+        '200':
+          description: Paginated list of markets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  markets:
+                    type: array
+                    items:
+                      type: object
+                  offset:
+                    type: integer
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: Token missing read scope
+
+    post:
+      summary: Create a new market
+      description: |
+        Create a prediction market. Token requires `can_create_markets` scope.
+        
+        **Only moderators and admins** can create markets via the bot API.
+        
+        Markets are created in `pending_review` status and must be approved by a moderator before going live.
+      tags: [Bot]
+      operationId: createBotMarket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description, category, resolution_criteria, deadline]
+              properties:
+                title:
+                  type: string
+                  minLength: 10
+                  maxLength: 200
+                  description: Market question (e.g., "Will X happen in patch Y?")
+                description:
+                  type: string
+                  description: Detailed description of the market
+                category:
+                  type: string
+                  enum: [bug_fixes, feature_delivery, patch_timing, community_events, meta]
+                resolution_criteria:
+                  type: string
+                  description: How the market resolves (e.g., "YES if... NO if...")
+                deadline:
+                  type: string
+                  description: |
+                    Patch version (e.g., "4.9.0") or RFC3339 date (e.g., "2026-12-31T23:59:59Z").
+                    Patch versions set deadline 2 years out and prepend "Resolves when patch X ships." to resolution criteria.
+                outcomes:
+                  type: array
+                  items:
+                    type: string
+                  description: Custom outcomes (defaults to ["YES", "NO"])
+                  example: ["YES", "NO"]
+      responses:
+        '201':
+          description: Market created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  status:
+                    type: string
+                    example: pending_review
+        '400':
+          description: Invalid input
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: Token missing create_markets scope or user is not mod/admin
+
+  /api/bot/markets/{id}:
+    get:
+      summary: Get market by ID
+      description: Returns a single market. Requires `can_read` scope.
+      tags: [Bot]
+      operationId: getMarket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Market ID
+      responses:
+        '200':
+          description: Market details
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: Token missing read scope
+        '404':
+          description: Market not found
+
+  /api/bot/trades:
+    get:
+      summary: Get user trades
+      description: Returns trades for the authenticated user. Requires `can_read` scope.
+      tags: [Bot]
+      operationId: getUserTrades
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+          description: Pagination offset
+      responses:
+        '200':
+          description: List of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: Token missing read scope
+
+    post:
+      summary: Execute a trade
+      description: Buy or sell shares in a market. Token requires `can_trade` scope.
+      tags: [Bot]
+      operationId: createBotTrade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [market_id, outcome_id, action, shares]
+              properties:
+                market_id:
+                  type: integer
+                  description: Market ID to trade in
+                outcome_id:
+                  type: integer
+                  description: Outcome ID to buy/sell
+                action:
+                  type: string
+                  enum: [buy, sell]
+                shares:
+                  type: number
+                  description: Number of shares (1–10000)
+      responses:
+        '200':
+          description: Trade executed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  TradeID:
+                    type: integer
+                  Cost:
+                    type: integer
+                  Shares:
+                    type: number
+                  PriceAtTrade:
+                    type: integer
+                  NewBalance:
+                    type: integer
+        '400':
+          description: Invalid input
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: Token missing trade scope
+
+  /api/bot/positions:
+    get:
+      summary: Get user positions
+      description: Returns all positions for the authenticated user. Requires `can_read` scope.
+      tags: [Bot]
+      operationId: getUserPositions
+      responses:
+        '200':
+          description: List of positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: Token missing read scope
+
+  /api/bot/mod/markets:
+    get:
+      summary: List pending markets
+      description: Returns all markets in `pending_review` status. Requires moderator or admin role.
+      tags: [Moderation]
+      operationId: listPendingMarkets
+      responses:
+        '200':
+          description: List of pending markets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    title:
+                      type: string
+                    status:
+                      type: string
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: User is not mod/admin
+
+  /api/bot/mod/markets/{id}/approve:
+    post:
+      summary: Approve a pending market
+      description: Approves a market from `pending_review` to `active` status. Requires moderator or admin role.
+      tags: [Moderation]
+      operationId: approveMarket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Market ID
+      responses:
+        '200':
+          description: Market approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: approved
+        '400':
+          description: Market not found or not in pending_review status
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: User is not mod/admin
+
+  /api/bot/mod/markets/{id}/reject:
+    post:
+      summary: Reject a pending market
+      description: Rejects a market from `pending_review` to `cancelled` status. Requires moderator or admin role.
+      tags: [Moderation]
+      operationId: rejectMarket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Market ID
+      responses:
+        '200':
+          description: Market rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: rejected
+        '400':
+          description: Market not found or not in pending_review status
+        '401':
+          description: Invalid or missing token
+        '403':
+          description: User is not mod/admin
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bot API token (starts with `smt_`)

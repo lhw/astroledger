@@ -204,8 +204,12 @@ func run() error {
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitByIP(60, time.Minute))
 			r.Get("/bot/me", botH.Me)
-			r.Post("/bot/trades", botH.Trade)
+			r.Get("/bot/markets", botH.ListMarkets)
+			r.Get("/bot/markets/{id}", botH.GetMarket)
 			r.Post("/bot/markets", botH.CreateMarket)
+			r.Get("/bot/trades", botH.GetUserTrades)
+			r.Post("/bot/trades", botH.Trade)
+			r.Get("/bot/positions", botH.GetUserPositions)
 			r.Get("/bot/mod/markets", botH.ListPendingMarkets)
 			r.Post("/bot/mod/markets/{id}/approve", botH.ApproveMarket)
 			r.Post("/bot/mod/markets/{id}/reject", botH.RejectMarket)

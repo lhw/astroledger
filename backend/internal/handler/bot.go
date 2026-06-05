@@ -327,6 +327,144 @@ func (h *BotHandler) Trade(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+// ListMarkets returns active markets (requires read scope).
+func (h *BotHandler) ListMarkets(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "list_markets", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if tokenRow.CanRead != 1 {
+		respondError(w, http.StatusForbidden, "token missing read scope")
+		return
+	}
+
+	category := r.URL.Query().Get("category")
+	offset := int64(0)
+	if v, err := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64); err == nil && v >= 0 {
+		offset = v
+	}
+
+	count, err := h.queries.CountMarkets(r.Context(), db.CountMarketsParams{
+		Status:   "active",
+		Column2:  category,
+		Category: category,
+	})
+	if err != nil {
+		slog.Error("bot: ListMarkets: CountMarkets", "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	markets, err := h.queries.ListMarkets(r.Context(), db.ListMarketsParams{
+		Status:   "active",
+		Column2:  category,
+		Category: category,
+		Limit:    50,
+		Offset:   offset,
+	})
+	if err != nil {
+		slog.Error("bot: ListMarkets: ListMarkets", "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"total":   count,
+		"markets": markets,
+		"offset":  offset,
+	})
+}
+
+// GetMarket returns a single market by ID (requires read scope).
+func (h *BotHandler) GetMarket(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "get_market", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if tokenRow.CanRead != 1 {
+		respondError(w, http.StatusForbidden, "token missing read scope")
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid market id")
+		return
+	}
+
+	market, err := h.queries.GetMarketByID(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(w, http.StatusNotFound, "market not found")
+		return
+	}
+	if err != nil {
+		slog.Error("bot: GetMarket: GetMarketByID", "market_id", id, "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, market)
+}
+
+// GetUserTrades returns trades for the authenticated user (requires read scope).
+func (h *BotHandler) GetUserTrades(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "get_trades", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if tokenRow.CanRead != 1 {
+		respondError(w, http.StatusForbidden, "token missing read scope")
+		return
+	}
+
+	offset := int64(0)
+	if v, err := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64); err == nil && v >= 0 {
+		offset = v
+	}
+
+	trades, err := h.queries.GetUserTrades(r.Context(), db.GetUserTradesParams{
+		UserID: tokenRow.UserID,
+		Limit:  50,
+		Offset: offset,
+	})
+	if err != nil {
+		slog.Error("bot: GetUserTrades", "user_id", tokenRow.UserID, "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, trades)
+}
+
+// GetUserPositions returns positions for the authenticated user (requires read scope).
+func (h *BotHandler) GetUserPositions(w http.ResponseWriter, r *http.Request) {
+	tokenRow, err := h.authenticateToken(r)
+	if err != nil {
+		slog.Warn("bot auth failed", "remote_addr", r.RemoteAddr, "endpoint", "get_positions", "err", err)
+		respondError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if tokenRow.CanRead != 1 {
+		respondError(w, http.StatusForbidden, "token missing read scope")
+		return
+	}
+
+	positions, err := h.queries.GetUserPositions(r.Context(), tokenRow.UserID)
+	if err != nil {
+		slog.Error("bot: GetUserPositions", "user_id", tokenRow.UserID, "err", err)
+		respondError(w, http.StatusInternalServerError, "database error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, positions)
+}
+
 // CreateMarket creates a new market using a bot API token (requires can_create_markets scope).
 // Only moderators and admins can create markets via the bot API.
 func (h *BotHandler) CreateMarket(w http.ResponseWriter, r *http.Request) {

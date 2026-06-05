@@ -11,7 +11,7 @@
 			All requests require a <code class="bg-surface-100 px-1 rounded">Bearer</code> token in the Authorization header.
 		</p>
 		<p class="text-surface-500 text-xs mt-2">
-			<a href="/openapi.json" target="_blank" rel="noopener noreferrer" class="hover:text-primary-500">OpenAPI Spec (JSON) ↗</a>
+			<a href="/openapi.yaml" target="_blank" rel="noopener noreferrer" class="hover:text-primary-500">OpenAPI Spec (YAML) ↗</a>
 		</p>
 	</div>
 
@@ -31,12 +31,36 @@
 			</div>
 
 			<div>
+				<h3 class="text-sm font-bold text-surface-800 mb-2">GET /api/bot/markets</h3>
+				<p class="text-xs text-surface-600 mb-2">List active markets with pagination. Requires <code class="bg-surface-200 px-1 rounded">can_read</code> scope.</p>
+				<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -H "Authorization: Bearer $TOKEN" https://astroledger.de/api/bot/markets?category=bug_fixes</pre>
+			</div>
+
+			<div>
+				<h3 class="text-sm font-bold text-surface-800 mb-2">GET /api/bot/markets/{`{id}`}</h3>
+				<p class="text-xs text-surface-600 mb-2">Get a single market by ID. Requires <code class="bg-surface-200 px-1 rounded">can_read</code> scope.</p>
+				<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -H "Authorization: Bearer $TOKEN" https://astroledger.de/api/bot/markets/10</pre>
+			</div>
+
+			<div>
+				<h3 class="text-sm font-bold text-surface-800 mb-2">GET /api/bot/trades</h3>
+				<p class="text-xs text-surface-600 mb-2">Get your trade history. Requires <code class="bg-surface-200 px-1 rounded">can_read</code> scope.</p>
+				<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -H "Authorization: Bearer $TOKEN" https://astroledger.de/api/bot/trades</pre>
+			</div>
+
+			<div>
 				<h3 class="text-sm font-bold text-surface-800 mb-2">POST /api/bot/trades</h3>
 				<p class="text-xs text-surface-600 mb-2">Buy or sell shares. Requires <code class="bg-surface-200 px-1 rounded">can_trade</code> scope.</p>
 				<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -X POST https://astroledger.de/api/bot/trades \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{`{"market_id": 1, "outcome_id": 1, "action": "buy", "shares": 10}`}'</pre>
+			</div>
+
+			<div>
+				<h3 class="text-sm font-bold text-surface-800 mb-2">GET /api/bot/positions</h3>
+				<p class="text-xs text-surface-600 mb-2">Get your current positions. Requires <code class="bg-surface-200 px-1 rounded">can_read</code> scope.</p>
+				<pre class="bg-surface-100 p-3 rounded text-xs overflow-x-auto">curl -H "Authorization: Bearer $TOKEN" https://astroledger.de/api/bot/positions</pre>
 			</div>
 
 			<div>
